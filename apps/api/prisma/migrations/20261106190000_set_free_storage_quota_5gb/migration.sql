@@ -1,0 +1,2 @@
+ALTER TABLE "Subscription"
+  ALTER COLUMN "storageLimitBytes" SET DEFAULT 5368709120;

@@ -1,0 +1,14 @@
+export { default as AudioPlayerPage } from "./AudioPlayerPage";
+export { default as DocumentWorkspacePage } from "./DocumentWorkspacePage";
+export { default as FileInformationPage } from "./FileInformationPage";
+export { default as ImageViewerPage } from "./ImageViewerPage";
+export { default as PDFAnnotationPage } from "./PDFAnnotationPage";
+export { default as PDFViewerPage } from "./PDFViewerPage";
+export { default as PresentationEditorPage } from "./PresentationEditorPage";
+export { default as SaveConflictResolutionPage } from "./SaveConflictResolutionPage";
+export { default as SpreadsheetEditorPage } from "./SpreadsheetEditorPage";
+export { default as TextEditorPage } from "./TextEditorPage";
+export { default as UnsupportedFilePage } from "./UnsupportedFilePage";
+export { default as VersionHistoryInterfacePage } from "./VersionHistoryInterfacePage";
+export { default as VideoPlayerPage } from "./VideoPlayerPage";
+export { default as WordEditorPage } from "./WordEditorPage";

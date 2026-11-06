@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Plan {
+  FREE
+}
+
+enum StoredFileStatus {
+  UPLOADING
+  READY
+  DELETING
+}
+
+enum EventGallerySetting {
+  PRIVATE
+  LINK_PUBLIC
+  PASSCODE
+}
+
+enum EventStatus {
+  ACTIVE
+  DELETING
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum WorkspaceMemberStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum FolderPermissionEffect {
+  GRANT
+  RESTRICT
+}
+
+model User {
+  id              String                @id @default(uuid()) @db.Uuid
+  email           String                @unique @db.VarChar(320)
+  passwordHash    String                @db.VarChar(255)
+  name            String                @db.VarChar(120)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  sessions        Session[]
+  verificationTokens VerificationToken[]
+  resetTokens     PasswordResetToken[]
+  subscription    Subscription?
+  folders         Folder[]
+  files           StoredFile[]
+  ownedWorkspaces Workspace[]           @relation("WorkspaceOwner")
+  memberships     WorkspaceMember[]
+  sentInvitations WorkspaceInvitation[] @relation("InvitationInviter")
+  auditEvents     AuditLog[]             @relation("AuditActor")
+  notifications   Notification[]
+  events          Event[]
+  galleryGrants   EventGalleryGrant[]
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique @db.Char(64)
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  userAgent String?  @db.VarChar(512)
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model VerificationToken {
+  id            String   @id @default(uuid()) @db.Uuid
+  tokenHash     String   @unique @db.Char(64)
+  userId        String   @db.Uuid
+  expiresAt     DateTime
+  failedAttempts Int     @default(0)
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id            String   @id @default(uuid()) @db.Uuid
+  tokenHash     String   @unique @db.Char(64)
+  userId        String   @db.Uuid
+  expiresAt     DateTime
+  failedAttempts Int     @default(0)
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Subscription {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @db.Uuid
+  plan              Plan     @default(FREE)
+  storageLimitBytes BigInt   @default(5368709120)
+  storageUsedBytes  BigInt   @default(0)
+  storageReservedBytes BigInt @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Folder {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @db.Uuid
+  parentFolderId  String?      @db.Uuid
+  name            String       @db.VarChar(120)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent          Folder?      @relation("FolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
+  children        Folder[]     @relation("FolderTree")
+  files           StoredFile[]
+  events          Event[]
+  workspaceId     String?      @db.Uuid
+  workspace       Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  permissions     FolderPermission[]
+
+  @@index([userId, parentFolderId])
+  @@index([userId, parentFolderId, name])
+  @@index([workspaceId, parentFolderId])
+  @@unique([workspaceId, id])
+}
+
+model StoredFile {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  folderId       String?         @db.Uuid
+  objectKey      String          @unique @db.VarChar(512)
+  originalName   String          @db.VarChar(255)
+  mimeType       String          @db.VarChar(255)
+  sizeBytes      BigInt
+  status         StoredFileStatus @default(UPLOADING)
+  quotaReserved  Boolean          @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder         Folder?         @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  workspaceId    String?          @db.Uuid
+  workspace      Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventId         String?           @db.Uuid
+  event           Event?            @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@index([userId, folderId, status, createdAt])
+  @@index([workspaceId, folderId, status, createdAt])
+  @@index([eventId, status, createdAt])
+}
+
+model Event {
+  id                 String              @id @default(uuid()) @db.Uuid
+  ownerUserId        String              @db.Uuid
+  folderId           String              @db.Uuid
+  name               String              @db.VarChar(160)
+  date               DateTime
+  description        String?             @db.VarChar(4000)
+  captureTokenHash   String              @unique @db.Char(64)
+  galleryTokenHash   String              @unique @db.Char(64)
+  gallerySetting     EventGallerySetting @default(PRIVATE)
+  galleryPasscodeHash String?            @db.VarChar(255)
+  storageCapBytes    BigInt
+  storageUsedBytes   BigInt              @default(0)
+  storageReservedBytes BigInt            @default(0)
+  status             EventStatus         @default(ACTIVE)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  owner              User                @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  folder             Folder              @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  files              StoredFile[]
+  galleryGrants      EventGalleryGrant[]
+
+  @@index([ownerUserId, date])
+  @@index([gallerySetting, status])
+}
+
+model EventGalleryGrant {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique @db.Char(64)
+  eventId   String   @db.Uuid
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, expiresAt])
+  @@index([userId, expiresAt])
+}
+
+model Workspace {
+  id          String                @id @default(uuid()) @db.Uuid
+  name        String                @db.VarChar(160)
+  ownerUserId String                @db.Uuid
+  storageLimitBytes    BigInt        @default(53687091200)
+  storageUsedBytes     BigInt        @default(0)
+  storageReservedBytes BigInt        @default(0)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  owner       User                  @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members     WorkspaceMember[]
+  invitations WorkspaceInvitation[]
+  folders     Folder[]
+  files       StoredFile[]
+  auditLogs   AuditLog[]
+  notifications Notification[]
+
+  @@index([ownerUserId])
+}
+
+model WorkspaceMember {
+  id          String               @id @default(uuid()) @db.Uuid
+  workspaceId String               @db.Uuid
+  userId      String               @db.Uuid
+  displayName String?              @db.VarChar(120)
+  role        WorkspaceRole        @default(STAFF)
+  status      WorkspaceMemberStatus @default(ACTIVE)
+  joinedAt    DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissions FolderPermission[]
+
+  @@unique([workspaceId, userId])
+  @@unique([workspaceId, id])
+  @@index([userId, status])
+}
+
+model WorkspaceInvitation {
+  id            String          @id @default(uuid()) @db.Uuid
+  workspaceId   String          @db.Uuid
+  email         String          @db.VarChar(320)
+  name          String?         @db.VarChar(120)
+  role          WorkspaceRole   @default(STAFF)
+  initialPermissions Json?
+  status        InvitationStatus @default(PENDING)
+  tokenHash     String          @unique @db.Char(64)
+  invitedById   String          @db.Uuid
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy     User            @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, status, expiresAt])
+}
+
+model FolderPermission {
+  id          String                @id @default(uuid()) @db.Uuid
+  workspaceId String                @db.Uuid
+  folderId    String                @db.Uuid
+  memberId    String                @db.Uuid
+  effect      FolderPermissionEffect @default(GRANT)
+  permissionKeys String[]            @default([])
+  inherit     Boolean               @default(false)
+  createdById String                @db.Uuid
+  updatedById String                @db.Uuid
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  folder      Folder                @relation(fields: [workspaceId, folderId], references: [workspaceId, id], onDelete: Cascade)
+  member      WorkspaceMember       @relation(fields: [workspaceId, memberId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, folderId, memberId, effect])
+  @@index([workspaceId, memberId])
+  @@index([folderId, memberId])
+}
+
+model AuditLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  actorId     String?   @db.Uuid
+  action      String    @db.VarChar(100)
+  targetType  String    @db.VarChar(80)
+  targetId    String?   @db.VarChar(120)
+  metadata    Json?
+  ipAddress   String?   @db.VarChar(64)
+  userAgent   String?   @db.VarChar(512)
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor       User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, actorId, createdAt])
+}
+
+model Notification {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  userId      String    @db.Uuid
+  type        String    @db.VarChar(100)
+  message     String    @db.VarChar(500)
+  metadata    Json?
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([workspaceId, createdAt])
+}

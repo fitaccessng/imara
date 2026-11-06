@@ -1,0 +1,12 @@
+export { default as BusinessBillingPage } from "./BusinessBillingPage";
+export { default as BusinessDashboardPage } from "./BusinessDashboardPage";
+export { default as BusinessSharedFilesPage } from "./BusinessSharedFilesPage";
+export { default as BusinessSharedFoldersPage } from "./BusinessSharedFoldersPage";
+export { default as BusinessStoragePage } from "./BusinessStoragePage";
+export { default as InviteMembersPage } from "./InviteMembersPage";
+export { default as MemberManagementPage } from "./MemberManagementPage";
+export { default as RolesPermissionsPage } from "./RolesPermissionsPage";
+export { default as TeamMembersPage } from "./TeamMembersPage";
+export { default as WorkspaceActivityPage } from "./WorkspaceActivityPage";
+export { default as WorkspaceOverviewPage } from "./WorkspaceOverviewPage";
+export { default as WorkspaceSettingsPage } from "./WorkspaceSettingsPage";
