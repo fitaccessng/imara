@@ -59,10 +59,12 @@ Operational delivery retry/queueing is intentionally not implemented.
 Uploads use DockHive Hive Buckets through its S3-compatible API. Set
 `DOCKHIVE_S3_ENDPOINT`, `DOCKHIVE_BUCKET`, `DOCKHIVE_ACCESS_KEY_ID`, and
 `DOCKHIVE_SECRET_ACCESS_KEY` using values from your DockHive account. `DOCKHIVE_S3_REGION`
-defaults to `us-east-1`; `DOCKHIVE_S3_FORCE_PATH_STYLE` defaults to `true`. These
-variables intentionally do not contain a guessed DockHive hostname or credentials:
-configure the endpoint and keys shown for your bucket. Production requires an HTTPS
-endpoint. Upload/download/delete return 503 when storage is not configured or unavailable.
+defaults to `auto`; `DOCKHIVE_S3_FORCE_PATH_STYLE` defaults to `true`. For a US Hive
+Bucket, DockHive's S3 endpoint is `https://s3-us.dockhive.io` (the global endpoint is
+`https://s3.dockhive.io`). Use the bucket-specific access key, keep credentials in
+untracked environment files or the hosting provider's secret manager, and scope keys
+to only the buckets and operations the app needs. Production requires an HTTPS endpoint.
+Upload/download/delete return 503 when storage is not configured or unavailable.
 
 Uploads are proxied through the API and buffered in memory, capped at 25 MiB per file
 (`MAX_UPLOAD_BYTES`, with a hard 25 MiB maximum); the upload route is additionally

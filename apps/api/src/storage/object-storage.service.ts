@@ -60,7 +60,7 @@ export class ObjectStorageService {
     }
     this.client = new S3Client({
       endpoint: parsedEndpoint.toString().replace(/\/$/, ''),
-      region: process.env.DOCKHIVE_S3_REGION || 'us-east-1',
+      region: process.env.DOCKHIVE_S3_REGION || 'auto',
       forcePathStyle: process.env.DOCKHIVE_S3_FORCE_PATH_STYLE !== 'false',
       credentials: { accessKeyId, secretAccessKey },
     });
