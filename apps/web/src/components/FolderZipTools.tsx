@@ -54,7 +54,7 @@ function archiveEntryPath(entry: { name: string; unsafeOriginalName?: string }) 
     throw new Error("This ZIP contains an unsafe file path.");
   }
   const segments = originalName.split("/");
-  if (segments.at(-1) === "") segments.pop();
+  if (segments[segments.length - 1] === "") segments.pop();
   if (segments.some((segment) => !segment || segment === "." || segment === ".." || segment.length > 255)) {
     throw new Error("This ZIP contains an unsafe or unsupported file path.");
   }
@@ -229,7 +229,7 @@ export function FolderZipTools({
         throw new Error("This ZIP contains a folder path that is too deeply nested.");
       }
       const size = declaredExpandedSize(entry);
-      const ignored = segments.includes("__MACOSX") || segments.at(-1) === ".DS_Store";
+      const ignored = segments.includes("__MACOSX") || segments[segments.length - 1] === ".DS_Store";
       if (!ignored && (size > MAX_ARCHIVE_CONTENT_BYTES || expandedBytes + size > MAX_ARCHIVE_CONTENT_BYTES)) {
         throw new Error("This ZIP expands beyond the 100 MB extraction limit.");
       }
@@ -293,7 +293,7 @@ export function FolderZipTools({
     for (const entry of entries.filter((item) => item.dir)) {
       try {
         const segments = archiveEntryPath(entry);
-        if (segments.includes("__MACOSX") || segments.at(-1) === ".DS_Store") continue;
+        if (segments.includes("__MACOSX") || segments[segments.length - 1] === ".DS_Store") continue;
         if (segments.length > MAX_FOLDER_DEPTH) {
           throw new Error("This ZIP contains a folder path that is too deeply nested.");
         }
@@ -303,7 +303,7 @@ export function FolderZipTools({
       }
     }
     for (const { entry, segments, size } of validatedFiles) {
-      const name = segments.at(-1);
+      const name = segments[segments.length - 1];
       if (!name) continue;
       try {
         const parentId = await ensureFolder(segments.slice(0, -1));
