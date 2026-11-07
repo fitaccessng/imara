@@ -88,10 +88,13 @@ export class AuthService {
           return { user: created, workspaceId: workspace.id };
         }
         return { user: created, workspaceId: null };
-      });
+      }, { maxWait: 10_000 });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('An account with this email already exists');
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028') {
+        throw new ServiceUnavailableException('Account creation is temporarily busy. Please try again in a moment.');
       }
       throw error;
     }

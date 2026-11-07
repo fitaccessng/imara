@@ -21,6 +21,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailerService } from './mailer.service';
@@ -157,6 +158,32 @@ describe('registration and login', () => {
     expect(result.emailVerified).toBe(true);
     expect(localMailer.sendVerification).not.toHaveBeenCalled();
     expect(transaction).toHaveBeenCalledTimes(1);
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { maxWait: 10_000 });
+  });
+
+  it('returns a retryable response when the database cannot start a registration transaction', async () => {
+    const transactionError = new Prisma.PrismaClientKnownRequestError(
+      'Transaction API error: Unable to start a transaction in the given time.',
+      { code: 'P2028', clientVersion: '7.10.1' },
+    );
+    const transaction = jest.fn().mockRejectedValue(transactionError);
+    const registrationService = new AuthService(
+      { $transaction: transaction } as unknown as PrismaService,
+      {
+        isConfigured: () => true,
+        isLocalConsoleMode: () => false,
+      } as unknown as MailerService,
+    );
+    jest.mocked(hashPassword).mockResolvedValue('stored-hash');
+
+    await expect(registrationService.register({
+      email: user.email,
+      password: 'a sufficiently long password',
+      name: user.name,
+    })).rejects.toMatchObject({
+      message: 'Account creation is temporarily busy. Please try again in a moment.',
+    });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { maxWait: 10_000 });
   });
 });
 
