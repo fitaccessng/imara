@@ -29,6 +29,8 @@ registration, verification and password-recovery email.
 The example config contains the Brevo relay, SMTP login, and verified sender address.
 Set the SMTP key only as `SMTP_PASSWORD` in the ignored `apps/api/.env` or your deployment
 secret manager; rotate any SMTP key that has been shared in chat or source control.
+The API loads `apps/api/.env` when started from the repository root with `npm run dev:api`.
+After changing SMTP settings, restart the API process so it picks up the new values.
 
 The API listens on `http://localhost:3001`. Use `npm run build -w @imara/api` and
 `npm test -w @imara/api` for validation. For schema development,

@@ -2,6 +2,7 @@ jest.mock('@nestjs/common', () => ({
   Injectable: () => (target: unknown) => target,
   Logger: class {
     warn() {}
+    error() {}
   },
   ServiceUnavailableException: class ServiceUnavailableException extends Error {},
 }));
@@ -68,6 +69,24 @@ describe('MailerService local console delivery', () => {
       text: expect.stringContaining('123456'),
     }));
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs SMTP delivery failures and rethrows them', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.EMAIL_DELIVERY = 'smtp';
+    process.env.SMTP_HOST = 'smtp-relay.brevo.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const smtpError = new Error('SMTP authentication failed');
+    const sendMail = jest.fn().mockRejectedValue(smtpError);
+    jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
+
+    await expect(mailer.sendVerificationCode('person@example.com', '123456')).rejects.toBe(smtpError);
+
+    expect(errorSpy).toHaveBeenCalledWith('SMTP delivery failed: SMTP authentication failed');
   });
 
   it('sends password reset codes over SMTP', async () => {

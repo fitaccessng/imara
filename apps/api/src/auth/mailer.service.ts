@@ -39,12 +39,23 @@ export class MailerService {
     });
   }
 
+  private async sendSmtpMail(message: nodemailer.SendMailOptions): Promise<void> {
+    try {
+      await this.transporter().sendMail(message);
+    } catch (error) {
+      this.logger.error(
+        `SMTP delivery failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
+  }
+
   private async deliver(to: string, subject: string, text: string, url: URL, preferSmtp = false): Promise<void> {
     if (this.isLocalConsoleMode() && (!preferSmtp || !this.isSmtpConfigured())) {
       this.logger.warn(`[local email] ${subject} for ${to}: ${url.toString()}`);
       return;
     }
-    await this.transporter().sendMail({
+    await this.sendSmtpMail({
       from: process.env.SMTP_FROM,
       to,
       subject,
@@ -65,7 +76,7 @@ export class MailerService {
       this.logger.warn(`[local email] ${subject} for ${to}: ${code}`);
       return;
     }
-    await this.transporter().sendMail({
+    await this.sendSmtpMail({
       from: process.env.SMTP_FROM,
       to,
       subject,
@@ -86,7 +97,7 @@ export class MailerService {
       this.logger.warn(`[local email] ${subject} for ${to}: ${code}`);
       return;
     }
-    await this.transporter().sendMail({
+    await this.sendSmtpMail({
       from: process.env.SMTP_FROM,
       to,
       subject,
