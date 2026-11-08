@@ -40,6 +40,124 @@ creates a migration; commit the generated migration, then use
 `npm run prisma:seed -w @imara/api` only checks the connection; no demo user or
 credentials are created.
 
+## Platform administrator access
+
+There is no public administrator registration URL. An operator can create a
+separate platform-admin account from an interactive terminal connected to the
+intended database. The password is entered invisibly at the prompt and is never
+accepted as a command-line argument:
+
+```sh
+npm run prisma:deploy -w @imara/api
+npm run admin:create -w @imara/api -- --email 'admin@useimara.space' --name 'IMARA Admin'
+```
+
+The creation command requires a TTY, requires a unique email, validates and hashes
+the password, and creates a separate administrator identity with its own Free-tier
+subscription. For an existing verified user, operators can instead use
+`npm run admin:promote -w @imara/api -- --email 'verified-user@example.com'`.
+Both commands atomically ensure a `UserRole.ADMIN` user and an active
+`PlatformAdminProfile` with the `SUPER_ADMIN` role. Neither command creates a
+public role-change endpoint. Administrators sign in separately at `/admin/login`;
+the API checks the current database session, `UserRole.ADMIN`, and an active
+platform-admin profile. Client-supplied role claims are never authorization.
+
+Platform-admin permissions are server-side and default-deny. Roles are
+`SUPER_ADMIN`, `USER_MANAGEMENT_ADMIN`, `FINANCE_ADMIN`, `SUPPORT_ADMIN`,
+`MARKETING_ADMIN`, `OPERATIONS_ADMIN`, and `SECURITY_ADMIN`; only `SUPER_ADMIN`
+bypasses the domain permission catalog. Permissions are assigned by domain:
+overview read is available to every role; user and business access, customer
+status/session/credential-recovery controls, storage, events, analytics, and audit logs
+are granted only to the roles defined in `src/admin/platform-admin.permissions.ts`. The
+`20261108060000_platform_admin_permissions_audit` migration explicitly
+backfills users already marked `UserRole.ADMIN` as active `SUPER_ADMIN`
+profiles, preserving their access while retaining `UserRole.ADMIN` as a second
+authorization gate. Apply migrations and regenerate Prisma Client before
+deploying the API:
+
+```sh
+npm run prisma:generate -w @imara/api
+npm run prisma:deploy -w @imara/api
+```
+
+### Platform-admin API
+
+All routes require an authenticated platform-admin session. Except `/me`,
+each route also requires its domain permission and writes to the separate
+`PlatformAdminAuditLog` table. Read routes audit before returning data;
+customer status/session mutations commit their audit row in the same database
+transaction as the change. Workspace `AuditLog` records remain separate.
+Paginated directories support `page` (1 through 1,000,000), `pageSize` (1–100,
+default 25), and trimmed `q` searches (maximum 100 characters). Audit records
+also support exact `action` and `resourceType` filters. List responses use
+`{items, page:{page,pageSize,totalItems,totalPages}}`. Storage byte values are
+decimal strings.
+
+| Method | Route | Response shape |
+|---|---|---|
+| GET | `/api/v1/admin/me` | `{id,email,name,emailVerified,role:'ADMIN',platformAdminRole}` |
+| GET | `/api/v1/admin/overview` | `{counts:{users,verifiedUsers,plans:{FREE,PRO,BUSINESS},workspaces,members,files,storageBytes,events,eventMedia,eventMediaStorageBytes},recentRegistrations:[{id,email,name,createdAt}]}` |
+| GET | `/api/v1/admin/users` | Paginated safe user directory including account status and optional subscription plan |
+| GET | `/api/v1/admin/users/:id` | Account, subscription quota, business memberships, aggregate file/event metadata, recent sign-in history, and safe active-session metadata; payment history and ticket counts are included only for roles with the corresponding permission; no file content or session tokens |
+| PATCH | `/api/v1/admin/users/:id/status` | Set `ACTIVE` or `SUSPENDED`; suspension revokes active sessions; reactivation does not restore them |
+| POST | `/api/v1/admin/users/:id/password-reset` | Audits the request and emails the existing six-digit password reset code |
+| POST | `/api/v1/admin/users/:id/verification-email` | Audits the request and resends a verification code only when the customer is still unverified |
+| DELETE | `/api/v1/admin/users/:userId/sessions/:sessionId` | Revoke one active customer session |
+| GET | `/api/v1/admin/businesses` or `/api/v1/admin/workspaces` | Paginated workspace directory: workspace id/name/date, owner id/name/email, memberCount, and used/limit storage |
+| GET | `/api/v1/admin/businesses/:id` or `/api/v1/admin/workspaces/:id` | Workspace, owner, member roles/status, and storage/file/folder/event counts; no document content |
+| GET | `/api/v1/admin/plans` | Current configurable plan catalogue |
+| PATCH | `/api/v1/admin/plans/:plan` | Update plan price, limits, and entitlements with an audit record |
+| GET | `/api/v1/admin/subscriptions` | Paginated subscription records and plan/status metadata |
+| GET | `/api/v1/admin/payments` | Paginated payment attempts and server-verified successful receipts, summarized by currency |
+| GET | `/api/v1/admin/storage-inventory` | Ready-file count/bytes, largest uploader accounts/workspaces, and MIME-type aggregates; no filenames |
+| GET | `/api/v1/admin/upload-monitoring` | Persisted upload/deletion states, stale operation count, source counts (including scan uploads), and MIME-type aggregates |
+| GET | `/api/v1/admin/system-health` | Live database, S3-compatible/local storage and SMTP checks; reports backup/OCR/malware scanning as not integrated |
+| GET | `/api/v1/admin/announcements` | Paginated announcement history with audience, recipients, and email delivery counts |
+| POST | `/api/v1/admin/announcements` | Creates audited in-app deliveries for active customers and optionally queues SMTP emails by plan audience |
+| POST | `/api/v1/admin/announcements/:id/retry-email` | Re-queues failed SMTP deliveries for an announcement and writes an audit record |
+| GET | `/api/v1/admin/support-tickets` | Paginated support queue filtered by customer/subject, status, or priority |
+| GET | `/api/v1/admin/support-agents` | Active platform administrators eligible for ticket assignment |
+| GET | `/api/v1/admin/support-tickets/:id` | Audited ticket conversation, including administrator-only internal notes |
+| PATCH | `/api/v1/admin/support-tickets/:id` | Audited status, priority, and assigned-agent update |
+| POST | `/api/v1/admin/support-tickets/:id/messages` | Audited in-app customer reply or administrator-only internal note |
+| GET | `/api/v1/admin/events` | Paginated event metadata with stored status, gallery setting, owner, and workspace; supports `q`, `status`, and `gallerySetting` |
+| GET | `/api/v1/admin/analytics` | UTC registration counts by day and stored subscription distribution; accepts ISO `from` and `to` (end exclusive, max 366 days) |
+| GET | `/api/v1/admin/audit-logs` | Paginated platform-admin audit records with actor, action, resource, metadata, IP, user agent, and timestamp |
+
+Overview values come from persisted user, subscription, workspace, member,
+stored-file, and event records. File/storage counts include ready files only;
+event-media values include ready event-linked files. Announcement delivery is
+persisted per active customer; in-app messages are available at
+`GET /api/v1/announcements` and can be marked read at
+`POST /api/v1/announcements/:id/read`. Optional SMTP delivery is processed from
+a database-backed queue in batches and exposes pending/sent/failed status. A
+crash after an SMTP provider accepts a message but before its status is saved
+can result in a duplicate on recovery; SMTP cannot provide exactly-once
+delivery. Failed messages are not retried automatically; an authorised admin
+can explicitly queue failed deliveries again.
+
+Customers can create tickets at `POST /api/v1/support/tickets`, list their own
+requests at `GET /api/v1/support/tickets`, view their public conversation at
+`GET /api/v1/support/tickets/:id`, and reply at
+`POST /api/v1/support/tickets/:id/messages`. Internal notes are excluded from
+all customer responses. Replies appear in the signed-in support view; ticket
+email notifications are not configured.
+
+Upload monitoring uses persisted file state and the upload source marker. It
+does not invent historical failures or processing outcomes. The health page
+performs live database and object-store checks plus SMTP configuration
+verification; it never exposes credentials. IMARA does not currently have a
+backup, OCR, document-conversion, or malware-scanning integration, so these are
+reported as not integrated. Editable runtime platform settings are not implemented.
+Bachs hosted checkout and signed webhook verification are integrated; the admin
+payment views report persisted, provider-confirmed one-time receipts by currency.
+Refund processing, provider-fee reconciliation, and automatic renewal are not
+implemented, so recurring revenue and MRR are not inferred.
+DAU and churn are not inferred from plan or account records. Event status only
+supports the persisted `ACTIVE` and `DELETING` values; completion/cancellation
+is not inferred from the event date. Admin responses do not expose document
+names or contents, passwords, session tokens, or request bodies.
+
 `CORS_ORIGINS` is a comma-separated exact-origin allowlist and defaults to the Vite
 origin `http://localhost:5173`. Browser requests must use credentials
 (`fetch(..., { credentials: 'include' })`). The API also rejects disallowed `Origin`
@@ -48,13 +166,31 @@ production frontend origin, and keep SMTP/database secrets outside source contro
 For cross-site frontend/API hosting, configure `COOKIE_SAME_SITE=none` together with
 `COOKIE_SECURE=true`; otherwise the default `lax` cookie is preferable.
 
+## Bachs plan payments
+
+Paid plans use Bachs hosted checkout with NGN one-time payments. A confirmed
+payment grants one calendar month of the selected plan; it does not auto-renew.
+The API only activates access from a signed `collection.succeeded` webhook and
+checks the exact amount and currency against the saved checkout attempt. Expired
+paid plans revert to Free on the account's next authenticated API request.
+
+Configure `BACHS_MODE=sandbox`, a sandbox `BACHS_API_KEY`, and
+`BACHS_WEBHOOK_SECRET` in the API environment. Set `BACHS_FRONTEND_URL` to a
+public HTTPS URL (an HTTPS tunnel is needed for local checkout; Bachs rejects
+localhost return URLs). Register `POST https://<api-host>/api/v1/billing/webhook`
+in the Bachs developer portal and subscribe to `collection.succeeded` and
+`checkout.expired`. Start with sandbox keys and switch to `BACHS_MODE=live`
+and an `sk_live_` key only after testing and verifying the Bachs account.
+
 Email is not simulated. Registration, resend-verification and forgot-password return
 503 until all SMTP variables are supplied. A configured but failing SMTP service will
 also return 503. Email verification and password recovery use six-digit, single-use
 codes with a configurable 10-minute expiry, up to five attempts per code, and SHA-256
 digests stored in the database. Legacy verification and reset links remain accepted.
 Invitation tokens are random, single-use, time-limited, and stored only as SHA-256 digests.
-Operational delivery retry/queueing is intentionally not implemented.
+Operational delivery retry/queueing for authentication email is not
+implemented. Platform-announcement emails use a separate persisted queue and
+delivery status.
 
 ## Object storage configuration
 
@@ -93,9 +229,10 @@ stricter per-route limits).
 | Method | Route | Request / response |
 |---|---|---|
 | POST | `/api/v1/auth/register` | `{email,password,name}` → 201 `{id,email,name,emailVerified}`; requires SMTP |
-| POST | `/api/v1/auth/login` | `{email,password}` → 200 `{user:{id,email,name,emailVerified}}`; sets session cookie |
+| POST | `/api/v1/auth/login` | `{email,password}` → 200 `{user:{id,email,name,emailVerified,role}}`; sets session cookie |
+| GET | `/api/v1/admin/me` | Authenticated platform administrator → `{id,email,name,emailVerified,role:'ADMIN'}`; checks the current database role |
 | POST | `/api/v1/auth/logout` | Authenticated → 204, revokes current session and clears cookie |
-| GET | `/api/v1/auth/me` | Authenticated → `{id,email,name,emailVerified,createdAt}` |
+| GET | `/api/v1/auth/me` | Authenticated → `{id,email,name,emailVerified,role,createdAt}` |
 | POST | `/api/v1/auth/verify-email` | `{token}` → 204 |
 | POST | `/api/v1/auth/verify-email-code` | `{email,code}` → 204; six-digit code, maximum five attempts |
 | POST | `/api/v1/auth/forgot-password` | `{email}` → 202 `{message}`; requires SMTP |

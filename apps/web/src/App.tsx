@@ -5,10 +5,12 @@ import { AuthPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from
 import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { SupportPage } from "./pages/SupportPage";
 import { FilesPage } from "./pages/FilesPage";
 import { ScannerHomePage } from "./pages/scanner/ScannerHomePage";
 import { SearchResultsPage } from "./pages/dashboard";
-import { PricingPlansPage, SubscriptionOverviewPage } from "./pages/billing";
+import NotificationsPage from "./pages/dashboard/NotificationsPage";
+import { CheckoutPage, PaymentStatusPage, PricingPlansPage, SubscriptionOverviewPage } from "./pages/billing";
 import { AppShell } from "./components/AppShell";
 import {
   AboutPage,
@@ -35,6 +37,8 @@ import {
   WorkspaceTeamPage,
 } from "./workspaces/WorkspaceAdminPages";
 import { WorkspaceStoragePage } from "./workspaces/WorkspaceStoragePage";
+import { AdminLoginPage } from "./pages/admin/AdminLoginPage";
+import { AdminPortal } from "./pages/admin/AdminPortal";
 
 const EventsPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.EventsPage })));
 const CreateEventPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.CreateEventPage })));
@@ -62,7 +66,7 @@ function ProtectedRoutes() {
     );
   }
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
   return (
@@ -85,8 +89,12 @@ function ProtectedRoutes() {
         <Route path="/settings/sessions" element={<ProfilePage />} />
         <Route path="/settings/subscription" element={<SubscriptionOverviewPage />} />
         <Route path="/billing/subscription" element={<SubscriptionOverviewPage />} />
+        <Route path="/billing/checkout" element={<CheckoutPage />} />
+        <Route path="/billing/payment-status" element={<PaymentStatusPage />} />
         <Route path="/billing/plans" element={<PricingPlansPage />} />
         <Route path="/search" element={<SearchResultsPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/support" element={<SupportPage />} />
         <Route path="/workspace" element={<WorkspaceStoragePage />} />
         <Route path="/workspace/shared-folders" element={<WorkspaceStoragePage />} />
         <Route path="/workspace/team" element={<WorkspaceTeamPage />} />
@@ -126,6 +134,8 @@ export function App() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/security" element={<SecurityPage />} />
         <Route path="/accessibility" element={<AccessibilityPage />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/admin/*" element={<AdminPortal />} />
         <Route path="/login" element={<AuthPage key="login" mode="login" />} />
         <Route path="/register" element={<AuthPage key="register" mode="register" />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

@@ -27,6 +27,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError, apiBlob, apiRequest, downloadFile } from "../lib/api";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
+import { PlanLimitMessage } from "../components/PlanLimitMessage";
 
 type GallerySetting = "PRIVATE" | "LINK_PUBLIC" | "PASSCODE";
 const MAX_EVENT_CAPTURE_BYTES = 25 * 1024 * 1024;
@@ -75,6 +76,18 @@ interface EventMediaList {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function addEventStorageUsage(event: ImaraEvent, sizeBytes: string): ImaraEvent {
+  const size = BigInt(sizeBytes);
+  return {
+    ...event,
+    storage: {
+      ...event.storage,
+      usedBytes: (BigInt(event.storage.usedBytes) + size).toString(),
+      availableBytes: (BigInt(event.storage.availableBytes) - size).toString(),
+    },
+  };
 }
 
 function formatBytes(raw: string | number) {
@@ -267,7 +280,7 @@ export function CreateEventPage() {
               <input autoComplete="new-password" minLength={8} maxLength={128} required type="password" value={passcode} onChange={(event) => setPasscode(event.target.value)} placeholder="At least 8 characters" />
             </label>
           )}
-          {formError && <p className="form-alert" role="alert">{formError}</p>}
+          {formError && <p className="form-alert" role="alert"><PlanLimitMessage message={formError} /></p>}
           <p className="event-form-hint"><ShieldCheck size={15} /> Your event cap uses the remaining storage on your current plan. Uploads also count toward your account quota.</p>
           <div className="event-form-actions">
             <Link to="/events" className="button button-outline">Cancel</Link>
@@ -383,11 +396,15 @@ export function EventDetailPage() {
     queryKey: ["event", eventId],
     queryFn: () => apiRequest<ImaraEvent>(`/events/${eventId}`),
     enabled: Boolean(eventId),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
   const mediaQuery = useQuery({
     queryKey: ["event-media", eventId],
     queryFn: () => apiRequest<EventMedia[]>(`/events/${eventId}/media`),
     enabled: Boolean(eventId),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
   });
   const event = eventQuery.data;
 
@@ -588,6 +605,7 @@ export function EventDetailPage() {
 export function CaptureEventPage() {
   const { token = "" } = useParams();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -597,6 +615,7 @@ export function CaptureEventPage() {
   const [cameraError, setCameraError] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordingStarting, setRecordingStarting] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [captureMode, setCaptureMode] = useState<"photo" | "video">("photo");
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [capturedMedia, setCapturedMedia] = useState<{ file: File; url: string; type: "image" | "video" } | null>(null);
@@ -605,6 +624,9 @@ export function CaptureEventPage() {
   const recordingAudioStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingBytesRef = useRef(0);
+  const recordingLimitReachedRef = useRef(false);
+  const recordingStartedAtRef = useRef<number | null>(null);
   const cameraRequestRef = useRef(0);
   const nativeCameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
@@ -632,6 +654,17 @@ export function CaptureEventPage() {
     };
   }, [capturedMedia?.url]);
 
+  useEffect(() => {
+    if (!recording) return;
+    const updateElapsed = () => {
+      const startedAt = recordingStartedAtRef.current;
+      if (startedAt !== null) setRecordingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    };
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 250);
+    return () => window.clearInterval(interval);
+  }, [recording]);
+
   async function uploadFiles(selected: File[]) {
     if (!selected.length) return;
     setUploading(true);
@@ -642,7 +675,20 @@ export function CaptureEventPage() {
       for (const file of selected) {
         const body = new FormData();
         body.append("file", file);
-        await apiRequest(`/events/capture/${token}/uploads`, { method: "POST", body });
+        const uploaded = await apiRequest<EventMedia>(`/events/capture/${token}/uploads`, { method: "POST", body });
+        const eventId = eventQuery.data?.id;
+        if (eventId) {
+          queryClient.setQueryData<EventMedia[]>(["event-media", eventId], (current) => current
+            ? [...current.filter((media) => media.id !== uploaded.id), uploaded]
+              .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+            : current);
+          queryClient.setQueryData<ImaraEvent>(["event", eventId], (current) => {
+            return current ? addEventStorageUsage(current, uploaded.sizeBytes) : current;
+          });
+          queryClient.setQueryData<ImaraEvent[]>(["events"], (current) => current?.map((event) => {
+            return event.id === eventId ? addEventStorageUsage(event, uploaded.sizeBytes) : event;
+          }));
+        }
         completed += 1;
         setUploadedCount((count) => count + 1);
       }
@@ -673,7 +719,12 @@ export function CaptureEventPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facing } },
+        video: {
+          facingMode: { ideal: facing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 24, max: 30 },
+        },
         audio: false,
       });
 
@@ -745,7 +796,7 @@ export function CaptureEventPage() {
 
   async function toggleVideoRecording() {
     if (recording) {
-      recorderRef.current?.stop();
+      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
       setRecording(false);
       return;
     }
@@ -778,31 +829,48 @@ export function CaptureEventPage() {
       ]);
       const candidates = ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"];
       const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
-      const recorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(recordingStream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 1_500_000,
+        audioBitsPerSecond: 96_000,
+      });
       recordingChunksRef.current = [];
+      recordingBytesRef.current = 0;
+      recordingLimitReachedRef.current = false;
+      setRecordingSeconds(0);
       recorder.ondataavailable = (event) => {
         if (!event.data.size) return;
-        recordingChunksRef.current.push(event.data);
-        const totalBytes = recordingChunksRef.current.reduce((total, chunk) => total + chunk.size, 0);
-        if (totalBytes > MAX_EVENT_CAPTURE_BYTES) {
-          recordingChunksRef.current = [];
-          setRecording(false);
-          setCameraError("This video reached the 25 MB upload limit. Record a shorter video and try again.");
-          recorder.stop();
+        if (recordingBytesRef.current + event.data.size > MAX_EVENT_CAPTURE_BYTES) {
+          recordingLimitReachedRef.current = true;
+          if (recorder.state === "recording") recorder.stop();
+          return;
         }
+        recordingChunksRef.current.push(event.data);
+        recordingBytesRef.current += event.data.size;
       };
       recorder.onerror = () => {
         setRecording(false);
         setCameraError("Video recording stopped unexpectedly. Please try again.");
       };
       recorder.onstop = () => {
+        setRecording(false);
         recordingAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
         recordingAudioStreamRef.current = null;
+        if (recordingLimitReachedRef.current) {
+          recordingChunksRef.current = [];
+          recordingBytesRef.current = 0;
+          setCameraError("This video reached the 25 MB upload limit. Record a shorter video and try again.");
+          return;
+        }
         const type = recorder.mimeType || "video/webm";
         const extension = type.includes("mp4") ? "mp4" : "webm";
         const blob = new Blob(recordingChunksRef.current, { type });
         recordingChunksRef.current = [];
-        if (!blob.size) return;
+        recordingBytesRef.current = 0;
+        if (!blob.size) {
+          setCameraError("No video was captured. Please try recording again.");
+          return;
+        }
         if (blob.size > MAX_EVENT_CAPTURE_BYTES) {
           setCameraError("This video is over the 25 MB upload limit. Record a shorter video and try again.");
           return;
@@ -811,6 +879,7 @@ export function CaptureEventPage() {
       };
       recorderRef.current = recorder;
       recorder.start(1000);
+      recordingStartedAtRef.current = Date.now();
       setRecording(true);
     } catch {
       recordingAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -851,7 +920,7 @@ export function CaptureEventPage() {
               <span className="capture-camera-top-spacer" />
             </header>
             <div className="capture-review-panel">
-              {uploadError && <p className="capture-camera-alert" role="alert">{uploadError}</p>}
+              {uploadError && <p className="capture-camera-alert" role="alert"><PlanLimitMessage message={uploadError} /></p>}
               <div className="capture-review-actions">
                 <button className="capture-review-circle capture-review-retake" type="button" disabled={uploading} onClick={() => setCapturedMedia(null)} aria-label="Retake"><RotateCcw size={19} /><span>Retake</span></button>
                 <button className="capture-review-circle capture-upload-button" type="button" disabled={uploading} onClick={() => void uploadFiles([capturedMedia.file])} aria-label={uploading ? "Saving media" : "Save media"}>
@@ -879,15 +948,17 @@ export function CaptureEventPage() {
               <Link to="/" className="capture-camera-brand" aria-label="IMARA home"><span className="brand-mark">i</span></Link>
               <div className="capture-camera-event"><span>SHARED EVENT</span><strong>{eventQuery.data.name}</strong></div>
               {cameraReady ? (
-                <button type="button" className="capture-camera-icon-button" aria-label="Switch camera" title="Switch camera" onClick={() => void switchCamera()}><SwitchCamera size={20} /></button>
+                <button type="button" className="capture-camera-icon-button" aria-label="Switch camera" title="Switch camera" disabled={recording || recordingStarting} onClick={() => void switchCamera()}><SwitchCamera size={20} /></button>
               ) : <span className="capture-camera-top-spacer" />}
             </header>
 
             <div className="capture-camera-status" aria-live="polite">
               {cameraError && <p className="capture-camera-alert" role="alert">{cameraError}</p>}
-              {uploadError && <p className="capture-camera-alert" role="alert">{uploadError}</p>}
+              {uploadError && <p className="capture-camera-alert" role="alert"><PlanLimitMessage message={uploadError} /></p>}
               {uploadMessage && <p className="capture-camera-success" role="status"><Check size={15} />{uploadMessage}</p>}
-              {recording && <span className="capture-recording-badge"><i /> REC</span>}
+              {recording
+                ? <span className="capture-recording-badge"><i /> REC {`${Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:${(recordingSeconds % 60).toString().padStart(2, "0")}`}</span>
+                : cameraReady && <span className="capture-live-badge">LIVE</span>}
               {uploading && <span className="capture-uploading-badge">Uploading securely…</span>}
             </div>
 
@@ -955,6 +1026,8 @@ export function EventGalleryPage() {
     }),
     enabled: Boolean(token),
     retry: false,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
   });
 
   async function unlock(event: FormEvent<HTMLFormElement>) {

@@ -1,16 +1,17 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 
 @Injectable()
-export class MailerService {
+export class MailerService implements OnModuleDestroy {
   private readonly logger = new Logger(MailerService.name);
+  private smtpTransporter: nodemailer.Transporter | null = null;
 
   isLocalConsoleMode(): boolean {
     return process.env.EMAIL_DELIVERY === 'console' &&
       (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test');
   }
 
-  private isSmtpConfigured(): boolean {
+  isSmtpConfigured(): boolean {
     return Boolean(
       process.env.SMTP_HOST &&
       process.env.SMTP_PORT &&
@@ -30,13 +31,20 @@ export class MailerService {
         'Email delivery is not configured. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and SMTP_FROM.',
       );
     }
-    return nodemailer.createTransport({
+    this.smtpTransporter ??= nodemailer.createTransport({
+      pool: true,
+      maxConnections: 2,
+      maxMessages: 100,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
       secure: process.env.SMTP_SECURE === 'true',
       requireTLS: process.env.SMTP_SECURE !== 'true',
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
     });
+    return this.smtpTransporter;
   }
 
   private async sendSmtpMail(message: nodemailer.SendMailOptions): Promise<void> {
@@ -48,6 +56,10 @@ export class MailerService {
       );
       throw error;
     }
+  }
+
+  onModuleDestroy(): void {
+    this.smtpTransporter?.close();
   }
 
   private async deliver(to: string, subject: string, text: string, url: URL, preferSmtp = false): Promise<void> {
@@ -112,5 +124,31 @@ export class MailerService {
     const subject = `Invitation to join ${safeWorkspaceName} on IMARA`;
     const text = `You have been invited to join ${safeWorkspaceName} on IMARA. Sign in or create an account using this email address, then accept the invitation: ${url.toString()}`;
     await this.deliver(to, subject, text, url, true);
+  }
+
+  async sendPlatformAnnouncement(to: string, title: string, body: string): Promise<void> {
+    if (!this.isSmtpConfigured()) {
+      throw new ServiceUnavailableException(
+        'SMTP email delivery is not configured for platform announcements.',
+      );
+    }
+    const subjectTitle = title.replace(/[\r\n\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120);
+    const safeBody = body.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
+    await this.sendSmtpMail({
+      from: process.env.SMTP_FROM,
+      to,
+      subject: `IMARA announcement: ${subjectTitle}`,
+      text: `${safeBody}\n\nYou received this message from IMARA.`,
+    });
+  }
+
+  async healthCheck(): Promise<'healthy' | 'unavailable' | 'not-configured'> {
+    if (!this.isSmtpConfigured()) return 'not-configured';
+    try {
+      await this.transporter().verify();
+      return 'healthy';
+    } catch {
+      return 'unavailable';
+    }
   }
 }

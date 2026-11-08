@@ -53,6 +53,17 @@ export class StorageController {
     return this.storage.upload(req.auth.userId, file, dto.folderId);
   }
 
+  @Post('files/scan')
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  uploadScannedFile(
+    @Req() req: AuthenticatedRequest,
+    @UploadedFile() file: UploadInput,
+    @Body() dto: UploadFileDto,
+  ) {
+    return this.storage.uploadScan(req.auth.userId, file, dto.folderId);
+  }
+
   @Patch('files/:id/content')
   @Throttle({ default: { limit: 12, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))

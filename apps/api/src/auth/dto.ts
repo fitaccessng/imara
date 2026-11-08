@@ -6,8 +6,11 @@ export class RegisterDto {
   email!: string;
 
   @IsString()
-  @MinLength(12)
+  @MinLength(6)
   @MaxLength(128)
+  @Matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s])/, {
+    message: 'Password must include uppercase and lowercase letters, a number, and a special character',
+  })
   password!: string;
 
   @IsString()

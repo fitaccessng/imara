@@ -15,7 +15,7 @@ async function bootstrap() {
   if (sameSite === 'none' && !secureCookie) {
     throw new Error('COOKIE_SECURE=true is required when COOKIE_SAME_SITE=none');
   }
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const origins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
     .split(',')
     .map((origin) => origin.trim())

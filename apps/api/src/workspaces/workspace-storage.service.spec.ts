@@ -34,6 +34,7 @@ describe('workspace storage authorization', () => {
     } as unknown as PrismaService,
     { get: getObject } as unknown as ObjectStorageService,
     { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
+    {} as never,
   );
 
   beforeEach(() => {

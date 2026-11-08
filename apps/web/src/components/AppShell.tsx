@@ -9,6 +9,7 @@ import {
   Files,
   LayoutDashboard,
   LogOut,
+  LifeBuoy,
   MailPlus,
   Menu,
   Settings2,
@@ -45,6 +46,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     queryFn: () => apiRequest<WorkspaceNotification[]>(`/workspaces/${businessWorkspace?.id}/notifications`),
     enabled: Boolean(businessWorkspace),
   });
+  const announcementsQuery = useQuery({
+    queryKey: ["platform-announcements"],
+    queryFn: () => apiRequest<Array<{ readAt: string | null }>>("/announcements"),
+  });
+  const unreadAnnouncementCount = (announcementsQuery.data ?? []).filter((item) => !item.readAt).length;
   const unreadNotifications = (notificationsQuery.data ?? []).filter((notification) => !notification.readAt);
   const businessHref = (path: string) => workspaceHref(path, businessWorkspace?.id);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -127,6 +133,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink to="/billing/plans" end className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CreditCard size={17} strokeWidth={1.8} /><span>Pricing</span>
+          </NavLink>
+          <NavLink to="/notifications" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <Bell size={17} strokeWidth={1.8} /><span>Announcements</span>{unreadAnnouncementCount > 0 && <small className="announcement-nav-count">{unreadAnnouncementCount}</small>}
+          </NavLink>
+          <NavLink to="/support" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <LifeBuoy size={17} strokeWidth={1.8} /><span>Help & support</span>
           </NavLink>
         </nav>
         <div className="nav-section-label business-nav-label">Business</div>

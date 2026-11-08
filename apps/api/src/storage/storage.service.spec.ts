@@ -16,10 +16,11 @@ jest.mock('@nestjs/common', () => {
 });
 
 import { PayloadTooLargeException } from '@nestjs/common';
-import { StoredFileStatus } from '@prisma/client';
+import { StoredFileStatus, StoredFileUploadSource } from '@prisma/client';
 import { assertSameFileExtension, StorageService } from './storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from './object-storage.service';
+import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 
 describe('replacement file extension validation', () => {
   it('accepts a matching extension regardless of case', () => {
@@ -44,6 +45,7 @@ describe('StorageService quota-safe uploads', () => {
     workspaceId: null,
     eventId: null,
     status: StoredFileStatus.UPLOADING,
+    uploadSource: StoredFileUploadSource.STANDARD,
     quotaReserved: true,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -66,6 +68,7 @@ describe('StorageService quota-safe uploads', () => {
     subscription: {
       findUnique: jest.fn().mockResolvedValue({
         id: 'subscription-id',
+        plan: 'FREE',
         storageUsedBytes: 20n,
         storageReservedBytes: 0n,
         storageLimitBytes: 100n,
@@ -108,10 +111,30 @@ describe('StorageService quota-safe uploads', () => {
     delete: jest.fn().mockResolvedValue(undefined),
     get: jest.fn(),
   } as unknown as ObjectStorageService;
-  const service = new StorageService(prisma, objects);
+  const planCatalogue = {
+    currentPlan: jest.fn(async (subscription: { plan: string }) => subscription.plan),
+    getEntitlements: jest.fn().mockResolvedValue({
+      staffLimit: 3,
+      activeEventLimit: 3,
+      storageLimitBytes: 100n,
+      canEditDocuments: true,
+      canScanDocuments: true,
+      advancedTeamManagement: false,
+    }),
+    requireFeature: jest.fn().mockResolvedValue(undefined),
+  } as unknown as PlanCatalogueService;
+  const service = new StorageService(prisma, objects, planCatalogue);
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(planCatalogue.getEntitlements).mockResolvedValue({
+      staffLimit: 3,
+      activeEventLimit: 3,
+      storageLimitBytes: 100n,
+      canEditDocuments: true,
+      canScanDocuments: true,
+      advancedTeamManagement: false,
+    });
     transactionClient.event.findUnique.mockResolvedValue({
       id: 'event-id',
       ownerUserId: 'owner-id',
@@ -132,6 +155,7 @@ describe('StorageService quota-safe uploads', () => {
     });
     transactionClient.subscription.findUnique.mockResolvedValue({
       id: 'subscription-id',
+      plan: 'FREE',
       storageUsedBytes: 20n,
       storageReservedBytes: 0n,
       storageLimitBytes: 100n,
@@ -246,10 +270,21 @@ describe('StorageService quota-safe uploads', () => {
   });
 
   it('rejects uploads that exceed remaining quota before contacting object storage', async () => {
+    jest.mocked(planCatalogue.getEntitlements).mockResolvedValue({
+      staffLimit: 3,
+      activeEventLimit: 3,
+      storageLimitBytes: 95n,
+      canEditDocuments: true,
+      canScanDocuments: true,
+      advancedTeamManagement: false,
+    });
     transactionClient.subscription.findUnique.mockResolvedValue({
       id: 'subscription-id',
+      plan: 'FREE',
       storageUsedBytes: 90n,
       storageReservedBytes: 0n,
+      // The persisted catalogue value, not this legacy subscription snapshot,
+      // is authoritative for the current quota.
       storageLimitBytes: 100n,
     });
 

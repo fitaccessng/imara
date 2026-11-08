@@ -1,20 +1,31 @@
+import { Link } from "react-router-dom";
 import { PageShell } from "../PageShell";
 
 export function PrivacyPage() {
   return (
     <PageShell
-      eyebrow="Privacy"
-      title="Privacy Policy Page"
-      description="Explains how user data is collected and protected."
+      eyebrow="Privacy information"
+      title="What IMARA handles to provide the service"
+      description="A plain-language overview of the account and workspace information used by IMARA. It is not a complete privacy notice."
     >
-      <div style={{ display: "grid", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: "#374151" }}>
-          This page is scaffolded for the IMARA platform and ready to be connected to its API and business logic.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Page scaffold</span>
-          <span style={{ background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Ready for implementation</span>
-        </div>
+      <div className="marketing-page legal-summary">
+        <section>
+          <h2>Information in your account</h2>
+          <p>When you register, IMARA processes account details such as your name and email address to create and authenticate your account. Email verification may be required.</p>
+        </section>
+        <section>
+          <h2>Files and workspace activity</h2>
+          <p>Files, folders, workspace memberships, role assignments and folder permissions are processed to provide storage and collaboration features. Storage use and subscription entitlements are used to apply plan limits.</p>
+        </section>
+        <section>
+          <h2>How to manage access</h2>
+          <p>Use your account and workspace controls to manage files and team access. Workspace owners and administrators should review member roles and folder permissions before placing restricted business content in a shared workspace.</p>
+        </section>
+        <section className="legal-caveat">
+          <h2>Important details not covered here</h2>
+          <p>This overview does not specify retention periods, backup schedules, processing locations, subprocessors or a complete data-rights process. Do not treat it as a substitute for a full privacy notice or your organisation’s review before uploading sensitive records.</p>
+        </section>
+        <p className="marketing-footnote">For product access controls, see <Link to="/security">Security &amp; access</Link>. For the current product scope, see <Link to="/features">Features</Link>.</p>
       </div>
     </PageShell>
   );

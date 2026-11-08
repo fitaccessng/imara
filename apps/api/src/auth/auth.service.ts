@@ -2,21 +2,36 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomInt } from 'crypto';
-import { Plan, Prisma, StoredFileStatus, WorkspaceMemberStatus, WorkspaceRole } from '@prisma/client';
+import {
+  Plan,
+  Prisma,
+  StoredFileStatus,
+  UserAccountStatus,
+  WorkspaceMemberStatus,
+  WorkspaceRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { FREE_STORAGE_LIMIT_BYTES } from './auth.types';
 import { MailerService } from './mailer.service';
 import { hashPassword, verifyPassword } from './password';
 import { createOpaqueToken, hashToken } from './token';
+import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
+import { serializePlanEntitlements } from '../subscriptions/plan-entitlements';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService, private readonly mailer: MailerService) {}
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailer: MailerService,
+    private readonly plans: PlanCatalogueService,
+  ) {}
 
   private requireMailer() {
     if (!this.mailer.isConfigured()) {
@@ -61,6 +76,7 @@ export class AuthService {
     let user;
     try {
       user = await this.prisma.$transaction(async (tx) => {
+        const freePlan = await this.plans.getPlan(Plan.FREE, tx);
         const created = await tx.user.create({
           data: {
             email,
@@ -68,14 +84,24 @@ export class AuthService {
             passwordHash,
             ...(skipEmailVerification ? { emailVerifiedAt: new Date() } : {}),
             subscription: {
-              create: { plan: Plan.FREE, storageLimitBytes: FREE_STORAGE_LIMIT_BYTES, storageUsedBytes: 0n },
+              create: {
+                plan: Plan.FREE,
+                storageLimitBytes: freePlan.storageLimitBytes,
+                storageUsedBytes: 0n,
+              },
             },
           },
         });
         if (input.accountType === 'BUSINESS') {
           const workspaceName = input.workspaceName?.replace(/[\u0000-\u001f\u007f]/g, '').trim()
             || `${input.name.trim().replace(/[\u0000-\u001f\u007f]/g, '')}'s workspace`;
-          const workspace = await tx.workspace.create({ data: { name: workspaceName, ownerUserId: created.id } });
+          const workspace = await tx.workspace.create({
+            data: {
+              name: workspaceName,
+              ownerUserId: created.id,
+              storageLimitBytes: freePlan.storageLimitBytes,
+            },
+          });
           await tx.workspaceMember.create({
             data: {
               workspaceId: workspace.id, userId: created.id,
@@ -100,11 +126,9 @@ export class AuthService {
     }
     if (!skipEmailVerification) {
       const code = await this.createEmailToken(user.user.id, 'verify');
-      try {
-        await this.mailer.sendVerificationCode(email, code);
-      } catch {
-        throw new ServiceUnavailableException('Account created but verification email could not be delivered. Retry verification after SMTP is available.');
-      }
+      void this.mailer.sendVerificationCode(email, code).catch(() => {
+        this.logger.error('Verification email delivery failed after account creation; retry from the verification page.');
+      });
     }
     return {
       id: user.user.id, email: user.user.email, name: user.user.name, emailVerified: skipEmailVerification,
@@ -117,6 +141,22 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email: emailInput.trim().toLowerCase() } });
     // Keep unknown and already verified addresses indistinguishable.
     if (!user || user.emailVerifiedAt) return;
+    await this.sendVerificationCode(user);
+  }
+
+  async resendVerificationForUser(userId: string): Promise<boolean> {
+    this.requireMailer();
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, emailVerifiedAt: true },
+    });
+    if (!user) throw new NotFoundException('Customer not found');
+    if (user.emailVerifiedAt) return false;
+    await this.sendVerificationCode(user);
+    return true;
+  }
+
+  private async sendVerificationCode(user: { id: string; email: string }): Promise<void> {
     const code = await this.createEmailToken(user.id, 'verify');
     try {
       await this.mailer.sendVerificationCode(user.email, code);
@@ -184,7 +224,14 @@ export class AuthService {
   async login(emailInput: string, password: string, userAgent?: string) {
     const email = emailInput.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !(await verifyPassword(user.passwordHash, password))) {
+    const passwordMatches = user
+      ? await verifyPassword(user.passwordHash, password)
+      : false;
+    if (
+      !user
+      || !passwordMatches
+      || user.accountStatus !== UserAccountStatus.ACTIVE
+    ) {
       throw new UnauthorizedException('Email or password is incorrect');
     }
     if (!user.emailVerifiedAt && !this.mailer.isLocalConsoleMode()) {
@@ -193,19 +240,45 @@ export class AuthService {
     const rawToken = createOpaqueToken();
     const ttlDays = Number(process.env.SESSION_TTL_DAYS ?? 30);
     const expiresAt = new Date(Date.now() + ttlDays * 86_400_000);
-    const session = await this.prisma.session.create({
-      data: {
-        userId: user.id,
-        tokenHash: hashToken(rawToken),
-        expiresAt,
-        userAgent: userAgent?.slice(0, 512) ?? null,
-      },
+    const session = await this.prisma.$transaction(async (tx) => {
+      // Take a write lock on the account row so that a concurrent suspension
+      // either precedes this check or waits and revokes the newly-created session.
+      const activeAccount = await tx.user.updateMany({
+        where: { id: user.id, accountStatus: UserAccountStatus.ACTIVE },
+        data: { updatedAt: new Date() },
+      });
+      if (!activeAccount.count) {
+        throw new UnauthorizedException('Email or password is incorrect');
+      }
+      const [session, workspace] = await Promise.all([
+        tx.session.create({
+          data: {
+            userId: user.id,
+            tokenHash: hashToken(rawToken),
+            expiresAt,
+            userAgent: userAgent?.slice(0, 512) ?? null,
+          },
+        }),
+        tx.workspaceMember.findFirst({
+          where: { userId: user.id, status: WorkspaceMemberStatus.ACTIVE },
+          orderBy: { joinedAt: 'asc' },
+          select: { workspaceId: true },
+        }),
+      ]);
+      return { session, workspaceId: workspace?.workspaceId ?? null };
     });
     return {
       token: rawToken,
       expiresAt,
-      user: { id: user.id, email: user.email, name: user.name, emailVerified: Boolean(user.emailVerifiedAt) },
-      sessionId: session.id,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        emailVerified: Boolean(user.emailVerifiedAt),
+      },
+      sessionId: session.session.id,
+      workspaceId: session.workspaceId,
     };
   }
 
@@ -217,6 +290,20 @@ export class AuthService {
     this.requireMailer();
     const user = await this.prisma.user.findUnique({ where: { email: emailInput.trim().toLowerCase() } });
     if (!user) return;
+    await this.sendPasswordResetCode(user);
+  }
+
+  async requestPasswordResetForUser(userId: string): Promise<void> {
+    this.requireMailer();
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) throw new NotFoundException('Customer not found');
+    await this.sendPasswordResetCode(user);
+  }
+
+  private async sendPasswordResetCode(user: { id: string; email: string }): Promise<void> {
     const code = await this.createEmailToken(user.id, 'reset');
     try {
       await this.mailer.sendPasswordResetCode(user.email, code);
@@ -290,7 +377,7 @@ export class AuthService {
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, email: true, name: true, emailVerifiedAt: true, createdAt: true },
+      select: { id: true, email: true, name: true, role: true, emailVerifiedAt: true, createdAt: true },
     });
     return { ...user, emailVerified: Boolean(user.emailVerifiedAt), emailVerifiedAt: undefined };
   }
@@ -331,13 +418,22 @@ export class AuthService {
 
   async getSubscription(userId: string) {
     const subscription = await this.prisma.subscription.findUniqueOrThrow({ where: { userId } });
+    const entitlements = await this.plans.getEntitlements(subscription.plan);
     return {
       plan: subscription.plan.toLowerCase(),
+      currentPeriodStart: subscription.currentPeriodStart,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      autoRenew: false,
+      entitlements: serializePlanEntitlements(entitlements),
       storage: {
         usedBytes: subscription.storageUsedBytes.toString(),
         reservedBytes: subscription.storageReservedBytes.toString(),
-        limitBytes: subscription.storageLimitBytes.toString(),
-        availableBytes: (subscription.storageLimitBytes - subscription.storageUsedBytes - subscription.storageReservedBytes).toString(),
+        limitBytes: entitlements.storageLimitBytes.toString(),
+        availableBytes: (
+          entitlements.storageLimitBytes
+          - subscription.storageUsedBytes
+          - subscription.storageReservedBytes
+        ).toString(),
       },
     };
   }

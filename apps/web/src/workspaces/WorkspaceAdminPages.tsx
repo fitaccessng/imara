@@ -22,6 +22,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { useAuth } from "../auth/AuthProvider";
 import { apiRequest } from "../lib/api";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
+import { PlanLimitMessage } from "../components/PlanLimitMessage";
 import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
@@ -232,7 +233,7 @@ export function WorkspaceTeamPage() {
       />
       {membersQuery.isError && <WorkspaceLoadError error={membersQuery.error} retry={() => void membersQuery.refetch()} />}
       {invitationsQuery.isError && <WorkspaceLoadError error={invitationsQuery.error} retry={() => void invitationsQuery.refetch()} />}
-      {actionError && <p className="form-alert workspace-alert" role="alert">{actionError}</p>}
+      {actionError && <p className="form-alert workspace-alert" role="alert"><PlanLimitMessage message={actionError} /></p>}
       <div className="workspace-metrics" aria-label="Team summary">
         <MetricCard label="Team members" value={members.length} icon={<Users size={17} />} />
         <MetricCard label="Active" value={members.filter((member) => member.status === "ACTIVE").length} accent="green" />
@@ -436,7 +437,7 @@ export function WorkspaceInvitePage() {
           </div>
         )}
         {role === "ADMIN" && <div className="workspace-admin-notice"><Shield size={16} /><span>Administrators have workspace-wide folder access. Use Manager or Staff for folder-scoped access.</span></div>}
-        {error && <p className="form-alert" role="alert">{error}</p>}
+        {error && <p className="form-alert" role="alert"><PlanLimitMessage message={error} /></p>}
         <div className="workspace-form-footer">
           <span><LockKeyhole size={13} /> Invitation links expire after 7 days.</span>
           <button type="submit" className="button button-green" disabled={submitting || foldersQuery.isLoading}>{submitting ? "Sending invitation…" : "Send invitation"}<ArrowRight size={15} /></button>
@@ -582,7 +583,7 @@ export function WorkspaceMemberPage() {
               <Link className="button button-green button-small" to={workspaceHref(`/workspace/team/${member.id}/permissions`, workspace?.id)}>Manage folder access <ArrowRight size={14} /></Link>
             </div>
           )}
-          {error && <p className="form-alert" role="alert">{error}</p>}
+          {error && <p className="form-alert" role="alert"><PlanLimitMessage message={error} /></p>}
           {member.role !== "OWNER" && (workspace.role === "OWNER" || member.role !== "ADMIN") && (
             <div className="workspace-danger-zone">
               <div><span className="eyebrow">MEMBERSHIP</span><p>Changes apply to this business workspace only.</p></div>

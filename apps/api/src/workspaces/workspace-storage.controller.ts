@@ -85,6 +85,18 @@ export class WorkspaceStorageController {
     return this.storage.upload(workspaceId, req.auth.userId, file, dto.folderId);
   }
 
+  @Post('files/scan')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  uploadScannedFile(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @UploadedFile() file: UploadInput,
+    @Body() dto: UploadFileDto,
+  ) {
+    return this.storage.uploadScan(workspaceId, req.auth.userId, file, dto.folderId);
+  }
+
   @Patch('files/:fileId/content')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
   replaceFileContent(

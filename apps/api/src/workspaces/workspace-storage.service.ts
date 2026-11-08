@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import { assertSameFileExtension, getMaxUploadBytes, UploadInput } from '../storage/storage.service';
 import { WorkspacesService } from './workspaces.service';
+import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
+import { getPlanLimitMessage } from '../subscriptions/plan-entitlements';
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
 
@@ -19,6 +21,7 @@ export class WorkspaceStorageService {
     private readonly prisma: PrismaService,
     private readonly objects: ObjectStorageService,
     private readonly workspaces: WorkspacesService,
+    private readonly plans: PlanCatalogueService,
   ) {}
 
   private name(input: string) {
@@ -140,7 +143,14 @@ export class WorkspaceStorageService {
     });
   }
 
-  private async reserve(workspaceId: string, uploaderId: string, ownerId: string, folderId: string | undefined, size: bigint) {
+  private async reserve(
+    workspaceId: string,
+    uploaderId: string,
+    ownerId: string,
+    folderId: string | undefined,
+    size: bigint,
+    requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+  ) {
     return this.prisma.$transaction(async (tx) => {
       if (folderId) {
         const folder = await tx.folder.findFirst({ where: { id: folderId, workspaceId }, select: { id: true } });
@@ -148,8 +158,18 @@ export class WorkspaceStorageService {
       }
       const workspace = await tx.workspace.findUnique({ where: { id: workspaceId } });
       if (!workspace) throw new NotFoundException('Workspace not found');
-      if (workspace.storageUsedBytes + workspace.storageReservedBytes + size > workspace.storageLimitBytes) {
-        throw new PayloadTooLargeException('This upload exceeds available workspace storage');
+      const subscription = await tx.subscription.findUnique({ where: { userId: ownerId } });
+      if (!subscription) throw new NotFoundException('Subscription not found');
+      const plan = await this.plans.currentPlan(subscription, tx);
+      const entitlements = await this.plans.getEntitlements(plan, tx);
+      if (requiredFeature) {
+        await this.plans.requireFeature(plan, requiredFeature, tx);
+      }
+      if (
+        workspace.storageUsedBytes + workspace.storageReservedBytes + size
+        > entitlements.storageLimitBytes
+      ) {
+        throw new PayloadTooLargeException(getPlanLimitMessage(plan, 'storage'));
       }
       const changed = await tx.workspace.updateMany({
         where: {
@@ -205,7 +225,13 @@ export class WorkspaceStorageService {
     }
   }
 
-  async upload(workspaceId: string, userId: string, file: UploadInput, folderId?: string) {
+  async upload(
+    workspaceId: string,
+    userId: string,
+    file: UploadInput,
+    folderId?: string,
+    requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+  ) {
     if (!file || !Buffer.isBuffer(file.buffer) || !Number.isSafeInteger(file.size) || file.buffer.length !== file.size) {
       throw new BadRequestException('The uploaded file is invalid');
     }
@@ -217,7 +243,14 @@ export class WorkspaceStorageService {
     const ownerId = member.workspace.ownerUserId;
     const size = BigInt(file.size);
     await this.cleanExpiredReservations(workspaceId);
-    const reservation = await this.reserve(workspaceId, userId, ownerId, folderId, size);
+    const reservation = await this.reserve(
+      workspaceId,
+      userId,
+      ownerId,
+      folderId,
+      size,
+      requiredFeature,
+    );
     const originalName = this.name(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
     try {
@@ -263,6 +296,17 @@ export class WorkspaceStorageService {
     }
   }
 
+  async uploadScan(workspaceId: string, userId: string, file: UploadInput, folderId?: string) {
+    const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { userId: member.workspace.ownerUserId },
+    });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription);
+    await this.plans.requireFeature(plan, 'canScanDocuments');
+    return this.upload(workspaceId, userId, file, folderId, 'canScanDocuments');
+  }
+
   async replaceContent(workspaceId: string, userId: string, fileId: string, replacement: UploadInput) {
     if (!replacement || !Buffer.isBuffer(replacement.buffer)
       || !Number.isSafeInteger(replacement.size) || replacement.buffer.length !== replacement.size) {
@@ -274,6 +318,12 @@ export class WorkspaceStorageService {
     const current = await this.authorizedFile(workspaceId, userId, fileId, 'editFiles');
     assertSameFileExtension(current.originalName, replacement.originalname);
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { userId: member.workspace.ownerUserId },
+    });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription);
+    await this.plans.requireFeature(plan, 'canEditDocuments');
     this.objects.assertConfigured();
 
     const nextKey = `${member.workspace.ownerUserId}/workspaces/${workspaceId}/${randomUUID()}`;
@@ -285,8 +335,19 @@ export class WorkspaceStorageService {
       await this.prisma.$transaction(async (tx) => {
         const workspace = await tx.workspace.findUnique({ where: { id: workspaceId } });
         if (!workspace) throw new NotFoundException('Workspace not found');
-        if (delta > 0n && workspace.storageUsedBytes + workspace.storageReservedBytes + delta > workspace.storageLimitBytes) {
-          throw new PayloadTooLargeException('This edit exceeds available workspace storage');
+        const subscription = await tx.subscription.findUnique({
+          where: { userId: member.workspace.ownerUserId },
+        });
+        if (!subscription) throw new NotFoundException('Subscription not found');
+        const plan = await this.plans.currentPlan(subscription, tx);
+        const entitlements = await this.plans.getEntitlements(plan, tx);
+        await this.plans.requireFeature(plan, 'canEditDocuments', tx);
+        if (
+          delta > 0n
+          && workspace.storageUsedBytes + workspace.storageReservedBytes + delta
+            > entitlements.storageLimitBytes
+        ) {
+          throw new PayloadTooLargeException(getPlanLimitMessage(plan, 'storage'));
         }
         if (delta !== 0n) {
           const adjusted = await tx.workspace.updateMany({

@@ -1,6 +1,6 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 
@@ -100,5 +100,23 @@ export class ObjectStorageService {
       return;
     }
     await this.getClient().send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  async healthCheck(): Promise<{ status: 'healthy' | 'unavailable' | 'not-configured'; driver: string }> {
+    const driver = process.env.OBJECT_STORAGE_DRIVER ?? 's3';
+    try {
+      const local = this.localDirectory();
+      if (local) {
+        await access(local);
+        return { status: 'healthy', driver: 'local' };
+      }
+      await this.getClient().send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return { status: 'healthy', driver: 's3-compatible' };
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        return { status: 'not-configured', driver };
+      }
+      return { status: 'unavailable', driver };
+    }
   }
 }

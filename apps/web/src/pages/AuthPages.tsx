@@ -23,8 +23,7 @@ import {
 import { z } from "zod";
 
 import { useAuth } from "../auth/AuthProvider";
-import { ApiError, apiRequest } from "../lib/api";
-import type { Workspace } from "../workspaces/types";
+import { ApiError, apiRequest, type User } from "../lib/api";
 import { workspaceHref } from "../workspaces/types";
 
 type AuthMode = "login" | "register";
@@ -52,9 +51,11 @@ const authSchema = z.object({
   email: z.string().trim().email("Enter a valid email address."),
   password: z
     .string()
-    .min(12, "Use at least 12 characters.")
+    .min(1, "Enter your password.")
     .max(128, "Use 128 characters or fewer."),
 });
+
+const signupPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).{6,}$/;
 
 const emailSchema = z.object({
   email: z.string().trim().email("Enter a valid email address."),
@@ -140,19 +141,18 @@ function PublicFrame({
           <div className="relative z-10 max-w-[490px] py-16">
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-3.5 py-2 text-xs font-medium text-white/75">
               <ShieldCheck size={15} className="text-[#57D477]" />
-              Your files. Your space.
+              DOCUMENTS · TEAM FOLDERS · EVENT GALLERIES
             </div>
 
             <h1 className="text-4xl font-bold leading-[1.15] tracking-[-1.8px] text-white xl:text-[52px]">
-              Everything you need.
+              Organise the work.
               <span className="mt-2 block text-[#57D477]">
-                All in one place.
+                Collect the moments.
               </span>
             </h1>
 
             <p className="mt-6 max-w-[390px] text-base leading-8 text-white/65">
-              A simpler way to store, organise and access the
-              things that matter.
+              Upload documents to your Digital Drive, invite teammates into business folders, or collect event photos and videos with a QR gallery.
             </p>
 
             <div className="mt-12 space-y-5">
@@ -163,12 +163,12 @@ function PublicFrame({
 
               <div className="flex items-center gap-3 text-sm text-white/85">
                 <CheckCircle2 size={18} className="text-[#57D477]" />
-                Personal and business workspaces
+                Invite business teammates to shared folders
               </div>
 
               <div className="flex items-center gap-3 text-sm text-white/85">
                 <CheckCircle2 size={18} className="text-[#57D477]" />
-                Protected private folders
+                Event QR galleries for guest photos and videos
               </div>
             </div>
           </div>
@@ -338,7 +338,7 @@ function SuccessIcon() {
 ------------------------------------------------------- */
 
 export function AuthPage({ mode }: { mode: AuthMode }) {
-  const { user, refresh } = useAuth();
+  const { user, setUser } = useAuth();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -351,6 +351,15 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     : "";
 
   const locationState = location.state;
+  const returnTo =
+    typeof locationState === "object" &&
+    locationState !== null &&
+    "from" in locationState &&
+    typeof locationState.from === "string" &&
+    locationState.from.startsWith("/") &&
+    !locationState.from.startsWith("//")
+      ? locationState.from
+      : "";
 
   const notice =
     typeof locationState === "object" &&
@@ -370,6 +379,14 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const [workspaceName, setWorkspaceName] = useState("");
 
   const formSchema = authSchema.superRefine((values, context) => {
+    if (mode === "register" && values.password.length > 0 && !signupPasswordPattern.test(values.password)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["password"],
+        message: "Use at least 6 characters, including uppercase and lowercase letters, a number, and a special character.",
+      });
+    }
+
     if (mode === "register" && !values.firstName?.trim()) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -443,35 +460,39 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
             invitationReturnTo,
           );
         }
+        if (returnTo) {
+          window.sessionStorage.setItem("imara.postVerificationReturnTo", returnTo);
+        }
 
         if (registration.emailVerified) {
           navigate("/login", {
             replace: true,
             state: {
               notice: "Your account is ready. Sign in to continue.",
-              ...(invitationReturnTo ? { from: invitationReturnTo } : {}),
+              ...((invitationReturnTo || returnTo)
+                ? { from: invitationReturnTo || returnTo }
+                : {}),
             },
           });
         } else {
           navigate(`/verify-email?email=${encodeURIComponent(values.email.trim())}`, {
             replace: true,
-            state: invitationReturnTo ? { from: invitationReturnTo } : undefined,
+            state: invitationReturnTo || returnTo
+              ? { from: invitationReturnTo || returnTo }
+              : undefined,
           });
         }
         return;
       }
 
-      await apiRequest("/auth/login", {
+      const loginResult = await apiRequest<{ user: User; workspaceId: string | null }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({
           email: values.email,
           password: values.password,
         }),
       });
-
-      await refresh();
-
-      const workspaces = await apiRequest<Workspace[]>("/workspaces");
+      setUser(loginResult.user);
 
       const state = location.state;
 
@@ -483,8 +504,8 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         state.from.startsWith("/") &&
         !state.from.startsWith("//")
           ? state.from
-          : workspaces[0]
-            ? workspaceHref("/workspace", workspaces[0].id)
+          : loginResult.workspaceId
+            ? workspaceHref("/workspace", loginResult.workspaceId)
             : "/dashboard";
 
       navigate(destination, { replace: true });
@@ -696,7 +717,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                 isLogin ? "current-password" : "new-password"
               }
               placeholder={
-                isLogin ? "Enter your password" : "At least 12 characters"
+                isLogin ? "Enter your password" : "At least 6 characters"
               }
               {...register("password")}
             />
@@ -714,6 +735,11 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               )}
             </button>
           </div>
+          {!isLogin && (
+            <p className="mt-2 text-xs leading-5 text-[#718096]">
+              Use at least 6 characters, with uppercase and lowercase letters, a number, and a special character.
+            </p>
+          )}
         </Field>
 
         {/* FORGOT PASSWORD */}
@@ -788,6 +814,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
 
           <Link
             to={isLogin ? "/register" : "/login"}
+            state={returnTo ? { from: returnTo } : undefined}
             className={secondaryLinkClass}
           >
             {isLogin ? "Create account" : "Log in"}
@@ -1116,8 +1143,9 @@ export function ResetPasswordPage() {
 
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
+  const location = useLocation();
   const token = params.get("token");
-  const [email, setEmail] = useState(params.get("email") ?? "");
+  const email = params.get("email") ?? "";
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
     token ? "loading" : "idle",
@@ -1127,10 +1155,25 @@ export function VerifyEmailPage() {
   const [resending, setResending] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
   const [invitationReturnTo, setInvitationReturnTo] = useState("");
+  const [postVerificationReturnTo, setPostVerificationReturnTo] = useState("");
 
   useEffect(() => {
     setInvitationReturnTo(
       window.sessionStorage.getItem("imara.invitationReturnTo") ?? "",
+    );
+    const stateReturnTo =
+      typeof location.state === "object" &&
+      location.state !== null &&
+      "from" in location.state &&
+      typeof location.state.from === "string" &&
+      location.state.from.startsWith("/") &&
+      !location.state.from.startsWith("//")
+        ? location.state.from
+        : "";
+    setPostVerificationReturnTo(
+      stateReturnTo
+      || window.sessionStorage.getItem("imara.postVerificationReturnTo")
+      || "",
     );
 
     if (!token) return;
@@ -1161,7 +1204,7 @@ export function VerifyEmailPage() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, location.state]);
 
   async function submitCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1225,8 +1268,8 @@ export function VerifyEmailPage() {
             className={primaryButtonClass}
             to="/login"
             state={
-              invitationReturnTo
-                ? { from: invitationReturnTo }
+              invitationReturnTo || postVerificationReturnTo
+                ? { from: invitationReturnTo || postVerificationReturnTo }
                 : undefined
             }
           >
@@ -1267,25 +1310,16 @@ export function VerifyEmailPage() {
         <>
           <FormHeading
             title="Verify your email."
-            description="Enter the six-digit code we sent to your email address. It expires after a short time."
+            description="Enter the six-digit verification code sent to your email address. If it doesn't arrive, you can resend it."
           />
           <form className="mt-6 space-y-5" onSubmit={(event) => void submitCode(event)}>
-            <Field label="Email address">
-              <input
-                className={inputClass}
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </Field>
             <Field label="Verification code">
               <input
                 className={`${inputClass} text-center text-xl font-semibold tracking-[0.35em]`}
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
+                autoFocus
                 pattern="[0-9]{6}"
                 maxLength={6}
                 value={code}
@@ -1296,7 +1330,7 @@ export function VerifyEmailPage() {
               />
             </Field>
             {message && <FormAlert>{message}</FormAlert>}
-            <button className={primaryButtonClass} type="submit" disabled={verifyingCode || code.length !== 6}>
+            <button className={primaryButtonClass} type="submit" disabled={verifyingCode || !email.trim() || code.length !== 6}>
               {verifyingCode ? "Verifying..." : "Verify email"}
               {!verifyingCode && <ArrowRight size={17} />}
             </button>

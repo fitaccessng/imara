@@ -1,10 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { HardDrive } from "lucide-react";
+import { Link } from "react-router-dom";
 import { apiRequest } from "../../lib/api";
 import { PageShell } from "../PageShell";
 
 interface Subscription {
   plan: string;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  autoRenew: boolean;
+  entitlements: {
+    staffLimit: number;
+    activeEventLimit: number;
+    canEditDocuments: boolean;
+    canScanDocuments: boolean;
+    advancedTeamManagement: boolean;
+  };
   storage: {
     usedBytes: string;
     reservedBytes: string;
@@ -26,6 +37,19 @@ export function SubscriptionOverviewPage() {
   const subscriptionQuery = useQuery({
     queryKey: ["subscription"],
     queryFn: () => apiRequest<Subscription>("/subscription"),
+  });
+  const paymentsQuery = useQuery({
+    queryKey: ["billing-payments"],
+    queryFn: () => apiRequest<Array<{
+      checkoutId: string | null;
+      plan: string;
+      amountMinor: string;
+      currency: string;
+      status: string;
+      createdAt: string;
+      paidAt: string | null;
+      periodEnd: string | null;
+    }>>("/billing/payments"),
   });
 
   return (
@@ -49,7 +73,44 @@ export function SubscriptionOverviewPage() {
             <div><dt>Total storage</dt><dd>{formatBytes(Number(subscriptionQuery.data.storage.limitBytes))}</dd></div>
             <div><dt>Available</dt><dd>{formatBytes(Number(subscriptionQuery.data.storage.availableBytes))}</dd></div>
           </dl>
-          <p>Plan changes and payment processing are not available yet.</p>
+          <div className="subscription-entitlements">
+            <span>{subscriptionQuery.data.entitlements.staffLimit} staff seats (owner excluded)</span>
+            <span>{subscriptionQuery.data.entitlements.activeEventLimit} active events</span>
+            <span>{subscriptionQuery.data.entitlements.canEditDocuments ? "Document editing included" : "View documents; editing requires Pro"}</span>
+            <span>{subscriptionQuery.data.entitlements.canScanDocuments ? "Scan-to-upload included" : "Scan-to-upload requires Pro"}</span>
+          </div>
+          <p>
+            {subscriptionQuery.data.autoRenew
+              ? "Your plan renews automatically."
+              : subscriptionQuery.data.currentPeriodEnd
+                ? `Your prepaid plan ends ${new Date(subscriptionQuery.data.currentPeriodEnd).toLocaleDateString()}. It will not renew automatically.`
+                : "Your plan does not renew automatically."}
+            {" "}
+            <Link to="/pricing">Compare plans</Link>.
+          </p>
+          {paymentsQuery.isLoading ? (
+            <p>Loading payment history…</p>
+          ) : paymentsQuery.isError ? (
+            <p role="alert">Payment history couldn’t load.</p>
+          ) : !paymentsQuery.data ? (
+            <p role="alert">Payment history is unavailable.</p>
+          ) : (
+            <section className="mt-6">
+              <h3 className="font-semibold text-[#102B46]">Recent payments</h3>
+              {paymentsQuery.data.length === 0 ? (
+                <p className="mt-2 text-sm text-[#718096]">No paid plan checkouts yet.</p>
+              ) : (
+                <ul className="mt-3 space-y-3">
+                  {paymentsQuery.data.map((payment) => (
+                    <li key={payment.checkoutId ?? payment.createdAt} className="flex flex-wrap justify-between gap-2 border-t border-[#EDF0F3] pt-3 text-sm">
+                      <span>{payment.plan} · {payment.status.toLowerCase()}</span>
+                      <span>{payment.currency} {(Number(payment.amountMinor) / 100).toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
         </div>
       )}
     </PageShell>

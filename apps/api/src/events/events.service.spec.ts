@@ -41,10 +41,52 @@ describe('EventsService media access', () => {
     prisma as any,
     {} as StorageService,
     objects as unknown as ObjectStorageService,
+    {} as never,
   );
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('EventsService persisted event entitlements', () => {
+    it('uses the current catalogue active-event limit instead of static tier limits', async () => {
+      const tx = {
+        subscription: {
+          findUnique: jest.fn().mockResolvedValue({
+            plan: 'FREE',
+            storageUsedBytes: 0n,
+            storageReservedBytes: 0n,
+          }),
+        },
+        event: { count: jest.fn().mockResolvedValue(1), create: jest.fn() },
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx)),
+      };
+      const getEntitlements = jest.fn().mockResolvedValue({
+        staffLimit: 3,
+        activeEventLimit: 1,
+        storageLimitBytes: 100n,
+        canEditDocuments: false,
+        canScanDocuments: false,
+        advancedTeamManagement: false,
+      });
+      const currentPlan = jest.fn(async (subscription: { plan: string }) => subscription.plan);
+      const service = new EventsService(
+        prisma as never,
+        {} as StorageService,
+        {} as ObjectStorageService,
+        { getEntitlements, currentPlan } as never,
+      );
+
+      await expect(service.create('owner-id', {
+        name: 'New event',
+        date: '2026-11-08T00:00:00.000Z',
+      } as never)).rejects.toThrow('active events');
+
+      expect(getEntitlements).toHaveBeenCalledWith('FREE', tx);
+      expect(tx.event.create).not.toHaveBeenCalled();
+    });
   });
 
   it('accepts supported image signatures and rejects MIME-spoofed media', () => {
@@ -118,5 +160,37 @@ describe('EventsService media access', () => {
 
     await expect(service.unlockGallery('gallery-token', 'wrong passcode')).rejects.toThrow('Invalid passcode');
     expect(prisma.eventGalleryGrant.create).not.toHaveBeenCalled();
+  });
+
+  it('loads owner event media in the same query that verifies event ownership', async () => {
+    prisma.event.findFirst.mockResolvedValue({
+      files: [{
+        id: 'media-id',
+        originalName: 'photo.png',
+        mimeType: 'image/png',
+        sizeBytes: 123n,
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
+      }],
+    });
+
+    await expect(service.ownerMedia('owner-id', 'event-id')).resolves.toEqual([
+      expect.objectContaining({ id: 'media-id', name: 'photo.png', sizeBytes: '123' }),
+    ]);
+
+    expect(prisma.event.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'event-id', ownerUserId: 'owner-id' },
+      select: expect.objectContaining({
+        files: expect.objectContaining({
+          where: { userId: 'owner-id', status: 'READY' },
+        }),
+      }),
+    }));
+    expect(prisma.storedFile.findMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps the not-found response for events not owned by the requester', async () => {
+    prisma.event.findFirst.mockResolvedValue(null);
+
+    await expect(service.ownerMedia('another-user', 'event-id')).rejects.toThrow('Event not found');
   });
 });

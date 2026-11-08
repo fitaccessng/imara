@@ -11,6 +11,8 @@ import {
 import { EventStatus, Prisma, StoredFileStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from './object-storage.service';
+import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
+import { getPlanLimitMessage } from '../subscriptions/plan-entitlements';
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -49,6 +51,7 @@ export class StorageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly objects: ObjectStorageService,
+    private readonly plans: PlanCatalogueService,
   ) {}
 
   private safeName(input: string): string {
@@ -274,7 +277,12 @@ export class StorageService {
     }
   }
 
-  private async reserve(userId: string, sizeBytes: bigint, folderId?: string) {
+  private async reserve(
+    userId: string,
+    sizeBytes: bigint,
+    folderId?: string,
+    requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+  ) {
     await this.cleanExpiredReservations(userId);
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
@@ -285,8 +293,16 @@ export class StorageService {
           }
           const subscription = await tx.subscription.findUnique({ where: { userId } });
           if (!subscription) throw new NotFoundException('Subscription not found');
-          if (subscription.storageUsedBytes + subscription.storageReservedBytes + sizeBytes > subscription.storageLimitBytes) {
-            throw new PayloadTooLargeException('This upload exceeds the available storage quota');
+          const plan = await this.plans.currentPlan(subscription, tx);
+          const entitlements = await this.plans.getEntitlements(plan, tx);
+          if (requiredFeature) {
+            await this.plans.requireFeature(plan, requiredFeature, tx);
+          }
+          if (
+            subscription.storageUsedBytes + subscription.storageReservedBytes + sizeBytes
+            > entitlements.storageLimitBytes
+          ) {
+            throw new PayloadTooLargeException(getPlanLimitMessage(plan, 'storage'));
           }
           const reserved = await tx.subscription.updateMany({
             where: {
@@ -306,6 +322,7 @@ export class StorageService {
               mimeType: 'application/octet-stream',
               sizeBytes,
               status: StoredFileStatus.UPLOADING,
+              uploadSource: requiredFeature === 'canScanDocuments' ? 'SCAN' : 'STANDARD',
             },
           });
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -330,7 +347,12 @@ export class StorageService {
     });
   }
 
-  async upload(userId: string, file: UploadInput, folderId?: string) {
+  async upload(
+    userId: string,
+    file: UploadInput,
+    folderId?: string,
+    requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+  ) {
     if (!file || !Buffer.isBuffer(file.buffer)) throw new BadRequestException('Upload file is required');
     if (!Number.isSafeInteger(file.size) || file.buffer.length !== file.size) {
       throw new BadRequestException('The uploaded file size is invalid');
@@ -340,7 +362,7 @@ export class StorageService {
     if (file.size > getMaxUploadBytes()) throw new PayloadTooLargeException('File exceeds the upload size limit');
     this.objects.assertConfigured();
     const sizeBytes = BigInt(file.size);
-    const reserved = await this.reserve(userId, sizeBytes, folderId);
+    const reserved = await this.reserve(userId, sizeBytes, folderId, requiredFeature);
     const name = this.safeName(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
     try {
@@ -387,6 +409,14 @@ export class StorageService {
     }
   }
 
+  async uploadScan(userId: string, file: UploadInput, folderId?: string) {
+    const subscription = await this.prisma.subscription.findUnique({ where: { userId } });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription);
+    await this.plans.requireFeature(plan, 'canScanDocuments');
+    return this.upload(userId, file, folderId, 'canScanDocuments');
+  }
+
   async replaceContent(userId: string, fileId: string, replacement: UploadInput) {
     if (!replacement || !Buffer.isBuffer(replacement.buffer)
       || !Number.isSafeInteger(replacement.size) || replacement.buffer.length !== replacement.size) {
@@ -400,6 +430,10 @@ export class StorageService {
       select: { id: true, objectKey: true, originalName: true, sizeBytes: true },
     });
     if (!current) throw new NotFoundException('File not found');
+    const subscription = await this.prisma.subscription.findUnique({ where: { userId } });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription);
+    await this.plans.requireFeature(plan, 'canEditDocuments');
     assertSameFileExtension(current.originalName, replacement.originalname);
     this.objects.assertConfigured();
 
@@ -412,8 +446,15 @@ export class StorageService {
       await this.prisma.$transaction(async (tx) => {
         const subscription = await tx.subscription.findUnique({ where: { userId } });
         if (!subscription) throw new NotFoundException('Subscription not found');
-        if (delta > 0n && subscription.storageUsedBytes + subscription.storageReservedBytes + delta > subscription.storageLimitBytes) {
-          throw new PayloadTooLargeException('This edit exceeds the available storage quota');
+        const plan = await this.plans.currentPlan(subscription, tx);
+        const entitlements = await this.plans.getEntitlements(plan, tx);
+        await this.plans.requireFeature(plan, 'canEditDocuments', tx);
+        if (
+          delta > 0n
+          && subscription.storageUsedBytes + subscription.storageReservedBytes + delta
+            > entitlements.storageLimitBytes
+        ) {
+          throw new PayloadTooLargeException(getPlanLimitMessage(plan, 'storage'));
         }
         if (delta !== 0n) {
           const adjusted = await tx.subscription.updateMany({
@@ -478,8 +519,13 @@ export class StorageService {
 
           const subscription = await tx.subscription.findUnique({ where: { userId: event.ownerUserId } });
           if (!subscription) throw new NotFoundException('Subscription not found');
-          if (subscription.storageUsedBytes + subscription.storageReservedBytes + fileSize > subscription.storageLimitBytes) {
-            throw new PayloadTooLargeException('This upload exceeds the available storage quota');
+          const plan = await this.plans.currentPlan(subscription, tx);
+          const entitlements = await this.plans.getEntitlements(plan, tx);
+          if (
+            subscription.storageUsedBytes + subscription.storageReservedBytes + fileSize
+            > entitlements.storageLimitBytes
+          ) {
+            throw new PayloadTooLargeException(getPlanLimitMessage(plan, 'storage'));
           }
           const reserved = await tx.subscription.updateMany({
             where: {
@@ -500,6 +546,7 @@ export class StorageService {
               mimeType: 'application/octet-stream',
               sizeBytes: fileSize,
               status: StoredFileStatus.UPLOADING,
+              uploadSource: 'EVENT_MEDIA',
             },
           });
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

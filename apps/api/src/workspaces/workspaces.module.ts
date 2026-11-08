@@ -6,10 +6,11 @@ import { ObjectStorageService } from '../storage/object-storage.service';
 import { WorkspacesController } from './workspaces.controller';
 import { WorkspaceStorageController } from './workspace-storage.controller';
 import { WorkspacesService } from './workspaces.service';
+import { PlanCatalogueModule } from '../subscriptions/plan-catalogue.module';
 import { WorkspaceStorageService } from './workspace-storage.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, PlanCatalogueModule],
   controllers: [WorkspacesController, WorkspaceStorageController],
   providers: [WorkspacesService, WorkspaceStorageService, ObjectStorageService, MailerService, SessionGuard],
   exports: [WorkspacesService],

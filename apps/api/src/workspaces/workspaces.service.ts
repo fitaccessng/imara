@@ -6,6 +6,8 @@ import { FolderPermissionEffect, InvitationStatus, Prisma, WorkspaceMemberStatus
 import { createOpaqueToken, hashToken } from '../auth/token';
 import { MailerService } from '../auth/mailer.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
+import { assertPlanCapacity } from '../subscriptions/plan-entitlements';
 import { evaluateFolderPermission, isWorkspaceAdministrator, PermissionRule, WORKSPACE_PERMISSION_KEYS } from './permissions';
 import { CreateWorkspaceDto, InviteMemberDto, SetFolderPermissionDto, UpdateWorkspaceDto, WorkspaceMemberFolderRuleDto } from './workspaces.dto';
 
@@ -38,7 +40,11 @@ function countAccessibleFolders(
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService, private readonly mailer: MailerService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailer: MailerService,
+    private readonly plans: PlanCatalogueService,
+  ) {}
 
   private async membership(workspaceId: string, userId: string) {
     const membership = await this.prisma.workspaceMember.findFirst({
@@ -62,6 +68,49 @@ export class WorkspacesService {
     return member;
   }
 
+  private async assertStaffCapacity(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    ownerUserId: string,
+    excludeInvitationId?: string,
+  ) {
+    const subscription = await tx.subscription.findUnique({ where: { userId: ownerUserId } });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription, tx);
+    const [activeStaff, pendingInvitations] = await Promise.all([
+      tx.workspaceMember.count({
+        where: { workspaceId, status: WorkspaceMemberStatus.ACTIVE, role: { not: WorkspaceRole.OWNER } },
+      }),
+      tx.workspaceInvitation.count({
+        where: {
+          workspaceId,
+          status: InvitationStatus.PENDING,
+          expiresAt: { gt: new Date() },
+          ...(excludeInvitationId ? { id: { not: excludeInvitationId } } : {}),
+        },
+      }),
+    ]);
+    const entitlements = await this.plans.getEntitlements(plan, tx);
+    assertPlanCapacity(
+      plan,
+      activeStaff + pendingInvitations,
+      entitlements.staffLimit,
+      'staff members',
+    );
+  }
+
+  private async assertManagerRoleAvailable(
+    tx: Prisma.TransactionClient,
+    ownerUserId: string,
+    role: WorkspaceRole,
+  ): Promise<void> {
+    if (role !== WorkspaceRole.MANAGER) return;
+    const subscription = await tx.subscription.findUnique({ where: { userId: ownerUserId } });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription, tx);
+    await this.plans.requireAdvancedTeamManagement(plan, tx);
+  }
+
   private async audit(
     workspaceId: string, actorId: string | null, action: string,
     targetType: string, targetId?: string, metadata?: Prisma.InputJsonValue,
@@ -75,7 +124,13 @@ export class WorkspacesService {
     const name = dto.name.replace(/[\u0000-\u001f\u007f]/g, '').trim();
     if (!name) throw new BadRequestException('Workspace name is required');
     const workspace = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.workspace.create({ data: { name, ownerUserId: userId } });
+      const subscription = await tx.subscription.findUnique({ where: { userId } });
+      if (!subscription) throw new NotFoundException('Subscription not found');
+      const plan = await this.plans.currentPlan(subscription, tx);
+      const entitlements = await this.plans.getEntitlements(plan, tx);
+      const created = await tx.workspace.create({
+        data: { name, ownerUserId: userId, storageLimitBytes: entitlements.storageLimitBytes },
+      });
       await tx.workspaceMember.create({
         data: { workspaceId: created.id, userId, role: WorkspaceRole.OWNER, status: WorkspaceMemberStatus.ACTIVE },
       });
@@ -227,19 +282,28 @@ export class WorkspacesService {
     }
     const token = createOpaqueToken();
     const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
-    const invitation = await this.prisma.workspaceInvitation.upsert({
-      where: { workspaceId_email: { workspaceId, email } },
-      create: {
-        workspaceId, email, name: dto.name?.trim() || null, role: dto.role,
-        tokenHash: hashToken(token), invitedById: actorId, expiresAt, status: InvitationStatus.PENDING,
-        initialPermissions: dto.initialPermissions ? dto.initialPermissions as unknown as Prisma.InputJsonValue : Prisma.DbNull,
-      },
-      update: {
-        name: dto.name?.trim() || null, role: dto.role, tokenHash: hashToken(token),
-        invitedById: actorId, expiresAt, status: InvitationStatus.PENDING, acceptedAt: null, revokedAt: null,
-        initialPermissions: dto.initialPermissions ? dto.initialPermissions as unknown as Prisma.InputJsonValue : Prisma.DbNull,
-      },
-      select: { id: true },
+    const invitation = await this.prisma.$transaction(async (tx) => {
+      await this.assertManagerRoleAvailable(tx, actor.workspace.ownerUserId, dto.role);
+      await this.assertStaffCapacity(tx, workspaceId, actor.workspace.ownerUserId);
+      return tx.workspaceInvitation.upsert({
+        where: { workspaceId_email: { workspaceId, email } },
+        create: {
+          workspaceId, email, name: dto.name?.trim() || null, role: dto.role,
+          tokenHash: hashToken(token), invitedById: actorId, expiresAt, status: InvitationStatus.PENDING,
+          initialPermissions: dto.initialPermissions ? dto.initialPermissions as unknown as Prisma.InputJsonValue : Prisma.DbNull,
+        },
+        update: {
+          name: dto.name?.trim() || null, role: dto.role, tokenHash: hashToken(token),
+          invitedById: actorId, expiresAt, status: InvitationStatus.PENDING, acceptedAt: null, revokedAt: null,
+          initialPermissions: dto.initialPermissions ? dto.initialPermissions as unknown as Prisma.InputJsonValue : Prisma.DbNull,
+        },
+        select: { id: true },
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictException('Staff capacity changed while sending the invitation. Please try again.');
+      }
+      throw error;
     });
     try {
       await this.mailer.sendWorkspaceInvitation(email, token, actor.workspace.name);
@@ -263,10 +327,24 @@ export class WorkspacesService {
     }
     const token = createOpaqueToken();
     const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
-    const updated = await this.prisma.workspaceInvitation.update({
-      where: { id: current.id },
-      data: { tokenHash: hashToken(token), expiresAt, status: InvitationStatus.PENDING, revokedAt: null, invitedById: actorId },
-    });
+    const updateData = {
+      tokenHash: hashToken(token),
+      expiresAt,
+      status: InvitationStatus.PENDING,
+      revokedAt: null,
+      invitedById: actorId,
+    };
+    const updated = current.status === InvitationStatus.PENDING && current.expiresAt > new Date()
+      ? await this.prisma.workspaceInvitation.update({ where: { id: current.id }, data: updateData })
+      : await this.prisma.$transaction(async (tx) => {
+        await this.assertStaffCapacity(tx, workspaceId, actor.workspace.ownerUserId, current.id);
+        return tx.workspaceInvitation.update({ where: { id: current.id }, data: updateData });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+          throw new ConflictException('Staff capacity changed while resending the invitation. Please try again.');
+        }
+        throw error;
+      });
     try {
       await this.mailer.sendWorkspaceInvitation(updated.email, token, actor.workspace.name);
     } catch (error) {
@@ -313,6 +391,12 @@ export class WorkspacesService {
         throw new ForbiddenException('Sign in with the email address that received this invitation');
       }
       if (invitation.role === WorkspaceRole.OWNER) throw new ConflictException('Invalid invitation role');
+      const workspace = await tx.workspace.findUniqueOrThrow({
+        where: { id: invitation.workspaceId },
+        select: { ownerUserId: true, name: true },
+      });
+      await this.assertManagerRoleAvailable(tx, workspace.ownerUserId, invitation.role);
+      await this.assertStaffCapacity(tx, invitation.workspaceId, workspace.ownerUserId, invitation.id);
       const existing = await tx.workspaceMember.findUnique({
         where: { workspaceId_userId: { workspaceId: invitation.workspaceId, userId } },
       });
@@ -357,7 +441,6 @@ export class WorkspacesService {
       await tx.auditLog.create({
         data: { workspaceId: invitation.workspaceId, actorId: userId, action: 'INVITATION_ACCEPTED', targetType: 'WorkspaceMember', targetId: member.id },
       });
-      const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: invitation.workspaceId }, select: { ownerUserId: true, name: true } });
       await tx.notification.create({
         data: {
           workspaceId: invitation.workspaceId, userId: workspace.ownerUserId, type: 'INVITATION_ACCEPTED',
@@ -373,7 +456,12 @@ export class WorkspacesService {
         },
       });
       return { workspaceId: invitation.workspaceId, memberId: member.id, role: member.role };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictException('Staff capacity changed while accepting the invitation. Please try again.');
+      }
+      throw error;
+    });
   }
 
   async updateMember(workspaceId: string, memberId: string, actorId: string, role?: WorkspaceRole, displayName?: string) {
@@ -386,10 +474,13 @@ export class WorkspacesService {
     }
     if (role === WorkspaceRole.OWNER) throw new BadRequestException('Ownership transfer is not supported');
     if (!role && displayName === undefined) return this.getMember(workspaceId, memberId, actorId);
-    const updated = await this.prisma.workspaceMember.update({
-      where: { id: target.id },
-      data: { ...(role ? { role } : {}), ...(displayName !== undefined ? { displayName: displayName.trim() } : {}) },
-    });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (role) await this.assertManagerRoleAvailable(tx, actor.workspace.ownerUserId, role);
+      return tx.workspaceMember.update({
+        where: { id: target.id },
+        data: { ...(role ? { role } : {}), ...(displayName !== undefined ? { displayName: displayName.trim() } : {}) },
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     if (role) {
       await this.audit(workspaceId, actorId, 'MEMBER_ROLE_CHANGED', 'WorkspaceMember', memberId, { from: target.role, to: role });
       await this.notifyMember(workspaceId, target.userId, 'ROLE_CHANGED', 'Your workspace role was changed');
@@ -408,7 +499,17 @@ export class WorkspacesService {
     if (!target) throw new NotFoundException('Workspace member not found');
     if (target.role === WorkspaceRole.OWNER || target.userId === actorId) throw new ForbiddenException('Cannot suspend the workspace owner or yourself');
     if (actor.role !== WorkspaceRole.OWNER && target.role === WorkspaceRole.ADMIN) throw new ForbiddenException('Only the owner can manage administrators');
-    const updated = await this.prisma.workspaceMember.update({ where: { id: target.id }, data: { status } });
+    const updated = status === WorkspaceMemberStatus.ACTIVE && target.status !== WorkspaceMemberStatus.ACTIVE
+      ? await this.prisma.$transaction(async (tx) => {
+        await this.assertStaffCapacity(tx, workspaceId, actor.workspace.ownerUserId);
+        return tx.workspaceMember.update({ where: { id: target.id }, data: { status } });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+          throw new ConflictException('Staff capacity changed while restoring this member. Please try again.');
+        }
+        throw error;
+      })
+      : await this.prisma.workspaceMember.update({ where: { id: target.id }, data: { status } });
     const action = status === WorkspaceMemberStatus.SUSPENDED ? 'MEMBER_SUSPENDED' : 'MEMBER_RESTORED';
     await this.audit(workspaceId, actorId, action, 'WorkspaceMember', memberId);
     await this.notifyMember(workspaceId, target.userId, status === WorkspaceMemberStatus.SUSPENDED ? 'ACCESS_SUSPENDED' : 'ACCESS_RESTORED',

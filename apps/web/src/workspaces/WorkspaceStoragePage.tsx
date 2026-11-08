@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile } from "../lib/api";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
 import { FileViewerModal } from "../components/FileViewerModal";
+import { PlanLimitMessage } from "../components/PlanLimitMessage";
 import { FolderZipTools } from "../components/FolderZipTools";
 import type { WorkspaceFile, WorkspaceFolder } from "./types";
 import { useWorkspaceScope } from "./useWorkspaceScope";
@@ -222,7 +223,7 @@ export function WorkspaceStoragePage() {
         />
       </div>
 
-      {actionError && <p className="form-alert files-alert" role="alert">{actionError}</p>}
+      {actionError && <p className="form-alert files-alert" role="alert"><PlanLimitMessage message={actionError} /></p>}
       {downloadError && <p className="form-alert files-alert" role="alert">{downloadError}</p>}
       {contentsQuery.isError && <div className="inline-error" role="alert"><div><strong>These folders couldn’t load.</strong><p>{contentsQuery.error instanceof Error ? contentsQuery.error.message : "Please try again."}</p></div><button className="button button-outline button-small" onClick={() => void contentsQuery.refetch()}>Try again</button></div>}
       {accessibleFoldersQuery.isError && <div className="inline-error" role="alert"><div><strong>Your folder access couldn’t be resolved.</strong><p>{accessibleFoldersQuery.error instanceof Error ? accessibleFoldersQuery.error.message : "Please try again."}</p></div><button className="button button-outline button-small" onClick={() => void accessibleFoldersQuery.refetch()}>Try again</button></div>}

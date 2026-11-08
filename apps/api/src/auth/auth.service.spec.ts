@@ -1,9 +1,13 @@
 jest.mock('@nestjs/common', () => {
   class MockHttpException extends Error {}
+  class MockLogger {
+    error() {}
+  }
   return {
     Injectable: () => (target: unknown) => target,
     ConflictException: MockHttpException,
     ForbiddenException: MockHttpException,
+    Logger: MockLogger,
     NotFoundException: MockHttpException,
     ServiceUnavailableException: MockHttpException,
     UnauthorizedException: MockHttpException,
@@ -27,25 +31,41 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MailerService } from './mailer.service';
 import { hashPassword, verifyPassword } from './password';
 import { hashToken } from './token';
-import { FREE_STORAGE_LIMIT_BYTES } from './auth.types';
+const planService = {
+  getPlan: jest.fn(async (plan: unknown, client: any) => (
+    client.planCatalogue.findUnique({ where: { plan } })
+  )),
+  getEntitlements: jest.fn(),
+  requireFeature: jest.fn(),
+};
 
 describe('registration and login', () => {
   const user = {
     id: 'user-id',
     email: 'person@example.com',
     name: 'Person Example',
+    role: 'USER',
+    accountStatus: 'ACTIVE',
     passwordHash: 'stored-hash',
     emailVerifiedAt: new Date('2026-11-01T10:00:00.000Z'),
   };
   const userFindUnique = jest.fn();
   const sessionCreate = jest.fn();
+  const accountLock = jest.fn();
+  const workspaceFindFirst = jest.fn();
   const prisma = {
     user: { findUnique: userFindUnique },
     session: { create: sessionCreate },
+    $transaction: jest.fn(async (callback: (tx: unknown) => Promise<unknown>) => callback({
+      user: { updateMany: accountLock },
+      session: { create: sessionCreate },
+      workspaceMember: { findFirst: workspaceFindFirst },
+    })),
   } as unknown as PrismaService;
   const service = new AuthService(
     prisma,
     { isLocalConsoleMode: () => false } as unknown as MailerService,
+    planService as never,
   );
 
   beforeEach(() => {
@@ -54,7 +74,9 @@ describe('registration and login', () => {
 
   it('creates a server-side session with only a token digest after verified credentials', async () => {
     userFindUnique.mockResolvedValue(user);
+    accountLock.mockResolvedValue({ count: 1 });
     sessionCreate.mockResolvedValue({ id: 'session-id' });
+    workspaceFindFirst.mockResolvedValue({ workspaceId: 'workspace-id' });
     jest.mocked(verifyPassword).mockResolvedValue(true);
 
     const result = await service.login(' PERSON@example.com ', 'correct password', 'Browser/1');
@@ -63,8 +85,10 @@ describe('registration and login', () => {
       id: user.id,
       email: user.email,
       name: user.name,
+      role: user.role,
       emailVerified: true,
     });
+    expect(result.workspaceId).toBe('workspace-id');
     expect(sessionCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId: user.id,
@@ -73,6 +97,10 @@ describe('registration and login', () => {
       }),
     });
     expect(sessionCreate.mock.calls[0][0].data.tokenHash).not.toBe(result.token);
+    expect(accountLock).toHaveBeenCalledWith({
+      where: { id: user.id, accountStatus: 'ACTIVE' },
+      data: { updatedAt: expect.any(Date) },
+    });
   });
 
   it('rejects invalid credentials and unverified accounts without creating sessions', async () => {
@@ -86,18 +114,36 @@ describe('registration and login', () => {
     expect(sessionCreate).not.toHaveBeenCalled();
   });
 
+  it('rejects suspended accounts and a suspension racing with session creation', async () => {
+    userFindUnique.mockResolvedValue({ ...user, accountStatus: 'SUSPENDED' });
+    jest.mocked(verifyPassword).mockResolvedValue(true);
+    await expect(service.login(user.email, 'correct password'))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+    expect(sessionCreate).not.toHaveBeenCalled();
+
+    userFindUnique.mockResolvedValue(user);
+    accountLock.mockResolvedValue({ count: 0 });
+    await expect(service.login(user.email, 'correct password'))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+    expect(sessionCreate).not.toHaveBeenCalled();
+  });
+
   it('allows existing unverified accounts to sign in only in local console mode', async () => {
     userFindUnique.mockResolvedValue({ ...user, emailVerifiedAt: null });
+    accountLock.mockResolvedValue({ count: 1 });
     sessionCreate.mockResolvedValue({ id: 'local-session-id' });
+    workspaceFindFirst.mockResolvedValue(null);
     jest.mocked(verifyPassword).mockResolvedValue(true);
     const localService = new AuthService(
       prisma,
       { isLocalConsoleMode: () => true } as unknown as MailerService,
+      planService as never,
     );
 
     const result = await localService.login(user.email, 'correct password');
 
     expect(result.user.emailVerified).toBe(false);
+    expect(result.workspaceId).toBeNull();
     expect(sessionCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ userId: user.id }),
     });
@@ -107,7 +153,7 @@ describe('registration and login', () => {
     const unconfiguredMailer = { isConfigured: () => false } as unknown as MailerService;
     const transaction = jest.fn();
     const noDatabaseWrites = { $transaction: transaction } as unknown as PrismaService;
-    const registrationService = new AuthService(noDatabaseWrites, unconfiguredMailer);
+    const registrationService = new AuthService(noDatabaseWrites, unconfiguredMailer, planService as never);
 
     await expect(registrationService.register({
       email: user.email,
@@ -124,8 +170,16 @@ describe('registration and login', () => {
       emailVerifiedAt: data.emailVerifiedAt,
     }));
     const transaction = jest.fn(async (
-      callback: (tx: { user: { create: typeof userCreate } }) => Promise<unknown>,
-    ) => callback({ user: { create: userCreate } }));
+      callback: (tx: {
+        user: { create: typeof userCreate };
+        planCatalogue: { findUnique: jest.Mock };
+      }) => Promise<unknown>,
+    ) => callback({
+      user: { create: userCreate },
+      planCatalogue: {
+        findUnique: jest.fn().mockResolvedValue({ storageLimitBytes: 12_345n }),
+      },
+    }));
     const localMailer = {
       isConfigured: () => true,
       isLocalConsoleMode: () => true,
@@ -134,6 +188,7 @@ describe('registration and login', () => {
     const registrationService = new AuthService(
       { $transaction: transaction } as unknown as PrismaService,
       localMailer,
+      planService as never,
     );
     jest.mocked(hashPassword).mockResolvedValue('stored-hash');
 
@@ -149,7 +204,7 @@ describe('registration and login', () => {
         subscription: {
           create: {
             plan: 'FREE',
-            storageLimitBytes: FREE_STORAGE_LIMIT_BYTES,
+            storageLimitBytes: 12_345n,
             storageUsedBytes: 0n,
           },
         },
@@ -159,6 +214,46 @@ describe('registration and login', () => {
     expect(localMailer.sendVerification).not.toHaveBeenCalled();
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), { maxWait: 10_000 });
+  });
+
+  it('returns registration while verification email delivery is still pending', async () => {
+    const userCreate = jest.fn().mockResolvedValue({
+      ...user,
+      emailVerifiedAt: null,
+    });
+    const tx = {
+      user: { create: userCreate },
+      planCatalogue: {
+        findUnique: jest.fn().mockResolvedValue({ storageLimitBytes: 12_345n }),
+      },
+    };
+    const verificationToken = {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      create: jest.fn().mockResolvedValue({}),
+    };
+    const transaction = jest.fn((operation: unknown) => {
+      if (typeof operation === 'function') return operation(tx);
+      return Promise.all(operation as Promise<unknown>[]);
+    });
+    const sendVerificationCode = jest.fn(() => new Promise<void>(() => {}));
+    const registrationService = new AuthService(
+      { $transaction: transaction, verificationToken } as unknown as PrismaService,
+      {
+        isConfigured: () => true,
+        isLocalConsoleMode: () => false,
+        sendVerificationCode,
+      } as unknown as MailerService,
+      planService as never,
+    );
+    jest.mocked(hashPassword).mockResolvedValue('stored-hash');
+
+    await expect(registrationService.register({
+      email: user.email,
+      password: 'a sufficiently long password',
+      name: user.name,
+    })).resolves.toMatchObject({ emailVerified: false });
+
+    expect(sendVerificationCode).toHaveBeenCalledWith(user.email, expect.stringMatching(/^\d{6}$/));
   });
 
   it('returns a retryable response when the database cannot start a registration transaction', async () => {
@@ -173,6 +268,7 @@ describe('registration and login', () => {
         isConfigured: () => true,
         isLocalConsoleMode: () => false,
       } as unknown as MailerService,
+      planService as never,
     );
     jest.mocked(hashPassword).mockResolvedValue('stored-hash');
 
@@ -195,6 +291,7 @@ describe('session management', () => {
   const service = new AuthService(
     { session: { findMany: sessionFindMany, updateMany: sessionUpdateMany } } as unknown as PrismaService,
     {} as MailerService,
+    planService as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -249,10 +346,44 @@ describe('session management', () => {
         $transaction: transaction,
       } as unknown as PrismaService,
       {} as MailerService,
+      planService as never,
     );
 
     beforeEach(() => {
       jest.clearAllMocks();
+    });
+
+    it('sends verification code to a specific unverified account', async () => {
+      const sendVerificationCode = jest.fn().mockResolvedValue(undefined);
+      const create = jest.fn().mockResolvedValue({});
+      const deleteMany = jest.fn().mockResolvedValue({ count: 0 });
+      const sendService = new AuthService(
+        {
+          user: {
+            findUnique: jest.fn().mockResolvedValue({
+              id: 'user-id',
+              email: 'person@example.com',
+              emailVerifiedAt: null,
+            }),
+          },
+          verificationToken: { create, deleteMany },
+          $transaction: jest.fn().mockResolvedValue([]),
+        } as unknown as PrismaService,
+        {
+          isConfigured: () => true,
+          sendVerificationCode,
+        } as unknown as MailerService,
+        planService as never,
+      );
+
+      await expect(sendService.resendVerificationForUser('user-id')).resolves.toBe(true);
+      expect(sendVerificationCode).toHaveBeenCalledWith(
+        'person@example.com',
+        expect.stringMatching(/^\d{6}$/),
+      );
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ userId: 'user-id', expiresAt: expect.any(Date) }),
+      });
     });
 
     it('consumes a valid code and marks the matching user verified', async () => {
@@ -314,6 +445,7 @@ describe('session management', () => {
         $transaction: transaction,
       } as unknown as PrismaService,
       {} as MailerService,
+      planService as never,
     );
 
     beforeEach(() => {
@@ -373,6 +505,7 @@ describe('session management', () => {
           isConfigured: () => true,
           sendPasswordResetCode,
         } as unknown as MailerService,
+        planService as never,
       );
 
       await resetService.requestPasswordReset(' PERSON@example.com ');
@@ -388,6 +521,40 @@ describe('session management', () => {
         }),
       });
       expect(resetTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends an audited-admin-requested reset code by customer id', async () => {
+      const userFindUniqueById = jest.fn().mockResolvedValue({
+        id: 'user-id',
+        email: 'person@example.com',
+      });
+      const sendPasswordResetCode = jest.fn().mockResolvedValue(undefined);
+      const resetService = new AuthService(
+        {
+          user: { findUnique: userFindUniqueById },
+          passwordResetToken: {
+            create: jest.fn().mockResolvedValue({}),
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
+          $transaction: jest.fn().mockResolvedValue([]),
+        } as unknown as PrismaService,
+        {
+          isConfigured: () => true,
+          sendPasswordResetCode,
+        } as unknown as MailerService,
+        planService as never,
+      );
+
+      await resetService.requestPasswordResetForUser('user-id');
+
+      expect(userFindUniqueById).toHaveBeenCalledWith({
+        where: { id: 'user-id' },
+        select: { id: true, email: true },
+      });
+      expect(sendPasswordResetCode).toHaveBeenCalledWith(
+        'person@example.com',
+        expect.stringMatching(/^\d{6}$/),
+      );
     });
   });
 });

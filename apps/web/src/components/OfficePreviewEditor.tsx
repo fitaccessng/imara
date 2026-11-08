@@ -3,6 +3,7 @@ import { FileText, LoaderCircle, Pencil, Save, X } from "lucide-react";
 import type * as XLSX from "@e965/xlsx";
 import type JSZip from "jszip";
 import { apiRequest } from "../lib/api";
+import { PlanLimitMessage } from "./PlanLimitMessage";
 import type { ViewableFile } from "./FileViewerModal";
 
 interface OfficePreviewEditorProps {
@@ -161,6 +162,10 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
   const columns = Array.from({ length: Math.max(lastColumn - range.start.column + 1, 1) }, (_, index) => range.start.column + index);
   const rows = Array.from({ length: Math.max(lastRow - range.start.row + 1, 1) }, (_, index) => range.start.row + index);
 
+  function recordSaveError(reason: unknown, fallback: string) {
+    setError(reason instanceof Error ? reason.message : fallback);
+  }
+
   useEffect(() => {
     onDirtyChange(hasEdits);
   }, [hasEdits, onDirtyChange]);
@@ -264,7 +269,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       setEditing(false);
       setHasEdits(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to save this spreadsheet.");
+      recordSaveError(reason, "Unable to save this spreadsheet.");
     } finally {
       setBusy(false);
     }
@@ -319,7 +324,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       setEditing(false);
       setHasEdits(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to save the PDF annotation.");
+      recordSaveError(reason, "Unable to save the PDF annotation.");
     } finally {
       setBusy(false);
     }
@@ -366,7 +371,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       setEditing(false);
       setHasEdits(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to save document text.");
+      recordSaveError(reason, "Unable to save document text.");
     } finally {
       setBusy(false);
     }
@@ -395,7 +400,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       setEditing(false);
       setHasEdits(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to save presentation text.");
+      recordSaveError(reason, "Unable to save presentation text.");
     } finally {
       setBusy(false);
     }
@@ -414,7 +419,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
             <button className="button button-outline" onClick={() => { setEditing(false); setError(""); setAnnotation(""); setHasEdits(false); }} disabled={busy}><X size={15} />Cancel</button>
           </>}
         </div>
-        {error && <p className="form-alert office-preview-error" role="alert">{error}</p>}
+        {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
         {editing && <p className="office-preview-hint">Notes are added at the top of the selected page and saved as a new version of this PDF.</p>}
         {pdfUrl && <iframe className="file-pdf-preview" src={pdfUrl} title={file.name} />}
       </div>
@@ -438,7 +443,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
             ? <><button className="button button-green" onClick={() => void saveSpreadsheet()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save changes"}</button><button className="button button-outline" onClick={() => void cancelSpreadsheetEdit()} disabled={busy}>Cancel</button></>
             : <button className="button button-outline" onClick={() => void startSpreadsheetEdit()} disabled={busy}><Pencil size={15} />Edit sheet</button>)}
         </div>
-        {error && <p className="form-alert office-preview-error" role="alert">{error}</p>}
+        {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
         <div className="office-sheet-scroll">
           <table className="office-sheet-grid">
             <thead><tr>            <th aria-label="Row number" />{columns.map((column) => <th key={column}>{columnName(column)}</th>)}</tr></thead>
@@ -469,7 +474,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
             ? <><button className="button button-green" onClick={() => void saveTextDocument()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save text"}</button><button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(false); setHasEdits(false); }} disabled={busy}><X size={15} />Cancel</button></>
             : <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(true); setHasEdits(true); }}><Pencil size={15} />Edit text</button>)}
         </div>
-        {error && <p className="form-alert office-preview-error" role="alert">{error}</p>}
+        {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
         {preview.paragraphs.length
           ? preview.paragraphs.map((paragraph, index) => editing
             ? <textarea key={index} aria-label={`Edit paragraph ${index + 1}`} value={paragraphDrafts[index] ?? ""} onChange={(event) => setParagraphDrafts((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} />

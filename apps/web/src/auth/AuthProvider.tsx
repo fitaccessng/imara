@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -26,22 +27,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
+
+  const updateUser = useCallback((nextUser: User | null) => {
+    if (userIdRef.current && userIdRef.current !== nextUser?.id) queryClient.clear();
+    userIdRef.current = nextUser?.id ?? null;
+    setUser(nextUser);
+  }, [queryClient]);
 
   const refresh = useCallback(async () => {
     setLoadError(null);
     try {
       const currentUser = await apiRequest<User>("/auth/me");
-      setUser(currentUser);
+      updateUser(currentUser);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
-        setUser(null);
+        updateUser(null);
         return;
       }
       const message = error instanceof Error ? error.message : "Unable to check your session.";
       setLoadError(message);
       throw error;
     }
-  }, []);
+  }, [updateUser]);
 
   useEffect(() => {
     refresh()
@@ -51,16 +59,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await apiRequest<void>("/auth/logout", { method: "POST" });
-    setUser(null);
-  }, []);
+    updateUser(null);
+  }, [updateUser]);
 
   useEffect(() => {
     queryClient.removeQueries({ queryKey: ["event-tokens"] });
   }, [queryClient, user?.id]);
 
   const value = useMemo(
-    () => ({ user, loading, loadError, refresh, signOut, setUser }),
-    [user, loading, loadError, refresh, signOut],
+    () => ({ user, loading, loadError, refresh, signOut, setUser: updateUser }),
+    [user, loading, loadError, refresh, signOut, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

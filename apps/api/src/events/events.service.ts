@@ -14,6 +14,8 @@ import { hashToken } from '../auth/token';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import { getMaxUploadBytes, StorageService, type UploadInput } from '../storage/storage.service';
+import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
+import { assertPlanCapacity } from '../subscriptions/plan-entitlements';
 import { CreateEventDto, GallerySettingDto, UpdateEventDto } from './events.dto';
 
 const GALLERY_GRANT_TTL_MS = 30 * 60 * 1000;
@@ -63,6 +65,7 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly objects: ObjectStorageService,
+    private readonly plans: PlanCatalogueService,
   ) {}
 
   private serializeEvent(event: EventSummary) {
@@ -101,7 +104,13 @@ export class EventsService {
     const event = await this.prisma.$transaction(async (tx) => {
       const subscription = await tx.subscription.findUnique({ where: { userId } });
       if (!subscription) throw new NotFoundException('Subscription not found');
-      const remaining = subscription.storageLimitBytes - subscription.storageUsedBytes - subscription.storageReservedBytes;
+      const activeEventCount = await tx.event.count({ where: { ownerUserId: userId, status: EventStatus.ACTIVE } });
+      const plan = await this.plans.currentPlan(subscription, tx);
+      const entitlements = await this.plans.getEntitlements(plan, tx);
+      assertPlanCapacity(plan, activeEventCount, entitlements.activeEventLimit, 'active events');
+      const remaining = entitlements.storageLimitBytes
+        - subscription.storageUsedBytes
+        - subscription.storageReservedBytes;
       if (remaining < 0n) throw new ConflictException('Storage quota counters are inconsistent');
       let folderId = dto.folderId;
       if (folderId) {
@@ -326,14 +335,18 @@ export class EventsService {
   }
 
   async ownerMedia(userId: string, eventId: string) {
-    const event = await this.prisma.event.findFirst({ where: { id: eventId, ownerUserId: userId }, select: { id: true } });
-    if (!event) throw new NotFoundException('Event not found');
-    const media = await this.prisma.storedFile.findMany({
-      where: { eventId, userId, status: StoredFileStatus.READY },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, ownerUserId: userId },
+      select: {
+        files: {
+          where: { userId, status: StoredFileStatus.READY },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
+        },
+      },
     });
-    return media.map(({ originalName, sizeBytes, ...item }) => ({
+    if (!event) throw new NotFoundException('Event not found');
+    return event.files.map(({ originalName, sizeBytes, ...item }) => ({
       ...item, name: originalName, sizeBytes: sizeBytes.toString(),
     }));
   }

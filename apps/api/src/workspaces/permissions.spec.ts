@@ -67,7 +67,7 @@ describe('workspace folder authorization', () => {
     workspaceMember: { findFirst: membershipFindFirst },
     folder: { findFirst: folderFindFirst },
     folderPermission: { findMany: permissionsFindMany },
-  } as unknown as PrismaService, {} as never);
+  } as unknown as PrismaService, {} as never, {} as never);
 
   beforeEach(() => jest.clearAllMocks());
 

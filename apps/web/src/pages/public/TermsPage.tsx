@@ -1,20 +1,31 @@
+import { Link } from "react-router-dom";
 import { PageShell } from "../PageShell";
 
 export function TermsPage() {
   return (
     <PageShell
-      eyebrow="Terms"
-      title="Terms of Service Page"
-      description="Displays the platform’s terms and conditions."
+      eyebrow="Using IMARA"
+      title="Service terms overview"
+      description="A plain-language description of the current product model, not a complete legal agreement."
     >
-      <div style={{ display: "grid", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: "#374151" }}>
-          This page is scaffolded for the IMARA platform and ready to be connected to its API and business logic.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Page scaffold</span>
-          <span style={{ background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Ready for implementation</span>
-        </div>
+      <div className="marketing-page legal-summary">
+        <section>
+          <h2>Your account and content</h2>
+          <p>Use an account you are authorised to access. You are responsible for choosing appropriate workspace members and permissions, and for ensuring that the content you upload may be stored and shared through the service.</p>
+        </section>
+        <section>
+          <h2>Plans and feature access</h2>
+          <p>Storage, staff, active-event, scanning and editing limits depend on the subscription plan and file support. The service may block a new action when it reaches a limit; it does not remove existing content solely to make room.</p>
+        </section>
+        <section>
+          <h2>Current payment availability</h2>
+          <p>The website presents Free, PRO and BUSINESS pricing, but online subscription checkout is not currently available. A displayed price does not mean a payment has been processed.</p>
+        </section>
+        <section className="legal-caveat">
+          <h2>Formal terms</h2>
+          <p>This summary does not contain a complete agreement covering warranties, liability, termination, dispute handling or governing law. Organisations should obtain and review the complete service terms before relying on IMARA for business-critical records.</p>
+        </section>
+        <p className="marketing-footnote">See the <Link to="/pricing">plan comparison</Link> for current allowances and the <Link to="/faq">FAQ</Link> for product limitations.</p>
       </div>
     </PageShell>
   );

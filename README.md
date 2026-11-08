@@ -114,6 +114,30 @@ production credentials. For production, use managed PostgreSQL, HTTPS, a product
 frontend origin in `CORS_ORIGINS`, `COOKIE_SECURE=true`, and real SMTP credentials.
 Review the API README for cross-site cookie configuration and operational caveats.
 
+For the `www.useimara.space` web deployment, set `VITE_PUBLIC_APP_URL` to
+`https://www.useimara.space` in the web build environment. Set `FRONTEND_URL` to the
+same URL in the API environment so email links point to the deployed app, and set
+`CORS_ORIGINS=https://www.useimara.space,https://useimara.space` if both hostnames
+serve the app. Keep `VITE_API_URL=/api/v1` when the web host proxies `/api/v1` to the
+API; if the API is hosted separately, set it to that API's full `/api/v1` URL and
+allow the web origins above in `CORS_ORIGINS`.
+
+For email, set `EMAIL_DELIVERY=smtp`, `SMTP_HOST=smtp-relay.brevo.com`,
+`SMTP_PORT=587`, `SMTP_SECURE=false`, and `SMTP_USER` to the SMTP login provided by
+your email provider. Set `SMTP_PASSWORD` to the provider's SMTP key (not your
+account password), and `SMTP_FROM` to a sender address verified by that provider,
+for example `IMARA <noreply@useimara.space>`. Add these values to the API host's
+environment/secret settings as well as local `apps/api/.env` when testing locally.
+Never put the SMTP key in the web app environment or commit it.
+
+For Namecheap cPanel, build the web app with `npm run build -w @imara/web` and
+upload the **contents** of `apps/web/dist` (including `.htaccess`) into the
+document root assigned to `www.useimara.space` in cPanel's Domains page. Point the
+domain's DNS at the server using the exact record/target shown by Namecheap or
+your DNS provider, then enable HTTPS in cPanel. The `.htaccess` file disables
+directory indexes and routes client-side pages back to `index.html`. The current
+directory listing indicates the built files are not in the active document root.
+
 ### Viewing and editing documents
 
 PDF, DOCX, and PPTX files have browser previews. CSV/XLSX can be edited in a

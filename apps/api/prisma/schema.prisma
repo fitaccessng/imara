@@ -8,6 +8,81 @@ datasource db {
 
 enum Plan {
   FREE
+  PRO
+  BUSINESS
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  SUCCEEDED
+  EXPIRED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PlatformAdminRole {
+  SUPER_ADMIN
+  USER_MANAGEMENT_ADMIN
+  FINANCE_ADMIN
+  SUPPORT_ADMIN
+  MARKETING_ADMIN
+  OPERATIONS_ADMIN
+  SECURITY_ADMIN
+}
+
+enum PlatformAdminStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PlatformAnnouncementAudience {
+  ALL
+  FREE
+  PRO
+  BUSINESS
+}
+
+enum PlatformAnnouncementEmailStatus {
+  NOT_REQUESTED
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+enum StoredFileUploadSource {
+  STANDARD
+  SCAN
+  EVENT_MEDIA
+}
+
+enum SupportTicketStatus {
+  OPEN
+  PENDING
+  RESOLVED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportTicketCategory {
+  ACCOUNT
+  BILLING
+  FILES
+  EVENTS
+  OTHER
 }
 
 enum StoredFileStatus {
@@ -57,6 +132,8 @@ model User {
   email           String                @unique @db.VarChar(320)
   passwordHash    String                @db.VarChar(255)
   name            String                @db.VarChar(120)
+  role            UserRole              @default(USER)
+  accountStatus   UserAccountStatus     @default(ACTIVE)
   emailVerifiedAt DateTime?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
@@ -70,9 +147,29 @@ model User {
   memberships     WorkspaceMember[]
   sentInvitations WorkspaceInvitation[] @relation("InvitationInviter")
   auditEvents     AuditLog[]             @relation("AuditActor")
+  platformAdminProfile PlatformAdminProfile?
+  platformAdminAuditEvents PlatformAdminAuditLog[] @relation("PlatformAdminAuditActor")
+  createdPlatformAnnouncements PlatformAnnouncement[] @relation("PlatformAnnouncementCreator")
+  platformAnnouncementDeliveries PlatformAnnouncementDelivery[]
+  supportTickets SupportTicket[] @relation("SupportTicketCustomer")
+  assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
+  supportMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
   notifications   Notification[]
   events          Event[]
   galleryGrants   EventGalleryGrant[]
+  paymentAttempts PaymentAttempt[]
+}
+
+model PlatformAdminProfile {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @unique @db.Uuid
+  role      PlatformAdminRole
+  status    PlatformAdminStatus @default(ACTIVE)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([role, status])
 }
 
 model Session {
@@ -120,9 +217,41 @@ model Subscription {
   storageLimitBytes BigInt   @default(5368709120)
   storageUsedBytes  BigInt   @default(0)
   storageReservedBytes BigInt @default(0)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PaymentAttempt {
+  id          String               @id @default(uuid()) @db.Uuid
+  userId      String               @db.Uuid
+  plan        Plan
+  amountMinor BigInt
+  currency    String               @db.Char(3)
+  checkoutId  String?              @unique @db.VarChar(128)
+  status      PaymentAttemptStatus @default(PENDING)
+  createdAt   DateTime             @default(now())
+  paidAt      DateTime?
+  periodEnd   DateTime?
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model PlanCatalogue {
+  plan                       Plan     @id
+  staffLimit                 Int
+  activeEventLimit           Int
+  storageLimitBytes          BigInt
+  canEditDocuments           Boolean
+  canScanDocuments           Boolean
+  advancedTeamManagement     Boolean
+  monthlyPriceMinor          BigInt
+  currency                   String   @default("NGN") @db.Char(3)
+  updatedAt                  DateTime @updatedAt
 }
 
 model Folder {
@@ -156,6 +285,7 @@ model StoredFile {
   mimeType       String          @db.VarChar(255)
   sizeBytes      BigInt
   status         StoredFileStatus @default(UPLOADING)
+  uploadSource   StoredFileUploadSource @default(STANDARD)
   quotaReserved  Boolean          @default(true)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -215,7 +345,7 @@ model Workspace {
   id          String                @id @default(uuid()) @db.Uuid
   name        String                @db.VarChar(160)
   ownerUserId String                @db.Uuid
-  storageLimitBytes    BigInt        @default(53687091200)
+  storageLimitBytes    BigInt        @default(5368709120)
   storageUsedBytes     BigInt        @default(0)
   storageReservedBytes BigInt        @default(0)
   createdAt   DateTime              @default(now())
@@ -307,6 +437,90 @@ model AuditLog {
 
   @@index([workspaceId, createdAt])
   @@index([workspaceId, actorId, createdAt])
+}
+
+model PlatformAdminAuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String?  @db.Uuid
+  action       String   @db.VarChar(100)
+  resourceType String   @db.VarChar(80)
+  resourceId   String?  @db.VarChar(120)
+  metadata     Json?
+  ipAddress    String?  @db.VarChar(64)
+  userAgent    String?  @db.VarChar(512)
+  createdAt    DateTime @default(now())
+  actor        User?    @relation("PlatformAdminAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([resourceType, resourceId])
+}
+
+model PlatformAnnouncement {
+  id              String                       @id @default(uuid()) @db.Uuid
+  title           String                       @db.VarChar(120)
+  body            String                       @db.VarChar(5000)
+  audience        PlatformAnnouncementAudience
+  emailEnabled    Boolean                      @default(false)
+  createdAt       DateTime                     @default(now())
+  createdByUserId String                       @db.Uuid
+  creator         User                         @relation("PlatformAnnouncementCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  deliveries      PlatformAnnouncementDelivery[]
+
+  @@index([createdAt])
+}
+
+model PlatformAnnouncementDelivery {
+  id             String                            @id @default(uuid()) @db.Uuid
+  announcementId String                            @db.Uuid
+  userId         String                            @db.Uuid
+  inAppReadAt    DateTime?
+  emailStatus    PlatformAnnouncementEmailStatus   @default(NOT_REQUESTED)
+  emailAttempts  Int                               @default(0)
+  emailSentAt    DateTime?
+  emailLastError String?                           @db.VarChar(255)
+  createdAt      DateTime                          @default(now())
+  updatedAt      DateTime                          @updatedAt
+  announcement   PlatformAnnouncement              @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user           User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([userId, inAppReadAt, createdAt])
+  @@index([emailStatus, updatedAt])
+}
+
+model SupportTicket {
+  id              String                @id @default(uuid()) @db.Uuid
+  userId          String                @db.Uuid
+  assignedAdminId String?               @db.Uuid
+  subject         String                @db.VarChar(160)
+  category        SupportTicketCategory
+  priority        SupportTicketPriority @default(NORMAL)
+  status          SupportTicketStatus   @default(OPEN)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  customer        User                  @relation("SupportTicketCustomer", fields: [userId], references: [id], onDelete: Cascade)
+  assignedAdmin  User?                 @relation("SupportTicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  messages        SupportTicketMessage[]
+
+  @@index([userId, createdAt])
+  @@index([status, priority, updatedAt])
+  @@index([assignedAdminId, status, updatedAt])
+}
+
+model SupportTicketMessage {
+  id           String        @id @default(uuid()) @db.Uuid
+  ticketId     String        @db.Uuid
+  authorId     String        @db.Uuid
+  body         String        @db.VarChar(5000)
+  internalNote Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author       User          @relation("SupportTicketMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, internalNote, createdAt])
+  @@index([authorId, createdAt])
 }
 
 model Notification {

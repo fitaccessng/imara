@@ -1,7 +1,19 @@
-import { FREE_STORAGE_LIMIT_BYTES } from './auth.types';
+import type { AuthenticatedRequest } from './auth.types';
 
-describe('Free subscription quota', () => {
-  it('uses the specified 5 GiB quota in bytes', () => {
-    expect(FREE_STORAGE_LIMIT_BYTES).toBe(5_368_709_120n);
+describe('authenticated request type', () => {
+  it('carries the authenticated user and server-side session identifiers', () => {
+    const request: Pick<AuthenticatedRequest, 'auth'> = {
+      auth: {
+        userId: 'user-id',
+        sessionId: 'session-id',
+        tokenHash: 'opaque-hash',
+      },
+    };
+
+    expect(request.auth).toEqual({
+      userId: 'user-id',
+      sessionId: 'session-id',
+      tokenHash: 'opaque-hash',
+    });
   });
 });

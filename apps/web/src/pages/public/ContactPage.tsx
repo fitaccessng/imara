@@ -1,20 +1,36 @@
+import { ArrowRight, CircleHelp, CreditCard, UserRound } from "lucide-react";
+import { Link } from "react-router-dom";
 import { PageShell } from "../PageShell";
 
 export function ContactPage() {
   return (
     <PageShell
-      eyebrow="Contact"
-      title="Contact Page"
-      description="Allows visitors to contact the IMARA team."
+      eyebrow="Contact & next steps"
+      title="Find the right place to get help"
+      description="Choose the resource that matches your question. We do not publish an unverified support email or offer a contact form that is not connected."
     >
-      <div style={{ display: "grid", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: "#374151" }}>
-          This page is scaffolded for the IMARA platform and ready to be connected to its API and business logic.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Page scaffold</span>
-          <span style={{ background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Ready for implementation</span>
+      <div className="marketing-page">
+        <div className="contact-options">
+          <article>
+            <CircleHelp size={22} />
+            <h2>Product questions</h2>
+            <p>Read answers about storage, scanning, editing, staff access and what is currently available.</p>
+            <Link to="/faq">Browse FAQs <ArrowRight size={15} /></Link>
+          </article>
+          <article>
+            <CreditCard size={22} />
+            <h2>Plans and limits</h2>
+            <p>Compare the Free, PRO and BUSINESS allowances before choosing a plan.</p>
+            <Link to="/pricing">Compare plans <ArrowRight size={15} /></Link>
+          </article>
+          <article>
+            <UserRound size={22} />
+            <h2>Account access</h2>
+            <p>Sign in to manage your profile, business workspace, team members and available account settings.</p>
+            <Link to="/login">Sign in <ArrowRight size={15} /></Link>
+          </article>
         </div>
+        <p className="contact-notice" role="note">A direct support inbox and contact form are not configured on this website yet. We have not added a placeholder form that would appear to send a message but deliver nothing.</p>
       </div>
     </PageShell>
   );

@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthProvider";
 import { apiRequest } from "../../lib/api";
+import { PlanLimitMessage } from "../../components/PlanLimitMessage";
 import { deleteScanDraft, loadScanDraft, saveScanDraft, type ScanPage } from "./scanDraft";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -206,7 +207,7 @@ export function ScannerHomePage() {
       const body = new FormData();
       body.append("file", new File([previewBlob], name, { type: "application/pdf" }));
       if (folderId) body.append("folderId", folderId);
-      await apiRequest("/files", { method: "POST", body });
+      await apiRequest("/files/scan", { method: "POST", body });
       await deleteScanDraft(user!.id);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["storage-files"] }),
@@ -247,7 +248,11 @@ export function ScannerHomePage() {
         <div className="document-scanner-stamp"><FileText size={25} /><span>IMAGE TO PDF</span><strong>01—100</strong></div>
       </header>
 
-      {error && <p className="form-alert" role="alert">{error}</p>}
+      {error && (
+        <div className="form-alert" role="alert">
+          <PlanLimitMessage message={error} />
+        </div>
+      )}
       {notice && <p className="document-scanner-notice" role="status"><CheckCircle2 size={17} />{notice} <Link to="/files">Open My Files</Link></p>}
 
       {!ready ? (

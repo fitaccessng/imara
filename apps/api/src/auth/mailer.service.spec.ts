@@ -109,6 +109,28 @@ describe('MailerService local console delivery', () => {
     }));
   });
 
+  it('reuses a pooled SMTP connection for subsequent messages', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.EMAIL_DELIVERY = 'smtp';
+    process.env.SMTP_HOST = 'smtp-relay.brevo.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
+    const sendMail = jest.fn().mockResolvedValue(undefined);
+    jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
+
+    await mailer.sendVerificationCode('person@example.com', '123456');
+    await mailer.sendPasswordResetCode('person@example.com', '654321');
+
+    expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({
+      pool: true,
+      maxConnections: 2,
+    }));
+    expect(sendMail).toHaveBeenCalledTimes(2);
+  });
+
   it('logs password-reset and workspace-invitation links for local tests', async () => {
     await mailer.sendPasswordReset('person@example.com', 'reset-token');
     await mailer.sendWorkspaceInvitation('person@example.com', 'invite-token', 'Research Team');

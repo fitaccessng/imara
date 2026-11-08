@@ -14,6 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "admin:create": "ts-node scripts/create-platform-admin.ts",
+    "admin:promote": "ts-node scripts/promote-platform-admin.ts",
     "test": "jest --runInBand",
     "test:watch": "jest --watch"
   },

@@ -4,6 +4,28 @@ function apiUrl(path: string) {
   return `${API_URL}${path}`;
 }
 
+function responseErrorMessage(payload: unknown, status: number, fallback: string): string {
+  if (status >= 500) {
+    return "IMARA couldn’t complete the request. Please try again shortly.";
+  }
+
+  if (typeof payload !== "object" || payload === null || !("message" in payload)) {
+    return fallback;
+  }
+
+  const message = payload.message;
+  const text = Array.isArray(message)
+    ? message.filter((item): item is string => typeof item === "string").join(" ")
+    : typeof message === "string"
+      ? message
+      : "";
+
+  if (!text || text.length > 500 || /\b(?:Error|Exception):|^\s*at\s|\bat\s+\S+\s+\(/m.test(text)) {
+    return fallback;
+  }
+  return text;
+}
+
 async function fetchApi(path: string, options: RequestInit = {}) {
   try {
     return await fetch(apiUrl(path), {
@@ -19,7 +41,7 @@ async function fetchApi(path: string, options: RequestInit = {}) {
   } catch (error) {
     if (error instanceof TypeError) {
       throw new ApiError(
-        "The IMARA API could not be reached. In local development, start it with `npm run dev:api` and confirm it is listening on port 3001. Otherwise, check VITE_API_URL.",
+        "We couldn’t connect to IMARA. Check your internet connection and try again.",
         0,
       );
     }
@@ -58,13 +80,7 @@ export async function apiRequest<T>(
     }
   }
   if (!response.ok) {
-    const message =
-      typeof payload === "object" &&
-      payload !== null &&
-      "message" in payload &&
-      typeof payload.message === "string"
-        ? payload.message
-        : "Something went wrong. Please try again.";
+    const message = responseErrorMessage(payload, response.status, "Something went wrong. Please try again.");
     throw new ApiError(message, response.status);
   }
 
@@ -74,16 +90,16 @@ export async function apiRequest<T>(
 export async function apiBlob(path: string, headers?: HeadersInit): Promise<Blob> {
   const response = await fetchApi(path, { headers });
   if (!response.ok) {
+    let payload: unknown;
     const body = await response.text();
-    let message = "Unable to load this file.";
     if (body) {
       try {
-        const payload = JSON.parse(body) as { message?: unknown };
-        if (typeof payload.message === "string") message = payload.message;
+        payload = JSON.parse(body) as unknown;
       } catch {
-        message = body;
+        payload = null;
       }
     }
+    const message = responseErrorMessage(payload, response.status, "Unable to load this file. Please try again.");
     throw new ApiError(message, response.status);
   }
   return response.blob();
@@ -96,13 +112,13 @@ export async function downloadFile(
 ): Promise<void> {
   const response = await fetchApi(path, { headers });
   if (!response.ok) {
-    let message = "Unable to download this file.";
+    let payload: unknown;
     try {
-      const payload = (await response.json()) as { message?: unknown };
-      if (typeof payload.message === "string") message = payload.message;
+      payload = await response.json() as unknown;
     } catch {
-      // Use the generic message if the server response is not JSON.
+      payload = null;
     }
+    const message = responseErrorMessage(payload, response.status, "Unable to download this file. Please try again.");
     throw new ApiError(message, response.status);
   }
   const url = URL.createObjectURL(await response.blob());
@@ -120,6 +136,7 @@ export interface User {
   email: string;
   name: string;
   emailVerified: boolean;
+  role?: "USER" | "ADMIN";
 }
 
 export interface StoredFile {

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile, type StoredFile, type UserFolder } from "../lib/api";
 import { FileViewerModal } from "../components/FileViewerModal";
+import { PlanLimitMessage } from "../components/PlanLimitMessage";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
 import { FolderZipTools } from "../components/FolderZipTools";
 
@@ -227,7 +228,7 @@ export function FilesPage() {
         />
       </div>
 
-      {actionError && <p className="form-alert files-alert" role="alert">{actionError}</p>}
+      {actionError && <p className="form-alert files-alert" role="alert"><PlanLimitMessage message={actionError} /></p>}
       {downloadError && <p className="form-alert files-alert" role="alert">{downloadError}</p>}
       {contentsQuery.isError && <div className="inline-error" role="alert">
         <div><strong>Your library couldn’t load.</strong><p>{contentsQuery.error instanceof Error ? contentsQuery.error.message : "Please try again."}</p></div>
