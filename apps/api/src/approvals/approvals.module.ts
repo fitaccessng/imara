@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
-import { SessionGuard } from '../auth/session.guard';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
 import { ApprovalsController } from './approvals.controller';
 import { ApprovalsService } from './approvals.service';
 
 @Module({
-  imports: [PrismaModule, WorkspacesModule],
+  imports: [AuthModule, PrismaModule, WorkspacesModule],
   controllers: [ApprovalsController],
-  providers: [ApprovalsService, SessionGuard],
+  providers: [ApprovalsService],
 })
 export class ApprovalsModule {}
