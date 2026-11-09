@@ -41,6 +41,7 @@ import {
   WorkspaceTeamPage,
 } from "./workspaces/WorkspaceAdminPages";
 import { WorkspaceStoragePage } from "./workspaces/WorkspaceStoragePage";
+import { WorkspaceChatPage } from "./workspaces/WorkspaceChatPage";
 import { AdminLoginPage } from "./pages/admin/AdminLoginPage";
 import { AdminPortal } from "./pages/admin/AdminPortal";
 
@@ -106,6 +107,7 @@ function ProtectedRoutes() {
         <Route path="/workspace/approvals" element={<ApprovalsPage />} />
         <Route path="/workspace/signatures" element={<SignaturesPage />} />
         <Route path="/workspace/reminders" element={<RemindersPage />} />
+        <Route path="/workspace/chat" element={<WorkspaceChatPage />} />
         <Route path="/workspace" element={<WorkspaceStoragePage />} />
         <Route path="/workspace/shared-folders" element={<WorkspaceStoragePage />} />
         <Route path="/workspace/team" element={<WorkspaceTeamPage />} />

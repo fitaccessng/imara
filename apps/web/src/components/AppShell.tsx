@@ -13,6 +13,7 @@ import {
   LogOut,
   LifeBuoy,
   MailPlus,
+  MessageCircle,
   Menu,
   Settings2,
   Search,
@@ -101,7 +102,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? `${nameParts[0][0]}${nameParts[nameParts.length - 1]?.[0]}`
     : nameParts[0]?.slice(0, 2) ?? "").toUpperCase();
   const isBusinessPage = pathname.startsWith("/workspace");
-  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname === "/smart-files" ? "Smart file library" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/signatures") ? "Electronic signatures" : pathname.startsWith("/workspace/approvals") ? "Approval workflows" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : isBusinessPage ? "Shared files" : "Overview";
+  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname === "/smart-files" ? "Smart file library" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Electronic signatures" : pathname.startsWith("/workspace/approvals") ? "Approval workflows" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : isBusinessPage ? "Shared files" : "Overview";
   const workspaceName = isBusinessPage ? businessWorkspace?.name ?? "Business space" : "Personal space";
 
   return (
@@ -166,6 +167,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink to={businessHref("/workspace/reminders")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CalendarClock size={17} strokeWidth={1.8} /><span>Reminders</span>
+          </NavLink>
+          <NavLink to={businessHref("/workspace/chat")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <MessageCircle size={17} strokeWidth={1.8} /><span>Team chat</span>
           </NavLink>
           <NavLink to={businessHref("/workspace")} end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <BriefcaseBusiness size={17} strokeWidth={1.8} /><span>{businessWorkspace ? "Shared folders" : "Set up workspace"}</span>

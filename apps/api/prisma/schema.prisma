@@ -158,6 +158,11 @@ enum WorkspaceMemberStatus {
   REMOVED
 }
 
+enum WorkspaceChatConversationType {
+  WORKSPACE
+  DIRECT
+}
+
 enum InvitationStatus {
   PENDING
   ACCEPTED
@@ -370,6 +375,7 @@ model StoredFile {
   approvalAttachments ApprovalAttachment[]
   signatureSourceRequests SignatureRequest[] @relation("SignatureSourceFile")
   signatureFinalRequest SignatureRequest? @relation("SignatureFinalFile")
+  chatMessages WorkspaceChatMessage[]
 
   @@index([userId, folderId, status, createdAt])
   @@index([userId, workspaceId, isFavorite, deletedAt, createdAt])
@@ -440,6 +446,8 @@ model Workspace {
   approvalTemplates ApprovalTemplate[]
   approvalRequests ApprovalRequest[]
   signatureRequests SignatureRequest[]
+  chatConversations WorkspaceChatConversation[]
+  chatMessages WorkspaceChatMessage[]
 
   @@index([ownerUserId])
 }
@@ -513,6 +521,43 @@ model WorkspaceMember {
   @@unique([workspaceId, userId])
   @@unique([workspaceId, id])
   @@index([userId, status])
+}
+
+model WorkspaceChatConversation {
+  id              String                       @id @default(uuid()) @db.Uuid
+  workspaceId     String                       @db.Uuid
+  type            WorkspaceChatConversationType
+  channelKey      String                       @db.VarChar(100)
+  memberAId       String?                      @db.Uuid
+  memberBId       String?                      @db.Uuid
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  workspace       Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages        WorkspaceChatMessage[]
+
+  @@unique([workspaceId, channelKey])
+  @@unique([workspaceId, id])
+  @@index([workspaceId, updatedAt])
+  @@index([workspaceId, memberAId])
+  @@index([workspaceId, memberBId])
+}
+
+model WorkspaceChatMessage {
+  id              String                    @id @default(uuid()) @db.Uuid
+  workspaceId     String                    @db.Uuid
+  conversationId  String                    @db.Uuid
+  senderMemberId  String                    @db.Uuid
+  senderName      String                    @db.VarChar(120)
+  content         String                    @db.VarChar(4000)
+  fileId          String?                   @db.Uuid
+  createdAt       DateTime                  @default(now())
+  workspace       Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation    WorkspaceChatConversation @relation(fields: [workspaceId, conversationId], references: [workspaceId, id], onDelete: Cascade)
+  file            StoredFile?               @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, conversationId, createdAt, id])
+  @@index([senderMemberId, createdAt])
+  @@index([fileId])
 }
 
 model WorkspaceInvitation {

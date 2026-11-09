@@ -8,11 +8,13 @@ import { WorkspaceStorageController } from './workspace-storage.controller';
 import { WorkspacesService } from './workspaces.service';
 import { PlanCatalogueModule } from '../subscriptions/plan-catalogue.module';
 import { WorkspaceStorageService } from './workspace-storage.service';
+import { WorkspaceChatController } from './workspace-chat.controller';
+import { WorkspaceChatService } from './workspace-chat.service';
 
 @Module({
   imports: [PrismaModule, PlanCatalogueModule],
-  controllers: [WorkspacesController, WorkspaceStorageController],
-  providers: [WorkspacesService, WorkspaceStorageService, ObjectStorageService, MailerService, SessionGuard],
-  exports: [WorkspacesService, WorkspaceStorageService, ObjectStorageService],
+  controllers: [WorkspacesController, WorkspaceStorageController, WorkspaceChatController],
+  providers: [WorkspacesService, WorkspaceStorageService, WorkspaceChatService, ObjectStorageService, MailerService, SessionGuard],
+  exports: [WorkspacesService, WorkspaceStorageService, WorkspaceChatService, ObjectStorageService],
 })
 export class WorkspacesModule {}

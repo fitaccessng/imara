@@ -5,6 +5,9 @@ function apiUrl(path: string) {
 }
 
 function responseErrorMessage(payload: unknown, status: number, fallback: string): string {
+  if (status === 503) {
+    return "IMARA is temporarily unavailable. Please try again shortly.";
+  }
   if (status >= 500) {
     return "IMARA couldn’t complete the request. Please try again shortly.";
   }
