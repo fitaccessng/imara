@@ -4,9 +4,14 @@ export function createDatabaseConnectionConfig(
   connectionString: string,
   ca = process.env.DATABASE_SSL_CA,
 ): PoolConfig {
-  if (!ca?.trim()) return { connectionString };
-
   const url = new URL(connectionString);
+  if (!ca?.trim()) {
+    if (url.searchParams.get('sslmode') === 'require') {
+      url.searchParams.set('uselibpqcompat', 'true');
+    }
+    return { connectionString: url.toString() };
+  }
+
   for (const key of ['ssl', 'sslcert', 'sslkey', 'sslmode', 'sslrootcert', 'uselibpqcompat']) {
     url.searchParams.delete(key);
   }
