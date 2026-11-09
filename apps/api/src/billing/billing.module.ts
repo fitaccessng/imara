@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
+import { SessionGuard } from '../auth/session.guard';
 import { PlanCatalogueModule } from '../subscriptions/plan-catalogue.module';
 import { BillingController } from './billing.controller';
 import { BachsPaymentService } from './bachs-payment.service';
 
 @Module({
-  imports: [AuthModule, PlanCatalogueModule],
+  imports: [PlanCatalogueModule],
   controllers: [BillingController],
-  providers: [BachsPaymentService],
+  providers: [BachsPaymentService, SessionGuard],
 })
 export class BillingModule {}
