@@ -16,6 +16,7 @@ import { SupportTicketModule } from './support/support-ticket.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { SignaturesModule } from './signatures/signatures.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { SignaturesModule } from './signatures/signatures.module';
     RemindersModule,
     SignaturesModule,
   ],
+  controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
