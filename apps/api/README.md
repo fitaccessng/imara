@@ -31,6 +31,9 @@ Set the SMTP key only as `SMTP_PASSWORD` in the ignored `apps/api/.env` or your 
 secret manager; rotate any SMTP key that has been shared in chat or source control.
 The API loads `apps/api/.env` when started from the repository root with `npm run dev:api`.
 After changing SMTP settings, restart the API process so it picks up the new values.
+For managed PostgreSQL with a private TLS certificate authority, set `DATABASE_SSL_CA`
+to the CA's PEM certificate in the deployment secret manager. The API and seed command
+use it to verify the database certificate and hostname; do not disable certificate checks.
 
 The API listens on `http://localhost:3001`. Use `npm run build -w @imara/api` and
 `npm test -w @imara/api` for validation. For schema development,
