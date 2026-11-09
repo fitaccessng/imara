@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -8,11 +8,12 @@ import {
   PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { EventStatus, Prisma, StoredFileStatus } from '@prisma/client';
+import { EventStatus, FileCategory, Prisma, StoredFileStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from './object-storage.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { getPlanLimitMessage } from '../subscriptions/plan-entitlements';
+import { UpdateFileOrganizationDto } from './storage.dto';
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -58,6 +59,98 @@ export class StorageService {
     const leaf = input.replace(/\\/g, '/').split('/').pop() ?? '';
     const safe = leaf.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 255);
     return safe || 'upload';
+  }
+
+  private categorizeFile(name: string, mimeType: string): FileCategory {
+    const text = `${name} ${mimeType}`.toLowerCase();
+    if (/\b(invoice|receipt|budget|payroll|tax|financial|bank|expense|payment)\b/.test(text)) return FileCategory.FINANCE;
+    if (/\b(contract|agreement|legal|lease|nda|policy|terms)\b/.test(text)) return FileCategory.CONTRACTS;
+    if (/\b(resume|cv|employee|staff|hr|recruit|benefit|personnel)\b/.test(text)) return FileCategory.HUMAN_RESOURCES;
+    if (/\b(project|proposal|report|meeting|operation|procedure|plan|minutes)\b/.test(text)) return FileCategory.OPERATIONS;
+    if (/\b(personal|family|medical|passport|identity|insurance)\b/.test(text)) return FileCategory.PERSONAL;
+    return FileCategory.OTHER;
+  }
+
+  async smartLibrary(userId: string) {
+    const files = await this.prisma.storedFile.findMany({
+      where: { userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null, eventId: null },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
+      select: {
+        id: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        createdAt: true,
+        updatedAt: true,
+        category: true,
+        tags: true,
+        contentHash: true,
+        folder: { select: { id: true, name: true } },
+      },
+    });
+    return files.map(({ originalName, sizeBytes, ...file }) => ({
+      ...file,
+      name: originalName,
+      sizeBytes: sizeBytes.toString(),
+    }));
+  }
+
+  async duplicateGroups(userId: string) {
+    const groups = await this.prisma.storedFile.groupBy({
+      by: ['contentHash'],
+      where: {
+        userId,
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+        eventId: null,
+        contentHash: { not: null },
+      },
+      having: { contentHash: { _count: { gt: 1 } } },
+      _count: { _all: true },
+      orderBy: { contentHash: 'asc' },
+      take: 100,
+    });
+    const hashes = groups.flatMap(({ contentHash }) => contentHash ? [contentHash] : []);
+    if (!hashes.length) return [];
+    const files = await this.prisma.storedFile.findMany({
+      where: { userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null, eventId: null, contentHash: { in: hashes } },
+      orderBy: [{ contentHash: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true, contentHash: true },
+    });
+    const byHash = new Map<string, typeof files>();
+    for (const file of files) {
+      if (file.contentHash) byHash.set(file.contentHash, [...(byHash.get(file.contentHash) ?? []), file]);
+    }
+    return [...byHash.entries()].map(([contentHash, duplicateFiles]) => ({
+      contentHash,
+      files: duplicateFiles.map(({ originalName, sizeBytes, ...file }) => ({
+        ...file,
+        name: originalName,
+        sizeBytes: sizeBytes.toString(),
+      })),
+    }));
+  }
+
+  async updateOrganization(userId: string, fileId: string, dto: UpdateFileOrganizationDto) {
+    const file = await this.prisma.storedFile.findFirst({
+      where: { id: fileId, userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null, eventId: null },
+      select: { id: true },
+    });
+    if (!file) throw new NotFoundException('File not found');
+    const tags = dto.tags?.map((tag) => tag.replace(/[\u0000-\u001f\u007f]/g, '').trim()).filter(Boolean);
+    if (tags && new Set(tags.map((tag) => tag.toLocaleLowerCase())).size !== tags.length) {
+      throw new BadRequestException('Tags must be unique');
+    }
+    return this.prisma.storedFile.update({
+      where: { id: fileId },
+      data: {
+        ...(dto.category !== undefined && { category: dto.category }),
+        ...(tags !== undefined && { tags }),
+      },
+      select: { id: true, category: true, tags: true },
+    });
   }
 
   private async ownedFolder(userId: string, folderId?: string | null) {
@@ -127,9 +220,9 @@ export class StorageService {
         select: { id: true, name: true, parentFolderId: true, createdAt: true },
       }),
       this.prisma.storedFile.findMany({
-        where: { userId, workspaceId: null, folderId: folderId ?? null, status: StoredFileStatus.READY },
+        where: { userId, workspaceId: null, folderId: folderId ?? null, status: StoredFileStatus.READY, deletedAt: null },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true },
+        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true, isFavorite: true },
       }).then((rows) => rows.map(({ originalName, ...file }) => ({ ...file, name: originalName, sizeBytes: file.sizeBytes.toString() }))),
     ]);
     return { folderId: folderId ?? null, folders, files };
@@ -150,11 +243,12 @@ export class StorageService {
           userId,
           workspaceId: null,
           status: StoredFileStatus.READY,
+          deletedAt: null,
           originalName: { contains: term, mode: 'insensitive' },
         },
         orderBy: { createdAt: 'desc' },
         take: 50,
-        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true },
+        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true, isFavorite: true },
       }).then((rows) => rows.map(({ originalName, ...file }) => ({
         ...file,
         name: originalName,
@@ -162,6 +256,82 @@ export class StorageService {
       }))),
     ]);
     return { query: term, folders, files };
+  }
+
+  async listFavorites(userId: string) {
+    const files = await this.prisma.storedFile.findMany({
+      where: { userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null, isFavorite: true },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        folderId: true,
+        createdAt: true,
+        isFavorite: true,
+        folder: { select: { name: true } },
+      },
+    });
+    return files.map(({ originalName, sizeBytes, folder, ...file }) => ({
+      ...file,
+      name: originalName,
+      sizeBytes: sizeBytes.toString(),
+      folderName: folder?.name ?? null,
+    }));
+  }
+
+  async listTrash(userId: string) {
+    const files = await this.prisma.storedFile.findMany({
+      where: { userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
+      select: {
+        id: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        folderId: true,
+        createdAt: true,
+        deletedAt: true,
+        folder: { select: { name: true } },
+      },
+    });
+    return files.map(({ originalName, sizeBytes, folder, ...file }) => ({
+      ...file,
+      name: originalName,
+      sizeBytes: sizeBytes.toString(),
+      folderName: folder?.name ?? null,
+    }));
+  }
+
+  async setFavorite(userId: string, fileId: string, isFavorite: boolean) {
+    const updated = await this.prisma.storedFile.updateMany({
+      where: {
+        id: fileId,
+        userId,
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      },
+      data: { isFavorite },
+    });
+    if (!updated.count) throw new NotFoundException('File not found');
+    return { id: fileId, isFavorite };
+  }
+
+  async restoreFile(userId: string, fileId: string) {
+    const restored = await this.prisma.storedFile.updateMany({
+      where: {
+        id: fileId,
+        userId,
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: { not: null },
+      },
+      data: { deletedAt: null },
+    });
+    if (!restored.count) throw new NotFoundException('File not found in Recycle bin');
+    return { id: fileId, restored: true };
   }
 
   async listFolders(userId: string, parentFolderId?: string) {
@@ -365,12 +535,14 @@ export class StorageService {
     const reserved = await this.reserve(userId, sizeBytes, folderId, requiredFeature);
     const name = this.safeName(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
+    const contentHash = createHash('sha256').update(file.buffer).digest('hex');
+    const category = this.categorizeFile(name, mimeType);
     try {
       await this.objects.put(reserved.objectKey, file.buffer, mimeType);
       return await this.prisma.$transaction(async (tx) => {
         const finalized = await tx.storedFile.updateMany({
           where: { id: reserved.id, userId, workspaceId: null, status: StoredFileStatus.UPLOADING, createdAt: { gte: new Date(Date.now() - RESERVATION_TTL_MS) } },
-          data: { originalName: name, mimeType, status: StoredFileStatus.READY, quotaReserved: false },
+          data: { originalName: name, mimeType, contentHash, category, status: StoredFileStatus.READY, quotaReserved: false },
         });
         if (!finalized.count) throw new ConflictException('Upload reservation expired; please retry');
         const updated = await tx.subscription.updateMany({
@@ -426,7 +598,7 @@ export class StorageService {
       throw new PayloadTooLargeException('File exceeds the upload size limit');
     }
     const current = await this.prisma.storedFile.findFirst({
-      where: { id: fileId, userId, workspaceId: null, status: StoredFileStatus.READY },
+      where: { id: fileId, userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null },
       select: { id: true, objectKey: true, originalName: true, sizeBytes: true },
     });
     if (!current) throw new NotFoundException('File not found');
@@ -470,9 +642,14 @@ export class StorageService {
         const updated = await tx.storedFile.updateMany({
           where: {
             id: current.id, userId, workspaceId: null, status: StoredFileStatus.READY,
-            objectKey: current.objectKey, sizeBytes: current.sizeBytes,
+            objectKey: current.objectKey, sizeBytes: current.sizeBytes, deletedAt: null,
           },
-          data: { objectKey: nextKey, sizeBytes: nextSize, mimeType: contentType },
+          data: {
+            objectKey: nextKey,
+            sizeBytes: nextSize,
+            mimeType: contentType,
+            contentHash: createHash('sha256').update(replacement.buffer).digest('hex'),
+          },
         });
         if (!updated.count) throw new ConflictException('This file changed while you were editing. Reload it and try again.');
       });
@@ -649,7 +826,7 @@ export class StorageService {
 
   async download(userId: string, fileId: string) {
     const file = await this.prisma.storedFile.findFirst({
-      where: { id: fileId, userId, workspaceId: null, status: StoredFileStatus.READY },
+      where: { id: fileId, userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null },
       select: { objectKey: true, originalName: true, mimeType: true },
     });
     if (!file) throw new NotFoundException('File not found');
@@ -662,13 +839,60 @@ export class StorageService {
   }
 
   async deleteFile(userId: string, fileId: string): Promise<void> {
+    const deleted = await this.prisma.storedFile.updateMany({
+      where: {
+        id: fileId,
+        userId,
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+    if (!deleted.count) throw new NotFoundException('File not found');
+  }
+
+  async permanentlyDeleteFile(userId: string, fileId: string): Promise<void> {
     const file = await this.prisma.storedFile.findFirst({
-      where: { id: fileId, userId, workspaceId: null, status: { in: [StoredFileStatus.READY, StoredFileStatus.DELETING] } },
+      where: {
+        id: fileId,
+        userId,
+        workspaceId: null,
+        OR: [
+          { status: StoredFileStatus.READY, deletedAt: { not: null } },
+          { status: StoredFileStatus.DELETING },
+        ],
+      },
     });
     if (!file) throw new NotFoundException('File not found');
+    await this.removeFileObject(userId, file);
+  }
+
+  async permanentlyDeleteEventFile(userId: string, fileId: string): Promise<void> {
+    const file = await this.prisma.storedFile.findFirst({
+      where: {
+        id: fileId,
+        userId,
+        eventId: { not: null },
+        status: { in: [StoredFileStatus.READY, StoredFileStatus.DELETING] },
+      },
+    });
+    if (!file) throw new NotFoundException('Event file not found');
+    await this.removeFileObject(userId, file);
+  }
+
+  private async removeFileObject(
+    userId: string,
+    file: Prisma.StoredFileGetPayload<{}>,
+  ): Promise<void> {
     if (file.status === StoredFileStatus.READY) {
       const claimed = await this.prisma.storedFile.updateMany({
-        where: { id: file.id, userId, workspaceId: null, status: StoredFileStatus.READY },
+        where: {
+          id: file.id,
+          userId,
+          ...(file.eventId ? { eventId: file.eventId } : { workspaceId: null, deletedAt: { not: null } }),
+          status: StoredFileStatus.READY,
+        },
         data: { status: StoredFileStatus.DELETING },
       });
       if (!claimed.count) throw new ConflictException('File deletion is already in progress');
@@ -679,7 +903,12 @@ export class StorageService {
       if (file.status === StoredFileStatus.READY) {
         try {
           await this.prisma.storedFile.updateMany({
-            where: { id: file.id, userId, workspaceId: null, status: StoredFileStatus.DELETING },
+            where: {
+              id: file.id,
+              userId,
+              ...(file.eventId ? { eventId: file.eventId } : { workspaceId: null }),
+              status: StoredFileStatus.DELETING,
+            },
             data: { status: StoredFileStatus.READY },
           });
         } catch {
@@ -693,7 +922,14 @@ export class StorageService {
 
     try {
       await this.prisma.$transaction(async (tx) => {
-        const deleting = await tx.storedFile.findFirst({ where: { id: file.id, userId, workspaceId: null, status: StoredFileStatus.DELETING } });
+        const deleting = await tx.storedFile.findFirst({
+          where: {
+            id: file.id,
+            userId,
+            ...(file.eventId ? { eventId: file.eventId } : { workspaceId: null }),
+            status: StoredFileStatus.DELETING,
+          },
+        });
         if (!deleting) return;
         const counter = deleting.quotaReserved
           ? { storageReservedBytes: { gte: deleting.sizeBytes } }

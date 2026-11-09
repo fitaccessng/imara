@@ -152,6 +152,9 @@ describe('EventsService media access', () => {
         tokenHash: hashToken(grant.accessToken),
       }),
     }));
+    expect(prisma.storedFile.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { eventId: event.id, status: 'READY', deletedAt: null },
+    }));
     expect(result.media).toEqual([expect.objectContaining({ id: 'media-id', name: 'photo.png', sizeBytes: '123' })]);
   });
 
@@ -181,7 +184,7 @@ describe('EventsService media access', () => {
       where: { id: 'event-id', ownerUserId: 'owner-id' },
       select: expect.objectContaining({
         files: expect.objectContaining({
-          where: { userId: 'owner-id', status: 'READY' },
+          where: { userId: 'owner-id', status: 'READY', deletedAt: null },
         }),
       }),
     }));

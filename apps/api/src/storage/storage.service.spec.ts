@@ -16,7 +16,7 @@ jest.mock('@nestjs/common', () => {
 });
 
 import { PayloadTooLargeException } from '@nestjs/common';
-import { StoredFileStatus, StoredFileUploadSource } from '@prisma/client';
+import { FileCategory, StoredFileStatus, StoredFileUploadSource } from '@prisma/client';
 import { assertSameFileExtension, StorageService } from './storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from './object-storage.service';
@@ -47,6 +47,11 @@ describe('StorageService quota-safe uploads', () => {
     status: StoredFileStatus.UPLOADING,
     uploadSource: StoredFileUploadSource.STANDARD,
     quotaReserved: true,
+    isFavorite: false,
+    contentHash: null,
+    category: FileCategory.OTHER,
+    tags: [],
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -80,6 +85,7 @@ describe('StorageService quota-safe uploads', () => {
       create: jest.fn().mockResolvedValue(fileRow),
       findFirst: jest.fn().mockResolvedValue(fileRow),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest.fn(),
       findUniqueOrThrow: jest.fn().mockResolvedValue({
         id: 'file-id',
         originalName: 'passport.pdf',
@@ -102,6 +108,7 @@ describe('StorageService quota-safe uploads', () => {
       findMany: storedFileFindMany,
       findFirst: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest.fn(),
     },
     $transaction: jest.fn(async (callback: (tx: typeof transactionClient) => unknown) => callback(transactionClient)),
   } as unknown as PrismaService;
@@ -265,6 +272,10 @@ describe('StorageService quota-safe uploads', () => {
       data: { storageReservedBytes: { increment: 12n } },
     });
     expect(objects.put).toHaveBeenCalledWith(fileRow.objectKey, body, 'application/pdf');
+    const finalizedData = jest.mocked(transactionClient.storedFile.updateMany).mock.calls
+      .find(([args]) => 'contentHash' in args.data)?.[0].data;
+    expect(finalizedData?.category).toBe(FileCategory.PERSONAL);
+    expect(finalizedData?.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(result).toEqual(expect.objectContaining({ id: 'file-id', name: 'passport.pdf', sizeBytes: '12' }));
     expect(result).not.toHaveProperty('objectKey');
   });
@@ -337,12 +348,75 @@ describe('StorageService quota-safe uploads', () => {
     expect(objects.put).not.toHaveBeenCalled();
   });
 
-  it('releases reserved rather than used quota when removing a pending reservation', async () => {
+  it('moves an active file to the recycle bin without releasing its quota', async () => {
+    await service.deleteFile('owner-id', 'file-id');
+
+    expect(prisma.storedFile.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'file-id',
+        userId: 'owner-id',
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      },
+      data: { deletedAt: expect.any(Date) },
+    });
+    expect(objects.delete).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('updates favourite state only for an active personal file', async () => {
+    await expect(service.setFavorite('owner-id', 'file-id', true)).resolves.toEqual({
+      id: 'file-id',
+      isFavorite: true,
+    });
+
+    expect(prisma.storedFile.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'file-id',
+        userId: 'owner-id',
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      },
+      data: { isFavorite: true },
+    });
+  });
+
+  it('updates categories and normalized tags only for an owned file', async () => {
+    jest.mocked(prisma.storedFile.findFirst).mockResolvedValue(fileRow);
+    jest.mocked(prisma.storedFile.update).mockResolvedValue({
+      ...fileRow,
+      category: FileCategory.FINANCE,
+      tags: ['tax', 'receipt'],
+    });
+
+    await expect(service.updateOrganization('owner-id', 'file-id', {
+      category: FileCategory.FINANCE,
+      tags: [' tax ', 'receipt'],
+    })).resolves.toEqual(expect.objectContaining({ id: 'file-id', category: FileCategory.FINANCE, tags: ['tax', 'receipt'] }));
+
+    expect(prisma.storedFile.update).toHaveBeenCalledWith({
+      where: { id: 'file-id' },
+      data: { category: FileCategory.FINANCE, tags: ['tax', 'receipt'] },
+      select: { id: true, category: true, tags: true },
+    });
+  });
+
+  it('rejects duplicate tags that differ only by letter case', async () => {
+    jest.mocked(prisma.storedFile.findFirst).mockResolvedValue(fileRow);
+    await expect(service.updateOrganization('owner-id', 'file-id', {
+      tags: ['Tax', 'tax'],
+    })).rejects.toThrow('Tags must be unique');
+    expect(prisma.storedFile.update).not.toHaveBeenCalled();
+  });
+
+  it('releases reserved rather than used quota when permanently removing a pending reservation', async () => {
     const deletingRow = { ...fileRow, status: StoredFileStatus.DELETING, quotaReserved: true };
     jest.mocked(prisma.storedFile.findFirst).mockResolvedValue(deletingRow);
     transactionClient.storedFile.findFirst.mockResolvedValue(deletingRow);
 
-    await service.deleteFile('owner-id', 'file-id');
+    await service.permanentlyDeleteFile('owner-id', 'file-id');
 
     expect(transactionClient.subscription.updateMany).toHaveBeenCalledWith({
       where: { userId: 'owner-id', storageReservedBytes: { gte: 12n } },
@@ -350,37 +424,69 @@ describe('StorageService quota-safe uploads', () => {
     });
   });
 
+  it('permanently deletes a trashed file and releases used storage', async () => {
+    const trashedRow = { ...fileRow, status: StoredFileStatus.READY, quotaReserved: false, deletedAt: new Date() };
+    const deletingRow = { ...trashedRow, status: StoredFileStatus.DELETING };
+    jest.mocked(prisma.storedFile.findFirst).mockResolvedValue(trashedRow);
+    transactionClient.storedFile.findFirst.mockResolvedValue(deletingRow);
+
+    await service.permanentlyDeleteFile('owner-id', 'file-id');
+
+    expect(objects.delete).toHaveBeenCalledWith(fileRow.objectKey);
+    expect(transactionClient.subscription.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'owner-id', storageUsedBytes: { gte: 12n } },
+      data: { storageUsedBytes: { decrement: 12n } },
+    });
+    expect(transactionClient.storedFile.delete).toHaveBeenCalledWith({ where: { id: 'file-id' } });
+  });
+
   it('keeps a removed object queued for recovery when database finalization fails', async () => {
-    const readyRow = { ...fileRow, status: StoredFileStatus.READY, quotaReserved: false };
+    const readyRow = { ...fileRow, status: StoredFileStatus.READY, quotaReserved: false, deletedAt: new Date() };
     const deletingRow = { ...readyRow, status: StoredFileStatus.DELETING };
     jest.mocked(prisma.storedFile.findFirst).mockResolvedValue(readyRow);
     transactionClient.storedFile.findFirst.mockResolvedValue(deletingRow);
     transactionClient.subscription.updateMany.mockResolvedValueOnce({ count: 0 });
 
-    await expect(service.deleteFile('owner-id', 'file-id')).rejects.toThrow(
+    await expect(service.permanentlyDeleteFile('owner-id', 'file-id')).rejects.toThrow(
       'File deletion is pending; please retry shortly.',
     );
 
     expect(objects.delete).toHaveBeenCalledWith(fileRow.objectKey);
     expect(prisma.storedFile.updateMany).toHaveBeenCalledTimes(1);
     expect(prisma.storedFile.updateMany).toHaveBeenCalledWith({
-      where: { id: 'file-id', userId: 'owner-id', workspaceId: null, status: StoredFileStatus.READY },
+      where: { id: 'file-id', userId: 'owner-id', workspaceId: null, deletedAt: { not: null }, status: StoredFileStatus.READY },
       data: { status: StoredFileStatus.DELETING },
     });
   });
 
   it('restores a ready file when the object-store deletion fails', async () => {
-    const readyRow = { ...fileRow, status: StoredFileStatus.READY, quotaReserved: false };
+    const readyRow = { ...fileRow, status: StoredFileStatus.READY, quotaReserved: false, deletedAt: new Date() };
     jest.mocked(prisma.storedFile.findFirst).mockResolvedValue(readyRow);
     jest.mocked(objects.delete).mockRejectedValue(new Error('provider unavailable'));
 
-    await expect(service.deleteFile('owner-id', 'file-id')).rejects.toThrow(
+    await expect(service.permanentlyDeleteFile('owner-id', 'file-id')).rejects.toThrow(
       'File storage is temporarily unavailable.',
     );
 
     expect(prisma.storedFile.updateMany).toHaveBeenNthCalledWith(2, {
       where: { id: 'file-id', userId: 'owner-id', workspaceId: null, status: StoredFileStatus.DELETING },
       data: { status: StoredFileStatus.READY },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('restores a file from the recycle bin without changing its storage usage', async () => {
+    await service.restoreFile('owner-id', 'file-id');
+
+    expect(prisma.storedFile.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'file-id',
+        userId: 'owner-id',
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: { not: null },
+      },
+      data: { deletedAt: null },
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });

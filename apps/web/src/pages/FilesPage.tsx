@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, Move, Pencil, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, Move, Pencil, Star, Trash2, Upload, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile, type StoredFile, type UserFolder } from "../lib/api";
@@ -61,6 +61,8 @@ export function FilesPage() {
   const refreshLibrary = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["storage-files"] }),
+      queryClient.invalidateQueries({ queryKey: ["storage-favorites"] }),
+      queryClient.invalidateQueries({ queryKey: ["storage-trash"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
     ]);
   };
@@ -94,6 +96,15 @@ export function FilesPage() {
     mutationFn: (id: string) => apiRequest<void>(`/files/${id}`, { method: "DELETE" }),
     onSuccess: refreshLibrary,
     onError: (error) => setActionError(error instanceof Error ? error.message : "Unable to delete this file."),
+  });
+  const setFavorite = useMutation({
+    mutationFn: ({ id, isFavorite }: { id: string; isFavorite: boolean }) =>
+      apiRequest<{ id: string; isFavorite: boolean }>(`/files/${id}/favorite`, {
+        method: "PATCH",
+        body: JSON.stringify({ isFavorite }),
+      }),
+    onSuccess: refreshLibrary,
+    onError: (error) => setActionError(error instanceof Error ? error.message : "Unable to update this favourite."),
   });
   const deleteFolder = useMutation({
     mutationFn: (id: string) => apiRequest<void>(`/folders/${id}`, { method: "DELETE" }),
@@ -176,7 +187,7 @@ export function FilesPage() {
     }
   }
   const moveTargets = folderTree.filter((folder) => !excludedMoveTargets.has(folder.id));
-  const busy = createFolder.isPending || uploadFile.isPending || deleteFile.isPending || deleteFolder.isPending || moveFolder.isPending;
+  const busy = createFolder.isPending || uploadFile.isPending || deleteFile.isPending || setFavorite.isPending || deleteFolder.isPending || moveFolder.isPending;
 
   return (
     <div className="files-page">
@@ -286,10 +297,13 @@ export function FilesPage() {
                 />
                 <button aria-label={`View ${file.name}`} title="View file" onClick={() => setViewingFile(file)}><Eye size={15} /></button>
                 <button aria-label={`Download ${file.name}`} title="Download file" onClick={() => void handleDownload(file)}><Download size={15} /></button>
+                <button aria-label={`${file.isFavorite ? "Remove" : "Add"} ${file.name} ${file.isFavorite ? "from" : "to"} favourites`} aria-pressed={Boolean(file.isFavorite)} title={file.isFavorite ? "Remove from favourites" : "Add to favourites"} disabled={setFavorite.isPending} onClick={() => setFavorite.mutate({ id: file.id, isFavorite: !file.isFavorite })}>
+                  <Star size={15} fill={file.isFavorite ? "currentColor" : "none"} />
+                </button>
                 <button aria-label={`Delete ${file.name}`} title="Delete file" onClick={() => setActionModal({
                   title: "Delete file",
-                  description: `“${file.name}” will be permanently deleted. This cannot be undone.`,
-                  confirmLabel: "Delete file",
+                  description: `“${file.name}” will be moved to the Recycle Bin. You can restore it or permanently delete it later.`,
+                  confirmLabel: "Move to Recycle Bin",
                   danger: true,
                   onConfirm: async () => {
                     await deleteFile.mutateAsync(file.id);

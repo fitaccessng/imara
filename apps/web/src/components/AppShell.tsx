@@ -5,7 +5,9 @@ import {
   Bell,
   BriefcaseBusiness,
   CalendarDays,
+  CalendarClock,
   CreditCard,
+  CircleCheck,
   Files,
   LayoutDashboard,
   LogOut,
@@ -14,7 +16,11 @@ import {
   Menu,
   Settings2,
   Search,
+  ScanSearch,
   ShieldCheck,
+  FileSignature,
+  Star,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -95,7 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? `${nameParts[0][0]}${nameParts[nameParts.length - 1]?.[0]}`
     : nameParts[0]?.slice(0, 2) ?? "").toUpperCase();
   const isBusinessPage = pathname.startsWith("/workspace");
-  const pageTitle = pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : isBusinessPage ? "Shared files" : "Overview";
+  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname === "/smart-files" ? "Smart file library" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/signatures") ? "Electronic signatures" : pathname.startsWith("/workspace/approvals") ? "Approval workflows" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : isBusinessPage ? "Shared files" : "Overview";
   const workspaceName = isBusinessPage ? businessWorkspace?.name ?? "Business space" : "Personal space";
 
   return (
@@ -122,8 +128,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/dashboard" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <LayoutDashboard size={17} strokeWidth={1.8} /><span>Overview</span>
           </NavLink>
-          <NavLink to="/files" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+          <NavLink to="/files" end className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Files size={17} strokeWidth={1.8} /><span>Your files</span>
+          </NavLink>
+          <NavLink to="/smart-files" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <ScanSearch size={17} strokeWidth={1.8} /><span>Smart library</span>
+          </NavLink>
+          <NavLink to="/favorites" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <Star size={17} strokeWidth={1.8} /><span>Favourites</span>
+          </NavLink>
+          <NavLink to="/trash" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <Trash2 size={17} strokeWidth={1.8} /><span>Recycle Bin</span>
           </NavLink>
           <NavLink to="/events" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CalendarDays size={17} strokeWidth={1.8} /><span>Events</span>
@@ -143,6 +158,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="nav-section-label business-nav-label">Business</div>
         <nav className="side-nav" aria-label="Business workspace navigation">
+          <NavLink to={businessHref("/workspace/signatures")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <FileSignature size={17} strokeWidth={1.8} /><span>Signatures</span>
+          </NavLink>
+          <NavLink to={businessHref("/workspace/approvals")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <CircleCheck size={17} strokeWidth={1.8} /><span>Approvals</span>
+          </NavLink>
+          <NavLink to={businessHref("/workspace/reminders")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <CalendarClock size={17} strokeWidth={1.8} /><span>Reminders</span>
+          </NavLink>
           <NavLink to={businessHref("/workspace")} end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <BriefcaseBusiness size={17} strokeWidth={1.8} /><span>{businessWorkspace ? "Shared folders" : "Set up workspace"}</span>
           </NavLink>

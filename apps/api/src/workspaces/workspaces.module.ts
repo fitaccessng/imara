@@ -13,6 +13,6 @@ import { WorkspaceStorageService } from './workspace-storage.service';
   imports: [PrismaModule, PlanCatalogueModule],
   controllers: [WorkspacesController, WorkspaceStorageController],
   providers: [WorkspacesService, WorkspaceStorageService, ObjectStorageService, MailerService, SessionGuard],
-  exports: [WorkspacesService],
+  exports: [WorkspacesService, WorkspaceStorageService, ObjectStorageService],
 })
 export class WorkspacesModule {}

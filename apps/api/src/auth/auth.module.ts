@@ -10,6 +10,6 @@ import { PlanCatalogueModule } from '../subscriptions/plan-catalogue.module';
   imports: [PlanCatalogueModule],
   controllers: [AuthController, ProfileController],
   providers: [AuthService, MailerService, SessionGuard],
-  exports: [AuthService, SessionGuard],
+  exports: [AuthService, MailerService, SessionGuard],
 })
 export class AuthModule {}

@@ -231,14 +231,17 @@ export class WorkspaceStorageService {
     file: UploadInput,
     folderId?: string,
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+    systemGenerated = false,
   ) {
     if (!file || !Buffer.isBuffer(file.buffer) || !Number.isSafeInteger(file.size) || file.buffer.length !== file.size) {
       throw new BadRequestException('The uploaded file is invalid');
     }
-    if (file.size < 1 || file.size > getMaxUploadBytes()) throw new PayloadTooLargeException('File exceeds the upload size limit');
+    if (file.size < 1 || (!systemGenerated && file.size > getMaxUploadBytes())) {
+      throw new PayloadTooLargeException('File exceeds the upload size limit');
+    }
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
-    if (folderId) await this.allowedFolder(workspaceId, userId, folderId, 'uploadFiles');
-    else if (member.role !== WorkspaceRole.OWNER && member.role !== WorkspaceRole.ADMIN) throw new NotFoundException('Folder not found');
+    if (folderId && !systemGenerated) await this.allowedFolder(workspaceId, userId, folderId, 'uploadFiles');
+    else if (!systemGenerated && member.role !== WorkspaceRole.OWNER && member.role !== WorkspaceRole.ADMIN) throw new NotFoundException('Folder not found');
     this.objects.assertConfigured();
     const ownerId = member.workspace.ownerUserId;
     const size = BigInt(file.size);
@@ -294,6 +297,17 @@ export class WorkspaceStorageService {
       if (error instanceof ConflictException || error instanceof NotFoundException || error instanceof PayloadTooLargeException) throw error;
       throw new ServiceUnavailableException('File storage is temporarily unavailable.');
     }
+  }
+
+  async uploadGenerated(workspaceId: string, userId: string, name: string, contents: Buffer, folderId?: string | null) {
+    return this.upload(
+      workspaceId,
+      userId,
+      { buffer: contents, size: contents.length, originalname: name, mimetype: 'application/pdf' } as UploadInput,
+      folderId ?? undefined,
+      undefined,
+      true,
+    );
   }
 
   async uploadScan(workspaceId: string, userId: string, file: UploadInput, folderId?: string) {

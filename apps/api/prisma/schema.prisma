@@ -91,6 +91,15 @@ enum StoredFileStatus {
   DELETING
 }
 
+enum FileCategory {
+  FINANCE
+  CONTRACTS
+  HUMAN_RESOURCES
+  OPERATIONS
+  PERSONAL
+  OTHER
+}
+
 enum EventGallerySetting {
   PRIVATE
   LINK_PUBLIC
@@ -100,6 +109,40 @@ enum EventGallerySetting {
 enum EventStatus {
   ACTIVE
   DELETING
+}
+
+enum ApprovalReviewMode {
+  SEQUENTIAL
+  PARALLEL
+}
+
+enum ApprovalRequestStatus {
+  IN_PROGRESS
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum ReminderRecurrence {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum ReminderDeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
 }
 
 enum WorkspaceRole {
@@ -120,6 +163,25 @@ enum InvitationStatus {
   ACCEPTED
   REVOKED
   EXPIRED
+}
+
+enum SignatureRequestStatus {
+  PENDING
+  FINALIZING
+  COMPLETED
+  DECLINED
+  CANCELLED
+}
+
+enum SignatureSignerStatus {
+  PENDING
+  SIGNED
+  DECLINED
+}
+
+enum SignatureMethod {
+  TYPED
+  DRAWN
 }
 
 enum FolderPermissionEffect {
@@ -157,6 +219,11 @@ model User {
   notifications   Notification[]
   events          Event[]
   galleryGrants   EventGalleryGrant[]
+  requestedApprovals ApprovalRequest[] @relation("ApprovalRequester")
+  approvalActivities ApprovalActivity[] @relation("ApprovalActivityActor")
+  signatureRequests SignatureRequest[] @relation("SignatureRequestCreator")
+  createdReminders Reminder[] @relation("ReminderCreator")
+  assignedReminders Reminder[] @relation("ReminderAssignee")
   paymentAttempts PaymentAttempt[]
 }
 
@@ -287,6 +354,11 @@ model StoredFile {
   status         StoredFileStatus @default(UPLOADING)
   uploadSource   StoredFileUploadSource @default(STANDARD)
   quotaReserved  Boolean          @default(true)
+  isFavorite     Boolean          @default(false)
+  contentHash    String?          @db.Char(64)
+  category       FileCategory     @default(OTHER)
+  tags           String[]         @default([])
+  deletedAt      DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -295,10 +367,17 @@ model StoredFile {
   workspace      Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   eventId         String?           @db.Uuid
   event           Event?            @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  approvalAttachments ApprovalAttachment[]
+  signatureSourceRequests SignatureRequest[] @relation("SignatureSourceFile")
+  signatureFinalRequest SignatureRequest? @relation("SignatureFinalFile")
 
   @@index([userId, folderId, status, createdAt])
+  @@index([userId, workspaceId, isFavorite, deletedAt, createdAt])
+  @@index([userId, workspaceId, deletedAt, createdAt])
   @@index([workspaceId, folderId, status, createdAt])
+  @@index([userId, workspaceId, contentHash, status])
   @@index([eventId, status, createdAt])
+  @@unique([workspaceId, id])
 }
 
 model Event {
@@ -357,8 +436,63 @@ model Workspace {
   files       StoredFile[]
   auditLogs   AuditLog[]
   notifications Notification[]
+  reminders Reminder[]
+  approvalTemplates ApprovalTemplate[]
+  approvalRequests ApprovalRequest[]
+  signatureRequests SignatureRequest[]
 
   @@index([ownerUserId])
+}
+
+model SignatureRequest {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  workspaceId        String                 @db.Uuid
+  createdById        String                 @db.Uuid
+  sourceFileId       String                 @db.Uuid
+  sourceName         String                 @db.VarChar(255)
+  sourceSnapshotKey  String                 @db.VarChar(512)
+  sourceSha256       String                 @db.Char(64)
+  mode               ApprovalReviewMode
+  status             SignatureRequestStatus @default(PENDING)
+  dueAt              DateTime?
+  finalFileId        String?                @unique @db.Uuid
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  completedAt        DateTime?
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator            User                   @relation("SignatureRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sourceFile         StoredFile             @relation("SignatureSourceFile", fields: [workspaceId, sourceFileId], references: [workspaceId, id], onDelete: Restrict)
+  finalFile          StoredFile?            @relation("SignatureFinalFile", fields: [finalFileId], references: [id], onDelete: SetNull)
+  signers            SignatureSigner[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([createdById, createdAt])
+}
+
+model SignatureSigner {
+  id              String                @id @default(uuid()) @db.Uuid
+  requestId       String                @db.Uuid
+  memberId        String                @db.Uuid
+  userId          String                @db.Uuid
+  displayName     String                @db.VarChar(120)
+  email           String                @db.VarChar(320)
+  order           Int
+  status          SignatureSignerStatus @default(PENDING)
+  method          SignatureMethod?
+  signedName      String?               @db.VarChar(120)
+  signaturePng    String?               @db.Text
+  signedAt        DateTime?
+  consentText     String?               @db.VarChar(500)
+  consentedAt     DateTime?
+  consentedEmail  String?               @db.VarChar(320)
+  consentIp       String?               @db.VarChar(64)
+  declineReason   String?               @db.VarChar(1000)
+  request         SignatureRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  deadlineReminder Reminder?
+
+  @@unique([requestId, memberId])
+  @@index([userId, status])
+  @@index([requestId, order])
 }
 
 model WorkspaceMember {
@@ -373,6 +507,8 @@ model WorkspaceMember {
   workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   permissions FolderPermission[]
+  templateApprovals ApprovalTemplateApprover[]
+  requestApprovals ApprovalRequestApprover[]
 
   @@unique([workspaceId, userId])
   @@unique([workspaceId, id])
@@ -537,4 +673,165 @@ model Notification {
 
   @@index([userId, readAt, createdAt])
   @@index([workspaceId, createdAt])
+}
+
+model Reminder {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @db.Uuid
+  createdById     String   @db.Uuid
+  assignedToId    String   @db.Uuid
+  title           String   @db.VarChar(200)
+  description     String?  @db.VarChar(2000)
+  dueAt           DateTime
+  nextDueAt       DateTime?
+  recurrence      ReminderRecurrence @default(ONCE)
+  emailEnabled    Boolean  @default(false)
+  approvalRequestId String? @unique @db.Uuid
+  signatureSignerId String? @unique @db.Uuid
+  completedAt     DateTime?
+  lastCompletedAt DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator         User     @relation("ReminderCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignee        User     @relation("ReminderAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  signatureSigner SignatureSigner? @relation(fields: [signatureSignerId], references: [id], onDelete: Cascade)
+  deliveries      ReminderDelivery[]
+
+  @@index([workspaceId, dueAt, completedAt])
+  @@index([assignedToId, nextDueAt, completedAt])
+  @@index([createdById, createdAt])
+}
+
+model ReminderDelivery {
+  id              String   @id @default(uuid()) @db.Uuid
+  reminderId      String   @db.Uuid
+  scheduledFor    DateTime
+  status          ReminderDeliveryStatus @default(PENDING)
+  emailStatus     PlatformAnnouncementEmailStatus @default(NOT_REQUESTED)
+  attempts        Int      @default(0)
+  lastError       String?  @db.VarChar(255)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  sentAt          DateTime?
+  reminder        Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+
+  @@unique([reminderId, scheduledFor])
+  @@index([status, updatedAt])
+}
+
+model ApprovalTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String   @db.VarChar(160)
+  description String?  @db.VarChar(2000)
+  createdById String   @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  steps       ApprovalTemplateStep[]
+  requests    ApprovalRequest[]
+
+  @@index([workspaceId, isActive, createdAt])
+}
+
+model ApprovalTemplateStep {
+  id         String            @id @default(uuid()) @db.Uuid
+  templateId String            @db.Uuid
+  stepOrder  Int
+  mode       ApprovalReviewMode
+  template   ApprovalTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  approvers  ApprovalTemplateApprover[]
+
+  @@unique([templateId, stepOrder])
+}
+
+model ApprovalTemplateApprover {
+  id       String               @id @default(uuid()) @db.Uuid
+  stepId   String               @db.Uuid
+  memberId String               @db.Uuid
+  step     ApprovalTemplateStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  member   WorkspaceMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([stepId, memberId])
+  @@index([memberId])
+}
+
+model ApprovalRequest {
+  id              String                @id @default(uuid()) @db.Uuid
+  workspaceId     String                @db.Uuid
+  requesterId     String?               @db.Uuid
+  templateId      String?               @db.Uuid
+  title           String                @db.VarChar(200)
+  description     String?               @db.VarChar(5000)
+  status          ApprovalRequestStatus @default(IN_PROGRESS)
+  currentStepOrder Int                  @default(0)
+  dueAt           DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  workspace       Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requester       User?                 @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: SetNull)
+  template        ApprovalTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  steps           ApprovalRequestStep[]
+  activities      ApprovalActivity[]
+  attachments     ApprovalAttachment[]
+  deadlineReminder Reminder?
+
+  @@index([workspaceId, status, createdAt])
+  @@index([requesterId, status, createdAt])
+  @@index([workspaceId, dueAt, status])
+}
+
+model ApprovalRequestStep {
+  id        String                @id @default(uuid()) @db.Uuid
+  requestId String                @db.Uuid
+  stepOrder Int
+  mode      ApprovalReviewMode
+  isComplete Boolean             @default(false)
+  request   ApprovalRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approvers ApprovalRequestApprover[]
+
+  @@unique([requestId, stepOrder])
+}
+
+model ApprovalRequestApprover {
+  id          String          @id @default(uuid()) @db.Uuid
+  stepId      String          @db.Uuid
+  memberId    String          @db.Uuid
+  decision    ApprovalDecision @default(PENDING)
+  decidedAt   DateTime?
+  step        ApprovalRequestStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  member      WorkspaceMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([stepId, memberId])
+  @@index([memberId, decision])
+}
+
+model ApprovalActivity {
+  id        String          @id @default(uuid()) @db.Uuid
+  requestId String          @db.Uuid
+  actorId   String?         @db.Uuid
+  action    String          @db.VarChar(80)
+  comment   String?         @db.VarChar(2000)
+  createdAt DateTime        @default(now())
+  request   ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor     User?           @relation("ApprovalActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
+}
+
+model ApprovalAttachment {
+  id        String          @id @default(uuid()) @db.Uuid
+  requestId String          @db.Uuid
+  fileId    String?         @db.Uuid
+  fileName  String          @db.VarChar(255)
+  createdAt DateTime        @default(now())
+  request   ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  file      StoredFile?     @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@unique([requestId, fileId])
+  @@index([fileId])
 }

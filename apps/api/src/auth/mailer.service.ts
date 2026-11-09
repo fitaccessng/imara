@@ -142,6 +142,18 @@ export class MailerService implements OnModuleDestroy {
     });
   }
 
+  async sendReminderEmail(to: string, title: string, body: string, reminderUrl: URL): Promise<void> {
+    const safeTitle = title.replace(/[\r\n\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160);
+    const safeBody = body.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
+    await this.deliver(
+      to,
+      `IMARA reminder: ${safeTitle}`,
+      `${safeBody ? `${safeBody}\n\n` : ''}Open your reminders: ${reminderUrl.toString()}`,
+      reminderUrl,
+      true,
+    );
+  }
+
   async healthCheck(): Promise<'healthy' | 'unavailable' | 'not-configured'> {
     if (!this.isSmtpConfigured()) return 'not-configured';
     try {

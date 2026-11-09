@@ -1,4 +1,5 @@
-import { IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
+import { FileCategory } from '@prisma/client';
 
 export class SearchFilesDto {
   @IsString()
@@ -35,4 +36,22 @@ export class UploadFileDto {
   @IsOptional()
   @IsUUID()
   folderId?: string;
+}
+
+export class UpdateFavoriteDto {
+  @IsBoolean()
+  isFavorite!: boolean;
+}
+
+export class UpdateFileOrganizationDto {
+  @IsOptional()
+  @IsEnum(FileCategory)
+  category?: FileCategory;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  tags?: string[];
 }

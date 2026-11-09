@@ -13,6 +13,9 @@ import { PlanCatalogueModule } from './subscriptions/plan-catalogue.module';
 import { BillingModule } from './billing/billing.module';
 import { PlatformAnnouncementsModule } from './announcements/platform-announcements.module';
 import { SupportTicketModule } from './support/support-ticket.module';
+import { ApprovalsModule } from './approvals/approvals.module';
+import { RemindersModule } from './reminders/reminders.module';
+import { SignaturesModule } from './signatures/signatures.module';
 
 @Module({
   imports: [
@@ -31,6 +34,9 @@ import { SupportTicketModule } from './support/support-ticket.module';
     BillingModule,
     PlatformAnnouncementsModule,
     SupportTicketModule,
+    ApprovalsModule,
+    RemindersModule,
+    SignaturesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

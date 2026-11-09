@@ -21,7 +21,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { CreateFolderDto, MoveFolderDto, RenameFolderDto, SearchFilesDto, UploadFileDto } from './storage.dto';
+import { CreateFolderDto, MoveFolderDto, RenameFolderDto, SearchFilesDto, UpdateFavoriteDto, UpdateFileOrganizationDto, UploadFileDto } from './storage.dto';
 import { getMaxUploadBytes, StorageService, type UploadInput } from './storage.service';
 
 @Controller()
@@ -40,6 +40,61 @@ export class StorageController {
   @Get('search')
   searchFiles(@Req() req: AuthenticatedRequest, @Query() dto: SearchFilesDto) {
     return this.storage.search(req.auth.userId, dto.q);
+  }
+
+  @Get('files/favorites')
+  listFavorites(@Req() req: AuthenticatedRequest) {
+    return this.storage.listFavorites(req.auth.userId);
+  }
+
+  @Get('files/smart-library')
+  smartLibrary(@Req() req: AuthenticatedRequest) {
+    return this.storage.smartLibrary(req.auth.userId);
+  }
+
+  @Get('files/duplicates')
+  duplicateFiles(@Req() req: AuthenticatedRequest) {
+    return this.storage.duplicateGroups(req.auth.userId);
+  }
+
+  @Patch('files/:id/organization')
+  updateOrganization(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateFileOrganizationDto,
+  ) {
+    return this.storage.updateOrganization(req.auth.userId, id, dto);
+  }
+
+  @Get('files/trash')
+  listTrash(@Req() req: AuthenticatedRequest) {
+    return this.storage.listTrash(req.auth.userId);
+  }
+
+  @Patch('files/:id/favorite')
+  setFavorite(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateFavoriteDto,
+  ) {
+    return this.storage.setFavorite(req.auth.userId, id, dto.isFavorite);
+  }
+
+  @Post('files/:id/restore')
+  restoreFile(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.storage.restoreFile(req.auth.userId, id);
+  }
+
+  @Delete('files/:id/permanent')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  permanentlyDeleteFile(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.storage.permanentlyDeleteFile(req.auth.userId, id);
   }
 
   @Post('files')

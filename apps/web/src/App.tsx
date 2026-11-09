@@ -8,10 +8,14 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { SupportPage } from "./pages/SupportPage";
 import { FilesPage } from "./pages/FilesPage";
 import { ScannerHomePage } from "./pages/scanner/ScannerHomePage";
-import { SearchResultsPage } from "./pages/dashboard";
+import { SearchResultsPage, StarredFilesPage, TrashPage } from "./pages/dashboard";
 import NotificationsPage from "./pages/dashboard/NotificationsPage";
 import { CheckoutPage, PaymentStatusPage, PricingPlansPage, SubscriptionOverviewPage } from "./pages/billing";
 import { AppShell } from "./components/AppShell";
+import { ApprovalsPage } from "./approvals/ApprovalsPage";
+import { RemindersPage } from "./reminders/RemindersPage";
+import { SmartFilesPage } from "./smart-files/SmartFilesPage";
+import { SignaturesPage } from "./signatures/SignaturesPage";
 import {
   AboutPage,
   AccessibilityPage,
@@ -75,6 +79,10 @@ function ProtectedRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dashboard/storage" element={<DashboardPage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/smart-files" element={<SmartFilesPage />} />
+        <Route path="/favorites" element={<StarredFilesPage />} />
+        <Route path="/starred" element={<StarredFilesPage />} />
+        <Route path="/trash" element={<TrashPage />} />
         <Route path="/scanner" element={<ScannerHomePage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/events/new" element={<CreateEventPage />} />
@@ -95,6 +103,9 @@ function ProtectedRoutes() {
         <Route path="/search" element={<SearchResultsPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/support" element={<SupportPage />} />
+        <Route path="/workspace/approvals" element={<ApprovalsPage />} />
+        <Route path="/workspace/signatures" element={<SignaturesPage />} />
+        <Route path="/workspace/reminders" element={<RemindersPage />} />
         <Route path="/workspace" element={<WorkspaceStoragePage />} />
         <Route path="/workspace/shared-folders" element={<WorkspaceStoragePage />} />
         <Route path="/workspace/team" element={<WorkspaceTeamPage />} />

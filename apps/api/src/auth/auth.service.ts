@@ -445,9 +445,9 @@ export class AuthService {
         select: { id: true, name: true, email: true, emailVerifiedAt: true },
       }),
       this.getSubscription(userId),
-      this.prisma.storedFile.count({ where: { userId, status: StoredFileStatus.READY } }),
+      this.prisma.storedFile.count({ where: { userId, status: StoredFileStatus.READY, deletedAt: null } }),
       this.prisma.storedFile.findMany({
-        where: { userId, status: StoredFileStatus.READY },
+        where: { userId, status: StoredFileStatus.READY, deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 5,
         select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },

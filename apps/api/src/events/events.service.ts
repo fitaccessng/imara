@@ -231,7 +231,7 @@ export class EventsService {
       where: { eventId: id, status: { in: [StoredFileStatus.READY, StoredFileStatus.DELETING] } },
       select: { id: true },
     });
-    for (const file of files) await this.storage.deleteFile(userId, file.id);
+    for (const file of files) await this.storage.permanentlyDeleteEventFile(userId, file.id);
     await this.prisma.event.delete({ where: { id } });
   }
 
@@ -316,7 +316,7 @@ export class EventsService {
     const event = await this.activeGalleryEvent(token);
     await this.authorizeGallery(event.id, event.ownerUserId, event.gallerySetting, authorization);
     const media = await this.prisma.storedFile.findMany({
-      where: { eventId: event.id, status: StoredFileStatus.READY },
+      where: { eventId: event.id, status: StoredFileStatus.READY, deletedAt: null },
       orderBy: { createdAt: 'asc' },
       select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
     });
@@ -339,7 +339,7 @@ export class EventsService {
       where: { id: eventId, ownerUserId: userId },
       select: {
         files: {
-          where: { userId, status: StoredFileStatus.READY },
+          where: { userId, status: StoredFileStatus.READY, deletedAt: null },
           orderBy: { createdAt: 'asc' },
           select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
         },
@@ -363,6 +363,7 @@ export class EventsService {
         id: mediaId,
         eventId,
         status: StoredFileStatus.READY,
+        deletedAt: null,
         ...(userId ? { userId } : {}),
       },
       select: { objectKey: true, originalName: true, mimeType: true },
