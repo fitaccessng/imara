@@ -1381,7 +1381,7 @@ function AdminAnalytics() {
             return <circle key={point.day} cx={x} cy={y} r={registrations.length > 40 ? 2 : 3.5} className="admin-chart-point"><title>{point.day}: {point.count} registrations</title></circle>;
           })}
         </svg>
-        <div className="admin-chart-axis"><span>{registrations[0]?.day ?? "No data"}</span><span>{registrations.at(-1)?.day ?? ""}</span></div>
+        <div className="admin-chart-axis"><span>{registrations[0]?.day ?? "No data"}</span><span>{registrations[registrations.length - 1]?.day ?? ""}</span></div>
       </div>
       <p className="admin-panel-note">Dates are UTC. The selected range uses an exclusive end time; the CSV contains the daily counts shown above.</p>
     </section>
