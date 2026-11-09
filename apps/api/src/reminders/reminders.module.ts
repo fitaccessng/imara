@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MailerService } from '../auth/mailer.service';
 import { SessionGuard } from '../auth/session.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PlanCatalogueModule } from '../subscriptions/plan-catalogue.module';
@@ -10,6 +11,6 @@ import { RemindersService } from './reminders.service';
 @Module({
   imports: [PrismaModule, PlanCatalogueModule, WorkspacesModule],
   controllers: [RemindersController],
-  providers: [ReminderDeliveryWorker, RemindersService, SessionGuard],
+  providers: [ReminderDeliveryWorker, RemindersService, SessionGuard, MailerService],
 })
 export class RemindersModule {}
