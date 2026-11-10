@@ -61,7 +61,27 @@ export class WorkspacesService {
         storageLimitBytes: true, storageUsedBytes: true, storageReservedBytes: true,
       } } },
     });
-    if (!membership) throw new NotFoundException('Workspace not found');
+    if (!membership) {
+      const ownedWorkspace = await this.prisma.workspace.findFirst({
+        where: { id: workspaceId, ownerUserId: userId },
+        select: { id: true },
+      });
+      if (!ownedWorkspace) throw new NotFoundException('Workspace not found');
+      return this.prisma.workspaceMember.upsert({
+        where: { workspaceId_userId: { workspaceId, userId } },
+        create: {
+          workspaceId,
+          userId,
+          role: WorkspaceRole.OWNER,
+          status: WorkspaceMemberStatus.ACTIVE,
+        },
+        update: { role: WorkspaceRole.OWNER, status: WorkspaceMemberStatus.ACTIVE },
+        include: { workspace: { select: {
+          id: true, name: true, ownerUserId: true, createdAt: true,
+          storageLimitBytes: true, storageUsedBytes: true, storageReservedBytes: true,
+        } } },
+      });
+    }
     if (membership.workspace.ownerUserId === userId) {
       return { ...membership, role: WorkspaceRole.OWNER, status: WorkspaceMemberStatus.ACTIVE };
     }
@@ -153,28 +173,40 @@ export class WorkspacesService {
   }
 
   async listWorkspaces(userId: string) {
-    const memberships = await this.prisma.workspaceMember.findMany({
-      where: {
-        userId,
-        OR: [
-          { status: WorkspaceMemberStatus.ACTIVE },
-          { workspace: { is: { ownerUserId: userId } } },
-        ],
-      },
-      orderBy: { joinedAt: 'asc' },
-      select: {
-        role: true,
-        joinedAt: true,
-        workspace: { select: { id: true, name: true, createdAt: true, ownerUserId: true } },
-      },
-    });
-    return memberships.map(({ workspace, role, joinedAt }) => ({
+    const [memberships, ownedWorkspaces] = await Promise.all([
+      this.prisma.workspaceMember.findMany({
+        where: {
+          userId,
+          OR: [
+            { status: WorkspaceMemberStatus.ACTIVE },
+            { workspace: { is: { ownerUserId: userId } } },
+          ],
+        },
+        orderBy: { joinedAt: 'asc' },
+        select: {
+          role: true,
+          joinedAt: true,
+          workspace: { select: { id: true, name: true, createdAt: true, ownerUserId: true } },
+        },
+      }),
+      this.prisma.workspace.findMany({
+        where: { ownerUserId: userId },
+        select: { id: true, name: true, createdAt: true },
+      }),
+    ]);
+    const workspaces = new Map(memberships.map(({ workspace, role, joinedAt }) => [workspace.id, {
       id: workspace.id,
       name: workspace.name,
       createdAt: workspace.createdAt,
       role: workspace.ownerUserId === userId ? WorkspaceRole.OWNER : role,
       joinedAt,
-    }));
+    }]));
+    for (const workspace of ownedWorkspaces) {
+      if (!workspaces.has(workspace.id)) {
+        workspaces.set(workspace.id, { ...workspace, role: WorkspaceRole.OWNER, joinedAt: workspace.createdAt });
+      }
+    }
+    return [...workspaces.values()].sort((left, right) => left.joinedAt.getTime() - right.joinedAt.getTime());
   }
 
   async getWorkspace(workspaceId: string, userId: string) {

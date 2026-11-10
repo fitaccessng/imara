@@ -62,15 +62,24 @@ describe('folder permission evaluation', () => {
 describe('workspace folder authorization', () => {
   const membershipFindFirst = jest.fn();
   const membershipFindMany = jest.fn();
+  const membershipUpsert = jest.fn();
+  const workspaceFindFirst = jest.fn();
+  const workspaceFindMany = jest.fn();
   const folderFindFirst = jest.fn();
   const permissionsFindMany = jest.fn();
   const service = new WorkspacesService({
-    workspaceMember: { findFirst: membershipFindFirst, findMany: membershipFindMany },
+    workspaceMember: {
+      findFirst: membershipFindFirst, findMany: membershipFindMany, upsert: membershipUpsert,
+    },
+    workspace: { findFirst: workspaceFindFirst, findMany: workspaceFindMany },
     folder: { findFirst: folderFindFirst },
     folderPermission: { findMany: permissionsFindMany },
   } as unknown as PrismaService, {} as never, {} as never);
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    workspaceFindMany.mockResolvedValue([]);
+  });
 
   it('denies suspended members before resolving any folder permissions', async () => {
     membershipFindFirst.mockResolvedValue(null);
@@ -142,6 +151,25 @@ describe('workspace folder authorization', () => {
       });
   });
 
+  it('repairs a missing creator membership from the authoritative workspace owner id', async () => {
+    membershipFindFirst.mockResolvedValue(null);
+    workspaceFindFirst.mockResolvedValue({ id: 'workspace-a' });
+    membershipUpsert.mockResolvedValue({
+      id: 'member-owner', userId: 'owner-a', workspaceId: 'workspace-a',
+      role: WorkspaceRole.OWNER, status: WorkspaceMemberStatus.ACTIVE,
+      workspace: { id: 'workspace-a', name: 'A', ownerUserId: 'owner-a' },
+    });
+
+    await expect(service.authorizeWorkspace('workspace-a', 'owner-a')).resolves.toMatchObject({
+      role: WorkspaceRole.OWNER,
+      status: WorkspaceMemberStatus.ACTIVE,
+    });
+    expect(membershipUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { workspaceId_userId: { workspaceId: 'workspace-a', userId: 'owner-a' } },
+      create: expect.objectContaining({ role: WorkspaceRole.OWNER, status: WorkspaceMemberStatus.ACTIVE }),
+    }));
+  });
+
   it('lists the workspace creator as owner regardless of the stored membership role', async () => {
     membershipFindMany.mockResolvedValue([{
       role: WorkspaceRole.STAFF,
@@ -150,6 +178,17 @@ describe('workspace folder authorization', () => {
         id: 'workspace-a', name: 'A', createdAt: new Date('2026-01-01T00:00:00Z'),
         ownerUserId: 'owner-a',
       },
+    }]);
+
+    await expect(service.listWorkspaces('owner-a')).resolves.toMatchObject([
+      { id: 'workspace-a', role: WorkspaceRole.OWNER },
+    ]);
+  });
+
+  it('lists owned workspaces even when their membership row is missing', async () => {
+    membershipFindMany.mockResolvedValue([]);
+    workspaceFindMany.mockResolvedValue([{
+      id: 'workspace-a', name: 'A', createdAt: new Date('2026-01-01T00:00:00Z'),
     }]);
 
     await expect(service.listWorkspaces('owner-a')).resolves.toMatchObject([

@@ -21,6 +21,7 @@ import { WorkspaceStorageService } from './workspace-storage.service';
 
 describe('workspace storage authorization', () => {
   const folderFindMany = jest.fn();
+  const folderCreate = jest.fn();
   const fileFindMany = jest.fn();
   const fileFindFirst = jest.fn();
   const getObject = jest.fn();
@@ -29,8 +30,9 @@ describe('workspace storage authorization', () => {
 
   const service = new WorkspaceStorageService(
     {
-      folder: { findMany: folderFindMany },
+      folder: { findMany: folderFindMany, create: folderCreate },
       storedFile: { findMany: fileFindMany, findFirst: fileFindFirst },
+      auditLog: { create: jest.fn() },
     } as unknown as PrismaService,
     { get: getObject } as unknown as ObjectStorageService,
     { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
@@ -52,8 +54,25 @@ describe('workspace storage authorization', () => {
       folders: [],
       files: [],
     });
+
     expect(fileFindMany).not.toHaveBeenCalled();
   });
+
+  it.each([WorkspaceRole.OWNER, WorkspaceRole.ADMIN])(
+    'allows a %s to create a root shared folder',
+    async (role) => {
+      authorizeWorkspace.mockResolvedValue({ role });
+      folderCreate.mockResolvedValue({
+        id: 'folder-a', name: 'Operations', parentFolderId: null, createdAt: new Date(),
+      });
+
+      await expect(service.createFolder('workspace-a', 'creator-a', 'Operations'))
+        .resolves.toMatchObject({ id: 'folder-a', name: 'Operations' });
+      expect(folderCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: { workspaceId: 'workspace-a', userId: 'creator-a', name: 'Operations', parentFolderId: null },
+      }));
+    },
+  );
 
   it('shows an assigned subfolder at the top level when its parent is inaccessible', async () => {
     authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF });
