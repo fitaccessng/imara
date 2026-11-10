@@ -656,6 +656,46 @@ export function CaptureEventPage() {
   }, [capturedMedia?.url]);
 
   useEffect(() => {
+    if (capturedMedia) return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream || !stream.active) return;
+
+    let active = true;
+    setCameraReady(false);
+    setCameraBusy(true);
+    video.srcObject = stream;
+
+    const markReady = () => {
+      if (!active || video.videoWidth === 0 || video.videoHeight === 0) return;
+      setCameraReady(true);
+      setCameraBusy(false);
+      setCameraError("");
+    };
+    const timeout = window.setTimeout(() => {
+      if (!active || video.videoWidth > 0) return;
+      setCameraReady(false);
+      setCameraBusy(false);
+      setCameraError("The camera preview didn't restart. Tap Allow camera access to try again.");
+    }, 8000);
+    video.addEventListener("loadeddata", markReady);
+    video.addEventListener("playing", markReady);
+    void video.play().then(markReady).catch(() => {
+      if (!active) return;
+      setCameraReady(false);
+      setCameraBusy(false);
+      setCameraError("The camera preview couldn't restart. Tap Allow camera access to try again.");
+    });
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      video.removeEventListener("loadeddata", markReady);
+      video.removeEventListener("playing", markReady);
+    };
+  }, [capturedMedia?.url]);
+
+  useEffect(() => {
     if (!recording) return;
     const updateElapsed = () => {
       const startedAt = recordingStartedAtRef.current;
