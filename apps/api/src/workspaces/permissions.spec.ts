@@ -10,7 +10,7 @@ jest.mock('@nestjs/common', () => {
   };
 });
 
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { WorkspaceMemberStatus, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkspacesService } from './workspaces.service';
@@ -61,10 +61,11 @@ describe('folder permission evaluation', () => {
 
 describe('workspace folder authorization', () => {
   const membershipFindFirst = jest.fn();
+  const membershipFindMany = jest.fn();
   const folderFindFirst = jest.fn();
   const permissionsFindMany = jest.fn();
   const service = new WorkspacesService({
-    workspaceMember: { findFirst: membershipFindFirst },
+    workspaceMember: { findFirst: membershipFindFirst, findMany: membershipFindMany },
     folder: { findFirst: folderFindFirst },
     folderPermission: { findMany: permissionsFindMany },
   } as unknown as PrismaService, {} as never, {} as never);
@@ -125,5 +126,51 @@ describe('workspace folder authorization', () => {
     expect(folderFindFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'business-b-folder', workspaceId: 'workspace-a' },
     }));
+  });
+
+  it('treats the workspace creator as active owner despite a stale member role or status', async () => {
+    membershipFindFirst.mockResolvedValue({
+      id: 'member-owner', userId: 'owner-a', workspaceId: 'workspace-a', role: WorkspaceRole.STAFF,
+      status: WorkspaceMemberStatus.SUSPENDED,
+      workspace: { id: 'workspace-a', name: 'A', ownerUserId: 'owner-a' },
+    });
+    folderFindFirst.mockResolvedValue({ id: 'folder-a', parentFolderId: null, workspaceId: 'workspace-a' });
+
+    await expect(service.authorizeFolder('workspace-a', 'owner-a', 'folder-a', 'createSubfolders'))
+      .resolves.toMatchObject({
+        member: { role: WorkspaceRole.OWNER, status: WorkspaceMemberStatus.ACTIVE },
+      });
+  });
+
+  it('lists the workspace creator as owner regardless of the stored membership role', async () => {
+    membershipFindMany.mockResolvedValue([{
+      role: WorkspaceRole.STAFF,
+      joinedAt: new Date('2026-01-01T00:00:00Z'),
+      workspace: {
+        id: 'workspace-a', name: 'A', createdAt: new Date('2026-01-01T00:00:00Z'),
+        ownerUserId: 'owner-a',
+      },
+    }]);
+
+    await expect(service.listWorkspaces('owner-a')).resolves.toMatchObject([
+      { id: 'workspace-a', role: WorkspaceRole.OWNER },
+    ]);
+  });
+
+  it('prevents removing the creator even when their stored role is not owner', async () => {
+    membershipFindFirst
+      .mockResolvedValueOnce({
+        id: 'member-admin', userId: 'admin-a', workspaceId: 'workspace-a', role: WorkspaceRole.ADMIN,
+        status: WorkspaceMemberStatus.ACTIVE,
+        workspace: { id: 'workspace-a', name: 'A', ownerUserId: 'owner-a' },
+      })
+      .mockResolvedValueOnce({
+        id: 'member-owner', userId: 'owner-a', workspaceId: 'workspace-a', role: WorkspaceRole.STAFF,
+        status: WorkspaceMemberStatus.ACTIVE,
+        workspace: { ownerUserId: 'owner-a' },
+      });
+
+    await expect(service.removeMember('workspace-a', 'member-owner', 'admin-a'))
+      .rejects.toBeInstanceOf(ForbiddenException);
   });
 });

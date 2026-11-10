@@ -48,13 +48,23 @@ export class WorkspacesService {
 
   private async membership(workspaceId: string, userId: string) {
     const membership = await this.prisma.workspaceMember.findFirst({
-      where: { workspaceId, userId, status: WorkspaceMemberStatus.ACTIVE },
+      where: {
+        workspaceId,
+        userId,
+        OR: [
+          { status: WorkspaceMemberStatus.ACTIVE },
+          { workspace: { is: { ownerUserId: userId } } },
+        ],
+      },
       include: { workspace: { select: {
         id: true, name: true, ownerUserId: true, createdAt: true,
         storageLimitBytes: true, storageUsedBytes: true, storageReservedBytes: true,
       } } },
     });
     if (!membership) throw new NotFoundException('Workspace not found');
+    if (membership.workspace.ownerUserId === userId) {
+      return { ...membership, role: WorkspaceRole.OWNER, status: WorkspaceMemberStatus.ACTIVE };
+    }
     return membership;
   }
 
@@ -144,11 +154,27 @@ export class WorkspacesService {
 
   async listWorkspaces(userId: string) {
     const memberships = await this.prisma.workspaceMember.findMany({
-      where: { userId, status: WorkspaceMemberStatus.ACTIVE },
+      where: {
+        userId,
+        OR: [
+          { status: WorkspaceMemberStatus.ACTIVE },
+          { workspace: { is: { ownerUserId: userId } } },
+        ],
+      },
       orderBy: { joinedAt: 'asc' },
-      select: { role: true, joinedAt: true, workspace: { select: { id: true, name: true, createdAt: true } } },
+      select: {
+        role: true,
+        joinedAt: true,
+        workspace: { select: { id: true, name: true, createdAt: true, ownerUserId: true } },
+      },
     });
-    return memberships.map(({ workspace, role, joinedAt }) => ({ ...workspace, role, joinedAt }));
+    return memberships.map(({ workspace, role, joinedAt }) => ({
+      id: workspace.id,
+      name: workspace.name,
+      createdAt: workspace.createdAt,
+      role: workspace.ownerUserId === userId ? WorkspaceRole.OWNER : role,
+      joinedAt,
+    }));
   }
 
   async getWorkspace(workspaceId: string, userId: string) {
@@ -184,13 +210,20 @@ export class WorkspacesService {
   }
 
   async listMembers(workspaceId: string, actorId: string) {
-    await this.requireAdmin(workspaceId, actorId);
+    const actor = await this.requireAdmin(workspaceId, actorId);
     const members = await this.prisma.workspaceMember.findMany({
-      where: { workspaceId, status: { not: WorkspaceMemberStatus.REMOVED } },
+      where: {
+        workspaceId,
+        OR: [
+          { status: { not: WorkspaceMemberStatus.REMOVED } },
+          { userId: actor.workspace.ownerUserId },
+        ],
+      },
       orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }],
       select: {
         id: true, role: true, status: true, joinedAt: true, updatedAt: true, displayName: true,
         user: { select: { id: true, email: true, name: true } },
+        workspace: { select: { ownerUserId: true } },
         _count: { select: { permissions: true } },
         permissions: { select: { folderId: true, effect: true, permissionKeys: true, inherit: true } },
       },
@@ -199,24 +232,41 @@ export class WorkspacesService {
       where: { workspaceId },
       select: { id: true, parentFolderId: true },
     });
-    return members.map(({ permissions, ...member }) => {
+    return members.map(({ permissions, workspace, user, role, status, ...member }) => {
+      const owner = user.id === workspace.ownerUserId;
+      const effectiveRole = owner ? WorkspaceRole.OWNER : role;
+      const effectiveStatus = owner ? WorkspaceMemberStatus.ACTIVE : status;
       const rules: PermissionRule[] = permissions.map((rule) => ({
         folderId: rule.folderId,
         effect: rule.effect,
         permissionKeys: rule.permissionKeys,
         inherit: rule.inherit,
       }));
-      return { ...member, accessibleFolderCount: countAccessibleFolders(member.role, member.status, folders, rules) };
+      return {
+        ...member,
+        user,
+        role: effectiveRole,
+        status: effectiveStatus,
+        accessibleFolderCount: countAccessibleFolders(effectiveRole, effectiveStatus, folders, rules),
+      };
     });
   }
 
   async getMember(workspaceId: string, memberId: string, actorId: string) {
-    await this.requireAdmin(workspaceId, actorId);
+    const actor = await this.requireAdmin(workspaceId, actorId);
     const member = await this.prisma.workspaceMember.findFirst({
-      where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } },
+      where: {
+        workspaceId,
+        id: memberId,
+        OR: [
+          { status: { not: WorkspaceMemberStatus.REMOVED } },
+          { userId: actor.workspace.ownerUserId },
+        ],
+      },
       select: {
         id: true, role: true, status: true, joinedAt: true, updatedAt: true, displayName: true,
         user: { select: { id: true, email: true, name: true } },
+        workspace: { select: { ownerUserId: true } },
         _count: { select: { permissions: true } },
         permissions: { select: { id: true, folderId: true, effect: true, permissionKeys: true, inherit: true, createdAt: true, updatedAt: true } },
       },
@@ -232,7 +282,11 @@ export class WorkspacesService {
       permissionKeys: rule.permissionKeys,
       inherit: rule.inherit,
     }));
-    return { ...member, accessibleFolderCount: countAccessibleFolders(member.role, member.status, folders, rules) };
+    const owner = member.user.id === member.workspace.ownerUserId;
+    const role = owner ? WorkspaceRole.OWNER : member.role;
+    const status = owner ? WorkspaceMemberStatus.ACTIVE : member.status;
+    const { workspace, ...memberDetails } = member;
+    return { ...memberDetails, role, status, accessibleFolderCount: countAccessibleFolders(role, status, folders, rules) };
   }
 
   async listInvitations(workspaceId: string, actorId: string) {
@@ -466,9 +520,14 @@ export class WorkspacesService {
 
   async updateMember(workspaceId: string, memberId: string, actorId: string, role?: WorkspaceRole, displayName?: string) {
     const actor = await this.requireAdmin(workspaceId, actorId);
-    const target = await this.prisma.workspaceMember.findFirst({ where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } } });
+    const target = await this.prisma.workspaceMember.findFirst({
+      where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } },
+      include: { workspace: { select: { ownerUserId: true } } },
+    });
     if (!target) throw new NotFoundException('Workspace member not found');
-    if (target.role === WorkspaceRole.OWNER) throw new ForbiddenException('The owner role cannot be changed');
+    if (target.userId === target.workspace.ownerUserId || target.role === WorkspaceRole.OWNER) {
+      throw new ForbiddenException('The owner role cannot be changed');
+    }
     if (actor.role !== WorkspaceRole.OWNER && (target.role === WorkspaceRole.ADMIN || role === WorkspaceRole.ADMIN || role === WorkspaceRole.OWNER)) {
       throw new ForbiddenException('Only the owner can manage administrator roles');
     }
@@ -495,9 +554,14 @@ export class WorkspacesService {
 
   async suspendMember(workspaceId: string, memberId: string, actorId: string, status: WorkspaceMemberStatus) {
     const actor = await this.requireAdmin(workspaceId, actorId);
-    const target = await this.prisma.workspaceMember.findFirst({ where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } } });
+    const target = await this.prisma.workspaceMember.findFirst({
+      where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } },
+      include: { workspace: { select: { ownerUserId: true } } },
+    });
     if (!target) throw new NotFoundException('Workspace member not found');
-    if (target.role === WorkspaceRole.OWNER || target.userId === actorId) throw new ForbiddenException('Cannot suspend the workspace owner or yourself');
+    if (target.userId === target.workspace.ownerUserId || target.userId === actorId) {
+      throw new ForbiddenException('Cannot suspend the workspace owner or yourself');
+    }
     if (actor.role !== WorkspaceRole.OWNER && target.role === WorkspaceRole.ADMIN) throw new ForbiddenException('Only the owner can manage administrators');
     const updated = status === WorkspaceMemberStatus.ACTIVE && target.status !== WorkspaceMemberStatus.ACTIVE
       ? await this.prisma.$transaction(async (tx) => {
@@ -520,9 +584,14 @@ export class WorkspacesService {
 
   async removeMember(workspaceId: string, memberId: string, actorId: string) {
     const actor = await this.requireAdmin(workspaceId, actorId);
-    const target = await this.prisma.workspaceMember.findFirst({ where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } } });
+    const target = await this.prisma.workspaceMember.findFirst({
+      where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } },
+      include: { workspace: { select: { ownerUserId: true } } },
+    });
     if (!target) throw new NotFoundException('Workspace member not found');
-    if (target.role === WorkspaceRole.OWNER || target.userId === actorId) throw new ForbiddenException('Cannot remove the workspace owner or yourself');
+    if (target.userId === target.workspace.ownerUserId || target.userId === actorId) {
+      throw new ForbiddenException('Cannot remove the workspace owner or yourself');
+    }
     if (actor.role !== WorkspaceRole.OWNER && target.role === WorkspaceRole.ADMIN) throw new ForbiddenException('Only the owner can manage administrators');
     await this.prisma.$transaction(async (tx) => {
       await tx.folderPermission.deleteMany({ where: { workspaceId, memberId } });
@@ -618,19 +687,30 @@ export class WorkspacesService {
 
   async getMemberPermissions(workspaceId: string, memberId: string, actorId: string) {
     await this.requireAdmin(workspaceId, actorId);
-    const member = await this.prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId } });
+    const member = await this.prisma.workspaceMember.findFirst({
+      where: { id: memberId, workspaceId },
+      include: { workspace: { select: { ownerUserId: true } } },
+    });
     if (!member) throw new NotFoundException('Workspace member not found');
     const permissions = await this.prisma.folderPermission.findMany({
       where: { workspaceId, memberId }, orderBy: { createdAt: 'asc' },
       include: { folder: { select: { id: true, name: true, parentFolderId: true } } },
     });
-    return { memberId, role: member.role, permissions };
+    return {
+      memberId,
+      role: member.userId === member.workspace.ownerUserId ? WorkspaceRole.OWNER : member.role,
+      permissions,
+    };
   }
 
   async replaceMemberPermissions(workspaceId: string, memberId: string, actorId: string, rules: WorkspaceMemberFolderRuleDto[]) {
     await this.requireAdmin(workspaceId, actorId);
-    const member = await this.prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId, status: WorkspaceMemberStatus.ACTIVE } });
-    if (!member || member.role === WorkspaceRole.OWNER || member.role === WorkspaceRole.ADMIN) {
+    const member = await this.prisma.workspaceMember.findFirst({
+      where: { id: memberId, workspaceId, status: WorkspaceMemberStatus.ACTIVE },
+      include: { workspace: { select: { ownerUserId: true } } },
+    });
+    if (!member || member.userId === member.workspace.ownerUserId
+      || member.role === WorkspaceRole.OWNER || member.role === WorkspaceRole.ADMIN) {
       throw new NotFoundException('Eligible workspace member not found');
     }
     const uniqueRules = new Set<string>();
@@ -679,8 +759,14 @@ export class WorkspacesService {
   async setFolderPermission(workspaceId: string, folderId: string, actorId: string, dto: SetFolderPermissionDto & { memberId: string }) {
     await this.requireAdmin(workspaceId, actorId);
     await this.folderPath(workspaceId, folderId);
-    const member = await this.prisma.workspaceMember.findFirst({ where: { id: dto.memberId, workspaceId, status: WorkspaceMemberStatus.ACTIVE } });
-    if (!member || member.role === WorkspaceRole.OWNER || member.role === WorkspaceRole.ADMIN) throw new NotFoundException('Eligible workspace member not found');
+    const member = await this.prisma.workspaceMember.findFirst({
+      where: { id: dto.memberId, workspaceId, status: WorkspaceMemberStatus.ACTIVE },
+      include: { workspace: { select: { ownerUserId: true } } },
+    });
+    if (!member || member.userId === member.workspace.ownerUserId
+      || member.role === WorkspaceRole.OWNER || member.role === WorkspaceRole.ADMIN) {
+      throw new NotFoundException('Eligible workspace member not found');
+    }
     if (dto.permissionKeys.some((key) => !/^[A-Za-z][A-Za-z0-9:_-]{0,79}$/.test(key))) throw new BadRequestException('Invalid permission key');
     const result = await this.prisma.$transaction(async (tx) => {
       const permission = await tx.folderPermission.upsert({
@@ -732,7 +818,10 @@ export class WorkspacesService {
 
   async previewFolderPermission(workspaceId: string, folderId: string, actorId: string, memberId: string, permissionKeys: string[], inherit: boolean) {
     await this.requireAdmin(workspaceId, actorId);
-    const member = await this.prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId } });
+    const member = await this.prisma.workspaceMember.findFirst({
+      where: { id: memberId, workspaceId },
+      include: { workspace: { select: { ownerUserId: true } } },
+    });
     if (!member) throw new NotFoundException('Workspace member not found');
     const path = await this.folderPath(workspaceId, folderId);
     const rules = await this.prisma.folderPermission.findMany({
@@ -741,9 +830,10 @@ export class WorkspacesService {
     });
     const candidate: PermissionRule = { folderId, effect: 'GRANT', permissionKeys, inherit };
     const all = [...rules, candidate] as PermissionRule[];
+    const role = member.userId === member.workspace.ownerUserId ? WorkspaceRole.OWNER : member.role;
     return {
       folderId, memberId,
-      permissions: Object.fromEntries(permissionKeys.map((key) => [key, evaluateFolderPermission(member.role, key, path, all)])),
+      permissions: Object.fromEntries(permissionKeys.map((key) => [key, evaluateFolderPermission(role, key, path, all)])),
     };
   }
 
