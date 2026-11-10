@@ -252,6 +252,21 @@ interface AdminUploadMonitoring {
   byStatus: Record<"UPLOADING" | "READY" | "DELETING", number>;
   bySource: Record<"STANDARD" | "SCAN" | "EVENT_MEDIA", number>;
   mimeTypes: Array<{ mimeType: string; readyFileCount: number; readyBytes: string }>;
+  uploads: {
+    items: Array<{
+      id: string;
+      originalName: string;
+      mimeType: string;
+      sizeBytes: string;
+      status: "UPLOADING" | "READY" | "DELETING";
+      uploadSource: "STANDARD" | "SCAN" | "EVENT_MEDIA";
+      createdAt: string;
+      uploader: { id: string; name: string; email: string } | null;
+      workspace: { id: string; name: string } | null;
+      event: { id: string; name: string } | null;
+    }>;
+    page: PageResult<unknown>["page"];
+  };
   notTracked: string[];
 }
 
@@ -905,17 +920,33 @@ function AdminStorageInventory({ role }: { role: AdminRole }) {
 }
 
 function AdminUploadMonitoring() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = Math.max(1, Number(searchParams.get("page")) || 1);
+  const q = searchParams.get("q")?.trim() ?? "";
+  const params = new URLSearchParams({ page: String(page), pageSize: "25" });
+  if (q) params.set("q", q);
   const query = useQuery({
-    queryKey: ["admin-upload-monitoring"],
-    queryFn: () => apiRequest<AdminUploadMonitoring>("/admin/upload-monitoring"),
+    queryKey: ["admin-upload-monitoring", page, q],
+    queryFn: () => apiRequest<AdminUploadMonitoring>(`/admin/upload-monitoring?${params.toString()}`),
   });
   if (query.isPending) return <PageLoading label="Loading upload operations…" />;
   if (query.isError) return <AdminPageState title="Upload monitoring could not load" error={query.error} retry={() => void query.refetch()} />;
   const metrics = query.data;
+  function search(term: string) {
+    const next = new URLSearchParams();
+    if (term) next.set("q", term);
+    setSearchParams(next);
+  }
+  function changePage(nextPage: number) {
+    const next = new URLSearchParams(searchParams);
+    if (nextPage > 1) next.set("page", String(nextPage));
+    else next.delete("page");
+    setSearchParams(next);
+  }
 
   return <div className="admin-page-content">
     <header className="admin-page-heading">
-      <div><span className="admin-eyebrow">OPERATIONS</span><h1>Upload monitoring</h1><p>Current upload states, completed scan uploads, and file-type aggregates from persisted records.</p></div>
+      <div><span className="admin-eyebrow">OPERATIONS</span><h1>Upload monitoring</h1><p>Recent file uploads, uploader accounts, current upload states, and file-type aggregates from persisted records.</p></div>
       <span className="admin-readonly-chip"><ShieldCheck size={13} /> Metadata only</span>
     </header>
     <section className="admin-stat-grid" aria-label="Upload operations summary">
@@ -952,6 +983,30 @@ function AdminUploadMonitoring() {
           <td><strong>{formatBytes(row.readyBytes)}</strong></td>
         </tr>)}</tbody>
       </table></div> : <div className="admin-empty-state"><FileText size={20} /><strong>No ready uploads</strong><span>File types will appear after files are uploaded.</span></div>}
+    </section>
+    <section className="admin-panel">
+      <div className="admin-panel-heading"><div><span className="admin-eyebrow">UPLOAD LOG</span><h2>Recent uploads</h2></div></div>
+      <form className="admin-search-form" onSubmit={(event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        search(String(data.get("search") ?? "").trim());
+      }}>
+        <label className="admin-search-field"><Search size={16} /><input name="search" defaultValue={q} placeholder="Search filename, uploader, workspace, or event" /><button type="submit">Search</button></label>
+      </form>
+      {metrics.uploads.items.length ? <div className="admin-table-wrap"><table className="admin-table">
+        <thead><tr><th>File</th><th>Uploader</th><th>Workspace / event</th><th>Source</th><th>Status</th><th>Size</th><th>Uploaded</th></tr></thead>
+        <tbody>{metrics.uploads.items.map((upload) => <tr key={upload.id}>
+          <td><strong>{upload.originalName}</strong><br /><small>{upload.mimeType}</small></td>
+          <td>{upload.uploader ? <><strong>{upload.uploader.name}</strong><br /><small>{upload.uploader.email}</small></> : "Guest (identity not recorded)"}</td>
+          <td>{upload.workspace?.name ?? upload.event?.name ?? "Personal"}</td>
+          <td>{upload.uploadSource.replace("_", " ")}</td>
+          <td>{upload.status}</td>
+          <td>{formatBytes(upload.sizeBytes)}</td>
+          <td>{formatDate(upload.createdAt)}</td>
+        </tr>)}</tbody>
+      </table></div> : <div className="admin-empty-state"><FileStack size={20} /><strong>No matching uploads</strong><span>Try a different filename, uploader, workspace, or event.</span></div>}
+      <AdminPagination page={metrics.uploads.page} onChange={changePage} />
+      <p className="admin-panel-note">Event-gallery uploads are anonymous in the current data model, so their guest uploader identity is not recorded. This log shows available file metadata only.</p>
     </section>
     <section className="admin-panel">
       <div className="admin-panel-heading"><div><span className="admin-eyebrow">NOT INTEGRATED</span><h2>Unavailable operational signals</h2></div></div>

@@ -617,9 +617,28 @@ export class AdminService {
     };
   }
 
-  async uploadMonitoring(request: PlatformAdminRequest) {
+  async uploadMonitoring(query: AdminPageQueryDto, request: PlatformAdminRequest) {
+    const { skip, take } = pagination(query);
+    const search = query.q?.trim();
+    const where: Prisma.StoredFileWhereInput = search
+      ? {
+          OR: [
+            { originalName: { contains: search, mode: 'insensitive' } },
+            { user: { is: { OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ] } } },
+            { workspace: { is: { name: { contains: search, mode: 'insensitive' } } } },
+            { event: { is: { name: { contains: search, mode: 'insensitive' } } } },
+          ],
+        }
+      : {};
+
     await this.auditRead(request, 'admin.upload-monitoring.read', 'stored-file', {
       metadataOnly: true,
+      page: query.page,
+      pageSize: query.pageSize,
+      searchApplied: Boolean(search),
     });
 
     const staleBefore = new Date(Date.now() - 60 * 60 * 1000);
@@ -630,6 +649,8 @@ export class AdminService {
       totalReady,
       staleProcessing,
       scannedUploads,
+      uploads,
+      totalUploads,
     ] = await Promise.all([
       this.prisma.storedFile.groupBy({
         by: ['status'],
@@ -659,6 +680,26 @@ export class AdminService {
         },
       }),
       this.prisma.storedFile.count({ where: { uploadSource: 'SCAN', ...READY_FILE } }),
+      this.prisma.storedFile.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take,
+        select: {
+          id: true,
+          originalName: true,
+          mimeType: true,
+          sizeBytes: true,
+          status: true,
+          uploadSource: true,
+          createdAt: true,
+          eventId: true,
+          user: { select: { id: true, name: true, email: true } },
+          workspace: { select: { id: true, name: true } },
+          event: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.storedFile.count({ where }),
     ]);
 
     const statusCounts = Object.fromEntries(
@@ -690,6 +731,16 @@ export class AdminService {
         readyFileCount: _count._all,
         readyBytes: (_sum.sizeBytes ?? 0n).toString(),
       })),
+      uploads: {
+        items: uploads.map(({ user, workspace, event, eventId, sizeBytes, ...upload }) => ({
+          ...upload,
+          sizeBytes: sizeBytes.toString(),
+          uploader: eventId ? null : user,
+          workspace,
+          event,
+        })),
+        page: pageMetadata(query, totalUploads),
+      },
       notTracked: [
         'Historical failed uploads',
         'OCR and document-conversion jobs',

@@ -90,8 +90,11 @@ export class AdminController {
 
   @Get('upload-monitoring')
   @RequirePlatformAdminPermission(PlatformAdminPermission.UPLOAD_MONITORING_READ)
-  uploadMonitoring(@Req() request: PlatformAdminRequest) {
-    return this.admin.uploadMonitoring(request);
+  uploadMonitoring(
+    @Query() query: AdminPageQueryDto,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.uploadMonitoring(query, request);
   }
 
   @Get('system-health')

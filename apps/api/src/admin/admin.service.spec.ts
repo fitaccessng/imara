@@ -725,6 +725,7 @@ describe('AdminService event directory', () => {
           gallerySetting: 'PASSCODE',
         },
       });
+
       return { id: 'audit-id' };
     });
     const eventDate = new Date('2026-03-01T10:00:00Z');
@@ -800,6 +801,78 @@ describe('AdminService event directory', () => {
     expect(JSON.stringify(result)).not.toContain('galleryTokenHash');
     expect(JSON.stringify(result)).not.toContain('galleryPasscodeHash');
     expect(JSON.stringify(result)).not.toContain('COMPLETED');
+  });
+});
+
+describe('AdminService upload monitoring', () => {
+  it('returns a paginated, searchable uploader-aware log without storage keys', async () => {
+    const auditCreate = jest.fn().mockResolvedValue({ id: 'audit-id' });
+    const findMany = jest.fn().mockResolvedValue([{
+      id: 'file-id',
+      originalName: 'report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1200n,
+      status: 'READY',
+      uploadSource: 'STANDARD',
+      createdAt: new Date('2026-03-01T10:00:00Z'),
+      eventId: null,
+      user: { id: 'user-id', name: 'Customer', email: 'customer@example.test' },
+      workspace: { id: 'workspace-id', name: 'Studio' },
+      event: null,
+    }]);
+    const storedFile = {
+      groupBy: jest.fn().mockResolvedValue([]),
+      aggregate: jest.fn().mockResolvedValue({
+        _count: { _all: 0 },
+        _sum: { sizeBytes: null },
+      }),
+      count: jest.fn().mockResolvedValue(1),
+      findMany,
+    };
+    const service = new AdminService({
+      platformAdminAuditLog: { create: auditCreate },
+      storedFile,
+    } as unknown as PrismaService);
+
+    const result = await service.uploadMonitoring(
+      { page: 2, pageSize: 5, q: 'report' },
+      makeRequest(),
+    );
+
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'admin.upload-monitoring.read',
+        resourceType: 'stored-file',
+        metadata: { metadataOnly: true, page: 2, pageSize: 5, searchApplied: true },
+      }),
+    }));
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          { originalName: { contains: 'report', mode: 'insensitive' } },
+          { event: { is: { name: { contains: 'report', mode: 'insensitive' } } } },
+        ]),
+      }),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: 5,
+      take: 5,
+    }));
+    expect(result.uploads).toEqual({
+      items: [{
+        id: 'file-id',
+        originalName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: '1200',
+        status: 'READY',
+        uploadSource: 'STANDARD',
+        createdAt: new Date('2026-03-01T10:00:00Z'),
+        uploader: { id: 'user-id', name: 'Customer', email: 'customer@example.test' },
+        workspace: { id: 'workspace-id', name: 'Studio' },
+        event: null,
+      }],
+      page: { page: 2, pageSize: 5, totalItems: 1, totalPages: 1 },
+    });
+    expect(JSON.stringify(result.uploads)).not.toContain('objectKey');
   });
 });
 

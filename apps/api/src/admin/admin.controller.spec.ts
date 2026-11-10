@@ -140,7 +140,8 @@ describe('AdminController', () => {
       .resolves.toBeUndefined();
     await expect(controller.businessDetails('workspace-id', request))
       .resolves.toEqual({ id: 'workspace-id' });
-    await expect(controller.uploadMonitoring(request)).resolves.toEqual({ byStatus: {} });
+    const uploadQuery = { page: 1, pageSize: 25 };
+    await expect(controller.uploadMonitoring(uploadQuery as never, request)).resolves.toEqual({ byStatus: {} });
     await expect(controller.systemHealth(request)).resolves.toEqual({ status: 'healthy' });
     await expect(controller.announcements({ page: 1, pageSize: 10 } as never, request))
       .resolves.toEqual({ items: [], page: {} });
@@ -167,7 +168,7 @@ describe('AdminController', () => {
     expect(adminService.setUserStatus).toHaveBeenCalledWith('user-id', 'SUSPENDED', request);
     expect(adminService.revokeUserSession).toHaveBeenCalledWith('user-id', 'session-id', request);
     expect(adminService.businessDetails).toHaveBeenCalledWith('workspace-id', request);
-    expect(adminService.uploadMonitoring).toHaveBeenCalledWith(request);
+    expect(adminService.uploadMonitoring).toHaveBeenCalledWith(uploadQuery, request);
     expect(adminService.systemHealth).toHaveBeenCalledWith(request);
     expect(supportService.adminList).toHaveBeenCalledWith({ page: 1, pageSize: 10 }, request);
     expect(supportService.adminAgents).toHaveBeenCalledWith(request);
