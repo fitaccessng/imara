@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { useAuth } from "../../auth/AuthProvider";
+import { BrandIdentity } from "../../components/BrandLockup";
 import { ApiError, apiRequest, type User } from "../../lib/api";
 
 const adminLoginSchema = z.object({
@@ -132,8 +133,8 @@ export function AdminLoginPage() {
   return (
     <main className="admin-login-page">
       <section className="admin-login-card" aria-labelledby="admin-login-title">
-        <Link to="/" className="brand-lockup admin-login-brand" aria-label="IMARA home">
-          <span className="brand-mark">i</span>IMARA<span className="brand-dot">.</span>
+        <Link to="/" className="brand-lockup admin-login-brand" aria-label="imara home">
+          <BrandIdentity />
         </Link>
         <span className="admin-login-icon"><KeyRound size={23} /></span>
         <span className="eyebrow">Restricted access</span>

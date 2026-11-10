@@ -36,6 +36,7 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, NavLink, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, apiRequest } from "../../lib/api";
+import { BrandMark, BrandWordmark } from "../../components/BrandLockup";
 import { PlanManagementPage } from "./PlanManagementPage";
 import { SubscriptionManagementPage } from "./SubscriptionManagementPage";
 import { PaymentManagementPage } from "./PaymentManagementPage";
@@ -1493,7 +1494,7 @@ export function AdminDashboard({ identity, onSignOut, signingOut, signOutError }
   return (
     <main className="admin-dashboard">
       <aside className="admin-sidebar">
-        <Link to="/admin" className="admin-brand-lockup"><span>i</span> IMARA <i>ADMIN</i></Link>
+        <Link to="/admin" className="admin-brand-lockup"><BrandMark /><BrandWordmark /> <i>ADMIN</i></Link>
         <div className="admin-sidebar-label">PLATFORM</div>
         <nav className="admin-side-nav" aria-label="Platform administration">
           {links.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `admin-side-link${isActive ? " is-active" : ""}`}>

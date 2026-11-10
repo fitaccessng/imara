@@ -35,6 +35,10 @@ button { color: inherit; }
 
 .brand-lockup { display: inline-flex; align-items: center; gap: 9px; color: var(--navy); font-size: 15px; font-weight: 700; letter-spacing: .14em; }
 .brand-mark { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 50%; background: #1d8a5b; color: white; font-family: var(--serif); font-size: 20px; font-style: italic; font-weight: 400; letter-spacing: 0; }
+.brand-symbol { display: block; width: 19px; height: 30px; flex: none; object-fit: contain; }
+.brand-wordmark { color: inherit; font-size: inherit; font-weight: 750; letter-spacing: .02em; text-transform: lowercase; }
+.landing-brand .brand-symbol { width: 23px; height: 36px; }
+.drive-preview-mark { width: 12px; height: 19px; }
 .brand-dot { margin-left: -8px; color: #55b37e; }
 .brand-lockup-light { color: #fff; }
 
@@ -113,7 +117,7 @@ button { color: inherit; }
 .feature-item p { max-width: 195px; margin: 0; color: rgba(255,255,255,.57); font-size: 11px; line-height: 1.75; }
 .landing-footer { display: flex; min-height: 77px; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255,255,255,.13); padding: 0 7.3%; color: rgba(255,255,255,.51); font-size: 10px; }
 .landing-footer .brand-lockup { font-size: 12px; }
-.landing-footer .brand-mark { width: 22px; height: 22px; font-size: 16px; }
+.landing-footer .brand-symbol { width: 15px; height: 24px; }
 
 /* Authentication */
 .auth-page { display: grid; min-height: 100vh; grid-template-columns: minmax(330px, .86fr) 1.14fr; background: #faf9f5; }
@@ -167,7 +171,7 @@ button { color: inherit; }
 .app-frame { min-height: 100vh; background: #f6f5f0; }
 .sidebar { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; display: flex; width: 248px; flex-direction: column; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-right: 1px solid #e8e8e2; background: #fbfaf6; padding: 25px 16px 14px; }
 .sidebar > .brand-lockup { margin: 0 0 32px 10px; font-size: 13px; }
-.sidebar .brand-mark { width: 25px; height: 25px; font-size: 18px; }
+.sidebar .brand-symbol { width: 16px; height: 25px; }
 .workspace-switcher { display: flex; height: 53px; align-items: center; gap: 10px; border: 1px solid #e8e9e3; border-radius: 4px; padding: 0 9px; color: #7b8888; }
 .workspace-avatar { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 4px; background: #e8ede2; color: #537354; font: 17px var(--serif); }
 .workspace-copy { display: grid; flex: 1; gap: 2px; }
@@ -360,7 +364,7 @@ button { color: inherit; }
   .landing-login { font-size: 11px; }
   .landing-actions .button { min-height: 36px; padding: 0 10px; font-size: 10px; }
   .landing-nav .brand-lockup { gap: 7px; font-size: 12px; }
-  .landing-nav .brand-mark { width: 23px; height: 23px; font-size: 17px; }
+  .landing-nav .brand-symbol { width: 16px; height: 25px; }
   .hero { min-height: auto; grid-template-columns: 1fr; padding: 60px 7% 25px; }
   .hero::before { top: auto; width: 100%; height: 390px; border-top: 1px solid rgba(255,255,255,.1); border-left: 0; }
   .hero-copy { padding-bottom: 0; }
@@ -399,7 +403,7 @@ button { color: inherit; }
 
   .mobile-topbar { position: sticky; z-index: 41; top: 0; display: flex; height: 58px; align-items: center; justify-content: space-between; border-bottom: 1px solid #e8e8e2; background: #fbfaf6; padding: 0 18px; }
   .mobile-topbar .brand-lockup { gap: 7px; font-size: 12px; }
-  .mobile-topbar .brand-mark { width: 23px; height: 23px; font-size: 17px; }
+  .mobile-topbar .brand-symbol { width: 15px; height: 24px; }
   .mobile-menu-toggle { width: 34px; height: 34px; }
   .sidebar { z-index: 40; top: 58px; width: min(280px, 83vw); transform: translateX(-102%); transition: transform .24s ease; box-shadow: 20px 0 45px rgba(20,40,37,.08); }
   .sidebar-open { transform: translateX(0); }
@@ -493,7 +497,7 @@ button { color: inherit; }
 .admin-dashboard { display: grid; min-height: 100vh; grid-template-columns: 238px minmax(0, 1fr); background: #f5f8f6; color: #172b3a; }
 .admin-sidebar { position: sticky; top: 0; display: flex; height: 100vh; flex-direction: column; border-right: 1px solid #e3eae5; background: #fff; padding: 23px 15px 16px; }
 .admin-brand-lockup { display: flex; align-items: center; gap: 7px; padding: 0 7px; color: #102b46; font-size: 15px; font-weight: 850; letter-spacing: -.04em; }
-.admin-brand-lockup > span { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 9px; background: #20ad43; color: #fff; font-size: 18px; }
+.admin-brand-lockup > .brand-symbol { width: 17px; height: 27px; }
 .admin-brand-lockup > i { margin-left: auto; border: 1px solid #dfe9e2; border-radius: 4px; background: #f5faf6; padding: 3px 5px; color: #168d34; font-size: 7px; font-style: normal; letter-spacing: .08em; }
 .admin-sidebar-label { margin: 37px 9px 10px; color: #97a5aa; font-size: 8px; font-weight: 800; letter-spacing: .13em; }
 .admin-side-nav { display: grid; gap: 4px; }
@@ -1716,7 +1720,7 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .public-event-wrap { width: min(440px, 100%); }
 .capture-event-card, .gallery-unlock-card { display: grid; justify-items: center; gap: 14px; border: 1px solid #e5eaf0; border-radius: 18px; background: #fff; padding: 27px; text-align: center; box-shadow: 0 18px 50px rgba(16,43,70,.08); }
 .public-event-brand { display: inline-flex; align-items: center; gap: 7px; color: #102b46; font-size: 13px; font-weight: 700; letter-spacing: -.02em; }
-.public-event-brand .brand-mark { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 7px; background: #20ad43; color: #fff; font-size: 16px; }
+.public-event-brand .brand-symbol { width: 15px; height: 24px; }
 .capture-event-card > .public-event-brand, .gallery-unlock-card > .public-event-brand { margin-bottom: 5px; }
 .public-event-icon { width: 46px; height: 46px; border-radius: 14px; }
 .capture-event-card > .eyebrow, .gallery-unlock-card > .eyebrow { color: #168d34; }
@@ -1738,7 +1742,7 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .capture-camera-shade { position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(180deg,rgba(0,0,0,.54),transparent 25%,transparent 55%,rgba(0,0,0,.76)); }
 .capture-camera-topbar { position: absolute; z-index: 2; top: max(14px, env(safe-area-inset-top)); right: 18px; left: 18px; display: grid; grid-template-columns: 44px minmax(0,1fr) 44px; align-items: center; gap: 12px; }
 .capture-camera-brand, .capture-camera-icon-button { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(255,255,255,.26); border-radius: 50%; background: rgba(12,16,19,.35); color: #fff; backdrop-filter: blur(12px); }
-.capture-camera-brand .brand-mark { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 7px; background: #20ad43; color: #fff; font-size: 16px; }
+.capture-camera-brand .brand-symbol { width: 15px; height: 24px; }
 .capture-camera-event { display: grid; min-width: 0; justify-items: center; gap: 4px; text-align: center; text-shadow: 0 1px 5px rgba(0,0,0,.5); }
 .capture-camera-event span { color: rgba(255,255,255,.7); font-size: 9px; font-weight: 700; letter-spacing: .16em; }
 .capture-camera-event strong { max-width: 100%; overflow: hidden; color: #fff; font-size: 15px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
@@ -1976,7 +1980,7 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 @media (max-width: 480px) {
   .public-header { gap: 8px; }
   .public-header .brand-lockup { gap: 6px; font-size: 12px; }
-  .public-header .brand-mark { width: 23px; height: 23px; font-size: 17px; }
+  .public-header .brand-symbol { width: 14px; height: 22px; }
   .public-header-actions .button { min-height: 34px; padding: 0 8px; font-size: 10px; }
   .page-shell-main { padding-right: 16px; padding-left: 16px; }
   .marketing-page { gap: 25px; }

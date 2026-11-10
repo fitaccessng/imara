@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { BrandIdentity } from "../components/BrandLockup";
 
 type PageShellProps = {
   title: string;
@@ -30,8 +31,8 @@ export function PageShell({ title, description, eyebrow = "IMARA", children }: P
     <div className={`page-shell${isAppPage ? " page-shell-app" : " page-shell-public"}`}>
       {!isAppPage && (
         <header className="public-header">
-          <Link to="/" className="brand-lockup" aria-label="IMARA home">
-            <span className="brand-mark">i</span>IMARA<span className="brand-dot">.</span>
+          <Link to="/" className="brand-lockup" aria-label="imara home">
+            <BrandIdentity />
           </Link>
           <nav className={menuOpen ? "public-nav-open" : ""} aria-label="Main navigation">
             {publicLinks.map((item) => (

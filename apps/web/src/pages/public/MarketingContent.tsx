@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { BrandIdentity } from "../../components/BrandLockup";
 import "./ProductDemos.css";
 
 export type ProductDemoType = "drive" | "sharing" | "event" | "gallery";
@@ -166,7 +167,7 @@ function DriveDemo({ compact }: { compact: boolean }) {
         </div>
         <div className="demo-workspace">
           <aside className="demo-sidebar">
-            <span className="demo-brand"><span>i</span> IMARA</span>
+            <span className="demo-brand"><BrandIdentity /></span>
             <span className="demo-sidebar-active"><Folder size={13} /> Your files</span>
             <span><Users size={13} /> Shared folders</span>
             <span><CalendarDays size={13} /> Events</span>

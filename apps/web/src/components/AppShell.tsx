@@ -29,6 +29,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthProvider";
 import { apiRequest } from "../lib/api";
+import { BrandIdentity } from "./BrandLockup";
 import type { Workspace, WorkspaceNotification } from "../workspaces/types";
 import { workspaceHref } from "../workspaces/types";
 import type { FormEvent, ReactNode } from "react";
@@ -108,7 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="app-frame min-h-screen bg-imara-paper">
       <header className="mobile-topbar">
-        <Link to="/dashboard" className="brand-lockup"><span className="brand-mark">i</span>IMARA</Link>
+        <Link to="/dashboard" className="brand-lockup" aria-label="imara home"><BrandIdentity /></Link>
         <div className="mobile-topbar-actions">
           <button className="icon-button mobile-signout-button" aria-label={signingOut ? "Signing out" : signOutError ? `Sign out failed: ${signOutError}` : "Sign out"} title={signOutError || "Sign out"} onClick={() => void handleSignOut()} disabled={signingOut}>
             <LogOut size={17} />
@@ -119,7 +120,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <aside className={`sidebar ${menuOpen ? "sidebar-open" : ""}`}>
-        <Link to="/dashboard" className="brand-lockup"><span className="brand-mark">i</span>IMARA<span className="brand-dot">.</span></Link>
+        <Link to="/dashboard" className="brand-lockup" aria-label="imara home"><BrandIdentity /></Link>
         <div className="workspace-switcher">
           <div className={`workspace-avatar ${isBusinessPage ? "workspace-avatar-business" : ""}`}>{isBusinessPage ? <BriefcaseBusiness size={15} /> : "P"}</div>
           <div className="workspace-copy"><strong>{isBusinessPage ? workspaceName : "Personal space"}</strong><span>{isBusinessPage ? businessWorkspace ? businessWorkspace.role.toLowerCase() : "Business workspace" : "My workspace"}</span></div>

@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { BrandIdentity, BrandMark } from "../components/BrandLockup";
 
 const photos = {
   wedding:
@@ -85,13 +86,10 @@ function Brand() {
   return (
     <Link
       to="/"
-      className="flex items-center gap-2 text-[25px] font-extrabold tracking-[-1.5px] text-[#102B46]"
-      aria-label="IMARA home"
+      className="landing-brand flex items-center gap-2 text-[25px] font-extrabold tracking-[-1.5px] text-[#102B46]"
+      aria-label="imara home"
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#20AD43] text-xl text-white">
-        i
-      </span>
-      IMARA<span className="-ml-2 text-[#20AD43]">.</span>
+      <BrandIdentity />
     </Link>
   );
 }
@@ -108,7 +106,7 @@ function DrivePreview() {
     <div className="overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white shadow-[0_25px_70px_rgba(16,43,70,0.12)]">
       <div className="flex items-center justify-between border-b border-[#EEF1F5] px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#20AD43] text-xs font-bold text-white">i</div>
+          <BrandMark className="drive-preview-mark" />
           <span className="text-sm font-bold text-[#102B46]">IMARA Drive</span>
         </div>
         <div className="flex items-center gap-2">

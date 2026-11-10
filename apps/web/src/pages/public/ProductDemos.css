@@ -74,7 +74,7 @@
 .demo-sidebar > span:not(.demo-brand) { display: flex; align-items: center; gap: 5px; padding: 6px 5px; white-space: nowrap; }
 .demo-sidebar .demo-sidebar-active { border-radius: 5px; background: #eef8f0; color: #168d34; font-weight: 700; }
 .demo-brand { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; color: #102b46; font-size: 10px; font-weight: 800; }
-.demo-brand > span { display: grid; width: 17px; height: 17px; place-items: center; border-radius: 5px; background: #20ad43; color: #fff; font-size: 11px; }
+.demo-brand .brand-symbol { width: 10px; height: 16px; }
 .demo-main { min-width: 0; padding: 13px 15px 11px; }
 .demo-search { display: flex; height: 24px; align-items: center; gap: 6px; border: 1px solid #e6ece8; border-radius: 5px; padding: 0 8px; color: #9aa6ad; font-size: 8px; }
 .demo-breadcrumb { display: flex; align-items: center; gap: 3px; margin: 12px 0 8px; color: #8895a0; font-size: 8px; }
@@ -208,7 +208,7 @@
   .demo-workspace { grid-template-columns: 65px minmax(0, 1fr); min-height: 228px; }
   .demo-sidebar > span:not(.demo-brand) { gap: 3px; padding: 5px 2px; font-size: 6px; }
   .demo-brand { gap: 3px; font-size: 8px; }
-  .demo-brand > span { width: 14px; height: 14px; }
+  .demo-brand .brand-symbol { width: 9px; height: 14px; }
   .demo-file-row { grid-template-columns: minmax(0, 1fr) 29px 27px; font-size: 7px; }
   .demo-file-row > span:first-child { gap: 3px; }
   .demo-file-row > span:first-child svg { width: 12px; }

@@ -27,6 +27,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError, apiBlob, apiRequest, downloadFile } from "../lib/api";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
+import { BrandIdentity, BrandMark } from "../components/BrandLockup";
 import { PlanLimitMessage } from "../components/PlanLimitMessage";
 
 type GallerySetting = "PRIVATE" | "LINK_PUBLIC" | "PASSCODE";
@@ -945,7 +946,7 @@ export function CaptureEventPage() {
             </div>
             <div className="capture-camera-shade" />
             <header className="capture-camera-topbar">
-              <Link to="/" className="capture-camera-brand" aria-label="IMARA home"><span className="brand-mark">i</span></Link>
+              <Link to="/" className="capture-camera-brand" aria-label="imara home"><BrandMark /></Link>
               <div className="capture-camera-event"><span>SHARED EVENT</span><strong>{eventQuery.data.name}</strong></div>
               {cameraReady ? (
                 <button type="button" className="capture-camera-icon-button" aria-label="Switch camera" title="Switch camera" disabled={recording || recordingStarting} onClick={() => void switchCamera()}><SwitchCamera size={20} /></button>
@@ -1057,7 +1058,7 @@ export function EventGalleryPage() {
     return (
       <PublicEventState>
         <form className="gallery-unlock-card" onSubmit={(event) => void unlock(event)}>
-          <div className="public-event-brand"><span className="brand-mark">i</span> IMARA</div>
+          <div className="public-event-brand"><BrandIdentity /></div>
           <div className="public-event-icon"><LockKeyhole size={22} /></div>
           <span className="eyebrow">A PRIVATE COLLECTION</span>
           <h1>Enter the passcode.</h1>
@@ -1076,7 +1077,7 @@ export function EventGalleryPage() {
   const { event, media } = galleryQuery.data;
   return (
     <main className="public-gallery-page">
-      <header className="public-gallery-header"><Link to="/" className="public-event-brand"><span className="brand-mark">i</span> IMARA</Link><span><LockKeyhole size={14} /> Shared privately</span></header>
+      <header className="public-gallery-header"><Link to="/" className="public-event-brand" aria-label="imara home"><BrandIdentity /></Link><span><LockKeyhole size={14} /> Shared privately</span></header>
       <section className="public-gallery-intro">
         <span className="eyebrow">A SHARED COLLECTION</span>
         <h1>{event.name}</h1>
