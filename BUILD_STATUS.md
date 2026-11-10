@@ -13,8 +13,8 @@
 - Responsive public pages, account settings, login/register/recovery/verification
   routes, protected dashboard, and backend-connected session management
 - Setup instructions and API contract documentation
-- Phase 2 private file library backed by the persistent HivePod filesystem by default,
-  with an optional S3-compatible DockHive Hive Buckets driver:
+- Phase 2 private file library backed by an authenticated storage service on a
+  persistent HivePod by default, with an optional S3-compatible DockHive Hive Buckets driver:
   authenticated upload/download/delete, persisted metadata, and folder create/rename/delete
 - Atomic PostgreSQL quota reservations and accounting for used, in-flight, and available
   storage; dashboard counts now reflect saved files
@@ -34,8 +34,7 @@
   registration, verification, resend, and password recovery
 - PostgreSQL (`DATABASE_URL`) for persisted API operation
 - Persistent HivePod storage (`OBJECT_STORAGE_DRIVER=hivepod`,
-  `HIVEPOD_STORAGE_DIR=/data/imara`) for production file operations; the storage path
-  must be mounted as persistent, readable, and writable pod storage
+  `HIVEPOD_STORAGE_URL`, and `HIVEPOD_STORAGE_TOKEN`) for production file operations
 
 ## Validation
 

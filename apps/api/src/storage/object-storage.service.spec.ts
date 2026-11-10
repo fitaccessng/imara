@@ -10,7 +10,7 @@ jest.mock('@nestjs/common', () => ({
 import { ServiceUnavailableException } from '@nestjs/common';
 import { ObjectStorageService } from './object-storage.service';
 
-describe('ObjectStorageService filesystem drivers', () => {
+describe('ObjectStorageService drivers', () => {
   const originalEnvironment = { ...process.env };
   let directory: string;
   let storage: ObjectStorageService;
@@ -20,10 +20,13 @@ describe('ObjectStorageService filesystem drivers', () => {
     process.env.NODE_ENV = 'test';
     process.env.OBJECT_STORAGE_DRIVER = 'local';
     process.env.OBJECT_STORAGE_LOCAL_DIR = directory;
+    delete process.env.HIVEPOD_STORAGE_URL;
+    delete process.env.HIVEPOD_STORAGE_TOKEN;
     storage = new ObjectStorageService();
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     await rm(directory, { recursive: true, force: true });
   });
 
@@ -65,36 +68,74 @@ describe('ObjectStorageService filesystem drivers', () => {
     });
   });
 
-  it('uses the mounted HivePod directory in production', async () => {
+  it('reports HivePod storage as not configured without a URL and service token', async () => {
     process.env.NODE_ENV = 'production';
     process.env.OBJECT_STORAGE_DRIVER = 'hivepod';
-    process.env.HIVEPOD_STORAGE_DIR = directory;
+    delete process.env.HIVEPOD_STORAGE_URL;
+    delete process.env.HIVEPOD_STORAGE_TOKEN;
 
-    await storage.assertConfigured();
-    await storage.put('user-id/file.bin', Buffer.from('persistent'), 'application/octet-stream');
-    const stored = await storage.get('user-id/file.bin');
-    const chunks: Buffer[] = [];
-    for await (const chunk of stored.body) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-
-    expect(Buffer.concat(chunks).toString()).toBe('persistent');
+    await expect(storage.assertConfigured()).rejects.toBeInstanceOf(ServiceUnavailableException);
     await expect(storage.healthCheck()).resolves.toEqual({
-      status: 'healthy',
+      status: 'not-configured',
       driver: 'hivepod',
     });
   });
 
-  it('does not create an unmounted HivePod directory', async () => {
+  it('stores, reads, and deletes files through the authenticated HivePod service', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch');
+    const token = 'a'.repeat(64);
     process.env.NODE_ENV = 'production';
     process.env.OBJECT_STORAGE_DRIVER = 'hivepod';
-    process.env.HIVEPOD_STORAGE_DIR = path.join(directory, 'missing-mount');
+    process.env.HIVEPOD_STORAGE_URL = 'https://storage.example.test';
+    process.env.HIVEPOD_STORAGE_TOKEN = token;
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }))
+      .mockResolvedValueOnce(new Response(Buffer.from('remote file'), {
+        status: 200,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    await expect(storage.assertConfigured()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await storage.assertConfigured();
+    await storage.put('user-id/workspaces/workspace-id/file-id', Buffer.from('upload'), 'text/plain');
+    const result = await storage.get('user-id/workspaces/workspace-id/file-id');
+    const chunks: Buffer[] = [];
+    for await (const chunk of result.body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    await storage.delete('user-id/workspaces/workspace-id/file-id');
+
+    expect(Buffer.concat(chunks).toString()).toBe('remote file');
+    expect(result.contentType).toBe('application/octet-stream');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://storage.example.test/objects/user-id/workspaces/workspace-id/file-id',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'text/plain',
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      'https://storage.example.test/objects/user-id/workspaces/workspace-id/file-id',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('requires an HTTPS HivePod URL and a 32-byte hex service token in production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.OBJECT_STORAGE_DRIVER = 'hivepod';
+    process.env.HIVEPOD_STORAGE_URL = 'http://storage.example.test';
+    process.env.HIVEPOD_STORAGE_TOKEN = 'short';
+
+    await expect(storage.assertConfigured()).rejects.toThrow('valid HTTPS base URL');
     await expect(storage.healthCheck()).resolves.toEqual({
-      status: 'unavailable',
+      status: 'not-configured',
       driver: 'hivepod',
-      errorCode: 'ENOENT',
     });
   });
 

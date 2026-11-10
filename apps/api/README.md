@@ -197,13 +197,17 @@ delivery status.
 
 ## Object storage configuration
 
-The production HivePod storage driver writes file objects to a mounted persistent
-directory. Set `OBJECT_STORAGE_DRIVER=hivepod` and
-`HIVEPOD_STORAGE_DIR=/data/imara`, and attach a persistent, readable and writable
-mount at that path. The API checks that the mount exists before accepting uploads
-and does not create a missing mount root, so a misconfigured pod cannot silently
-store files on ephemeral disk. Health checks report the active driver and whether
-its storage is available.
+The production HivePod storage driver sends objects over authenticated HTTPS to
+the storage service running on the `imara-documents` pod. Set
+`OBJECT_STORAGE_DRIVER=hivepod`, `HIVEPOD_STORAGE_URL` to that pod's exposed
+HTTPS address, and `HIVEPOD_STORAGE_TOKEN` to the same random 32-byte hex token
+configured on the pod. The service stores data under
+`/home/hivepod/data/imara-storage/objects`, which is on the pod's persistent
+volume. Install `hivepod-storage-server.py` and `hivepod-storage-run.sh` in
+`/home/hivepod/data/imara-storage` on the pod, set its startup command to
+`sh /home/hivepod/data/imara-storage/run.sh`, configure `PORT=8080` and the
+shared token there, apply the changes, and expose port 8080 over HTTPS. Health
+checks verify the authenticated storage service is reachable.
 
 The optional `OBJECT_STORAGE_DRIVER=s3` uses DockHive Hive Buckets through the
 S3-compatible API. Configure `DOCKHIVE_S3_ENDPOINT`, `DOCKHIVE_BUCKET`,

@@ -42,12 +42,13 @@ when `NODE_ENV` is `development` or `test`.
 Printed links contain usable one-time tokens, so keep local API logs private.
 For local photo/video uploads, use `OBJECT_STORAGE_DRIVER=local`; files are kept
 under the ignored `apps/api/.local-object-storage/` directory. This driver is
-rejected outside development/test. In production on a HivePod, set
-`OBJECT_STORAGE_DRIVER=hivepod` and `HIVEPOD_STORAGE_DIR=/data/imara`, and mount a
-persistent, read/write directory at that path. The API will not create the mount
-root if it is missing, preventing uploads from silently landing on ephemeral
-pod storage. The S3-compatible `OBJECT_STORAGE_DRIVER=s3` remains available when
-Hive Buckets are operational.
+rejected outside development/test. In production, the API uses
+`OBJECT_STORAGE_DRIVER=hivepod` to send objects over authenticated HTTPS to a
+small service running on the `imara-documents` HivePod. That service writes to
+the pod's persistent `/home/hivepod/data/imara-storage/objects` volume. The API
+requires `HIVEPOD_STORAGE_URL` and a private `HIVEPOD_STORAGE_TOKEN`; the
+S3-compatible `OBJECT_STORAGE_DRIVER=s3` remains available when Hive Buckets are
+operational.
 For real email delivery, use `EMAIL_DELIVERY=smtp` and configure
 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`. The
 console mode is not used in production.
