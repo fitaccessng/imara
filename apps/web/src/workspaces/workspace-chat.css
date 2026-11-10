@@ -29,7 +29,7 @@
 .workspace-chat-heading h1 {
   margin: 8px 0 7px;
   color: #284b41;
-  font: 400 clamp(29px, 3vw, 39px)/1.12 Georgia, "Times New Roman", serif;
+  font: 600 clamp(29px, 3vw, 39px)/1.12 var(--font-sans);
   letter-spacing: -.035em;
 }
 
@@ -95,7 +95,7 @@
 .chat-sidebar-top h2 {
   margin: 5px 0 0;
   color: #2f4d42;
-  font: 400 22px/1.1 Georgia, "Times New Roman", serif;
+  font: 600 22px/1.1 var(--font-sans);
 }
 
 .chat-icon-button {
@@ -177,7 +177,7 @@
   border-radius: 50%;
   background: #e9f0e5;
   color: #52745c;
-  font: 400 11px Georgia, "Times New Roman", serif;
+  font: 400 11px var(--font-sans);
 }
 
 .chat-room-avatar {
@@ -386,7 +386,7 @@
 .chat-thread-header h2 {
   margin: 4px 0 0;
   color: #355347;
-  font: 400 18px/1.15 Georgia, "Times New Roman", serif;
+  font: 600 18px/1.15 var(--font-sans);
 }
 
 .chat-thread-people {
@@ -581,7 +581,7 @@
 .chat-thread-empty h2 {
   margin: 0;
   color: #526b57;
-  font: 400 17px Georgia, "Times New Roman", serif;
+  font: 600 17px var(--font-sans);
 }
 
 .chat-empty-thread p,
@@ -777,7 +777,7 @@
 
 .chat-file-picker-head strong {
   color: #3c5947;
-  font: 400 17px Georgia, "Times New Roman", serif;
+  font: 600 17px var(--font-sans);
 }
 
 .chat-file-results {

@@ -47,7 +47,7 @@
 }
 
 .signature-hero-copy .eyebrow { color: #b7c8a9; font-size: 9px; letter-spacing: .2em; }
-.signature-hero h1 { margin: 14px 0 9px; color: #fffaf0; font: 400 clamp(34px, 4.2vw, 51px)/1.07 Georgia, "Times New Roman", serif; letter-spacing: -.04em; }
+.signature-hero h1 { margin: 14px 0 9px; color: #fffaf0; font: 600 clamp(34px, 4.2vw, 51px)/1.07 var(--font-sans); letter-spacing: -.04em; }
 .signature-hero h1 em { color: #d3dd9c; font-weight: 400; }
 .signature-hero-copy > p { max-width: 500px; margin: 0; color: rgba(245, 242, 233, .72); font-size: 13px; line-height: 1.7; }
 
@@ -71,7 +71,7 @@
 .signature-stats > div { display: grid; gap: 4px; padding: 0 18px; border-left: 1px solid rgba(245, 242, 233, .17); }
 .signature-stats > div:first-child { padding-left: 0; border-left: 0; }
 .signature-stats > div > span { color: rgba(245, 242, 233, .58); font-size: 8px; font-weight: 700; letter-spacing: .16em; }
-.signature-stats strong { color: #fffaf0; font: 400 24px/1 Georgia, "Times New Roman", serif; }
+.signature-stats strong { color: #fffaf0; font: 600 24px/1 var(--font-sans); }
 .signature-stats small { display: inline-flex; align-items: center; gap: 5px; color: rgba(245, 242, 233, .62); font-size: 9px; }
 .signature-stats small svg { color: #c1d197; }
 
@@ -80,7 +80,7 @@
 .signature-panel-heading { display: flex; align-items: center; gap: 11px; }
 .signature-panel-icon { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border: 1px solid #dce7d7; border-radius: 50%; background: #f1f5ec; color: #668967; }
 .signature-panel-heading .eyebrow { color: #829478; font-size: 8px; }
-.signature-panel-heading h2 { margin: 3px 0 0; color: #315244; font: 400 20px/1.2 Georgia, "Times New Roman", serif; }
+.signature-panel-heading h2 { margin: 3px 0 0; color: #315244; font: 600 20px/1.2 var(--font-sans); }
 .signature-panel-intro { margin: 13px 0 19px; color: #839087; font-size: 11px; line-height: 1.6; }
 .signature-form { display: grid; gap: 15px; }
 .signature-form .form-field { display: grid; gap: 7px; color: #52675d; font-size: 11px; font-weight: 650; }
@@ -105,14 +105,14 @@
 .signature-muted { color: #839087; font-size: 11px; }
 .signature-inline-error { border: 1px solid #eed9d2; border-radius: 3px; background: #fff8f6; padding: 10px; color: #8c4c3b; font-size: 10px; }
 .signature-list-empty { display: grid; min-height: 165px; justify-items: center; align-content: center; gap: 8px; color: #7d9a79; text-align: center; }
-.signature-list-empty strong { color: #476254; font: 400 16px Georgia, "Times New Roman", serif; }
+.signature-list-empty strong { color: #476254; font: 600 16px var(--font-sans); }
 .signature-list-empty span { color: #8a968e; font-size: 10px; }
 .signature-request-list { display: grid; gap: 6px; max-height: 470px; overflow: auto; }
 .signature-request-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; border: 1px solid #e5e9e2; border-radius: 3px; background: #fff; padding: 12px 37px 11px 12px; text-align: left; cursor: pointer; transition: background .16s, border-color .16s; }
 .signature-request-row:hover { border-color: #cbd9c5; background: #f8faf5; }
 .signature-request-row.is-selected { border-color: #b6cba9; background: #f1f6ec; }
 .signature-request-file { display: flex; min-width: 0; align-items: center; gap: 8px; color: #7d9a79; }
-.signature-request-file > strong { overflow: hidden; color: #365447; font: 400 13px/1.35 Georgia, "Times New Roman", serif; text-overflow: ellipsis; white-space: nowrap; }
+.signature-request-file > strong { overflow: hidden; color: #365447; font: 600 13px/1.35 var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
 .signature-request-row > small { grid-column: 1 / -1; color: #87958a; font-size: 9px; }
 .signature-status { align-self: center; border: 1px solid #e4e9e1; border-radius: 999px; background: #f7f8f5; padding: 4px 7px; color: #79877d; font-size: 8px; font-weight: 700; text-transform: capitalize; }
 .signature-status-pending, .signature-status-finalizing { border-color: #e7dab3; background: #faf6e9; color: #8c7138; }
@@ -120,7 +120,7 @@
 .signature-status-declined, .signature-status-cancelled { border-color: #ead4d0; background: #fbf0ee; color: #9b645a; }
 .signature-request-arrow { position: absolute; top: 50%; right: 12px; color: #8a9a88; transform: translateY(-50%); }
 .signature-detail-panel { display: grid; gap: 14px; margin-top: 1px; }
-.signature-detail-panel h2 { margin: 6px 0; color: #315244; font: 400 24px/1.2 Georgia, "Times New Roman", serif; overflow-wrap: anywhere; }
+.signature-detail-panel h2 { margin: 6px 0; color: #315244; font: 600 24px/1.2 var(--font-sans); overflow-wrap: anywhere; }
 .signature-detail-panel > div:first-child > div:first-child > p { margin: 0; color: #839087; font-size: 10px; }
 .signature-detail-panel ol { display: grid; align-content: start; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .signature-detail-panel ol > li { border: 1px solid #e3e9e0; border-radius: 3px; background: #fff; padding: 11px; color: #63756a; font-size: 10px; }

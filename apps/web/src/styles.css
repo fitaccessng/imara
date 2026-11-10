@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 :root {
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-sans);
   color: #172b3a;
   background: #f7f9fc;
   font-synthesis: none;
@@ -21,6 +21,7 @@
   --paper: #f7f9fc;
   --muted: #718096;
   --line: #e5eaf0;
+  --font-sans: "Inter", sans-serif;
   --serif: "Inter", sans-serif;
 }
 
@@ -225,7 +226,7 @@ button { color: inherit; }
 .ring-center svg { opacity: .72; }
 .ring-center span { font-size: 12px; font-weight: 700; }
 .storage-copy > strong { color: #1e3c46; font: 26px var(--serif); }
-.storage-copy > strong span { color: #82908c; font: 11px "DM Sans", sans-serif; }
+.storage-copy > strong span { color: #82908c; font: 11px var(--font-sans); }
 .storage-copy > p { margin: 4px 0 13px; color: #88938f; font-size: 10px; }
 .storage-available { display: flex; align-items: center; gap: 6px; color: #547561; font-size: 9px; }
 .storage-available i, .plan-dot { width: 6px; height: 6px; border-radius: 50%; background: #299460; }
@@ -1194,7 +1195,7 @@ button { color: inherit; }
 
 /* Unified IMARA product system */
 :root {
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-sans);
   color: #172b3a;
   background: #f7f9fc;
   --navy: #102b46;
@@ -1207,7 +1208,7 @@ button { color: inherit; }
   --serif: "Inter", sans-serif;
 }
 
-body, button, input, select, textarea { font-family: "Inter", sans-serif; }
+body, button, input, select, textarea { font-family: var(--font-sans); }
 body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .app-frame, .page-content { background: #f7f9fc; }
 .brand-mark { background: #20ad43; font-family: "Inter", sans-serif; font-style: normal; font-size: 15px; font-weight: 700; }
@@ -1522,8 +1523,8 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .office-sheet-grid td input { width: 100%; min-width: 90px; height: 30px; border: 1px solid #b9d9c1; border-radius: 3px; outline: 0; padding: 0 5px; color: #172b3a; font: inherit; }
 .office-document-preview { display: flex; flex-direction: column; overflow: auto; background: #fff; padding: 0 clamp(18px, 7vw, 72px) 24px; color: #172b3a; }
 .office-document-preview > .office-preview-toolbar { position: sticky; top: 0; z-index: 2; margin: 0 calc(clamp(18px, 7vw, 72px) * -1) 20px; }
-.office-document-preview > p:not(.office-preview-hint) { margin: 0 0 12px; font-family: Georgia, serif; font-size: 15px; line-height: 1.65; white-space: pre-wrap; }
-.office-document-preview > textarea { width: 100%; min-height: 78px; resize: vertical; border: 1px solid #d5e0e9; border-radius: 6px; margin: 0 0 12px; outline: 0; padding: 10px 12px; color: #172b3a; font: 14px/1.6 Georgia, serif; }
+.office-document-preview > p:not(.office-preview-hint) { margin: 0 0 12px; font-family: var(--font-sans); font-size: 15px; line-height: 1.65; white-space: pre-wrap; }
+.office-document-preview > textarea { width: 100%; min-height: 78px; resize: vertical; border: 1px solid #d5e0e9; border-radius: 6px; margin: 0 0 12px; outline: 0; padding: 10px 12px; color: #172b3a; font: 14px/1.6 var(--font-sans); }
 .office-document-preview > textarea:focus { border-color: #20ad43; box-shadow: 0 0 0 3px rgba(32,173,67,.1); }
 .office-document-preview .office-preview-hint { margin: 20px calc(clamp(18px, 7vw, 72px) * -1) -24px; }
 .office-slide-preview { display: flex; flex-direction: column; align-items: center; gap: 18px; overflow: auto; padding: 0 24px 24px; }

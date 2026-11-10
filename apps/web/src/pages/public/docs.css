@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap");
-
 .imara-docs {
   --guide-ink: #17241d;
   --guide-muted: #727d73;
@@ -10,7 +8,7 @@
   margin: 0 auto;
   padding: 6px 0 64px;
   color: var(--guide-ink);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-sans);
 }
 
 .imara-docs *,
@@ -68,7 +66,7 @@
   max-width: 600px;
   margin: 29px 0 15px;
   color: #fbf8ed;
-  font: 400 clamp(46px, 6vw, 75px)/.98 "DM Serif Display", Georgia, serif;
+  font: 600 clamp(46px, 6vw, 75px)/.98 var(--font-sans);
   letter-spacing: -.035em;
 }
 
@@ -150,7 +148,7 @@
 }
 
 .docs-search:focus-within { border-color: #318454; box-shadow: 0 0 0 3px rgba(49, 132, 84, .1); }
-.docs-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--guide-ink); font: 12px "DM Sans", sans-serif; }
+.docs-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--guide-ink); font: 12px var(--font-sans); }
 .docs-search input::placeholder { color: #9aa49a; }
 .docs-section-count { color: #788378; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 
@@ -168,7 +166,7 @@
 .docs-chapter-heading { margin: 0 0 20px; padding: 0 0 17px; border-bottom: 1px solid var(--guide-line); }
 .docs-chapter-heading > span { color: #347b50; font-size: 8px; font-weight: 700; letter-spacing: .15em; }
 .docs-chapter-heading > span i { padding: 0 5px; color: #a4aea2; font-style: normal; }
-.docs-chapter-heading h2 { margin: 9px 0 7px; color: #182b20; font: 400 clamp(28px, 3.4vw, 38px)/1.1 "DM Serif Display", Georgia, serif; letter-spacing: -.02em; }
+.docs-chapter-heading h2 { margin: 9px 0 7px; color: #182b20; font: 600 clamp(28px, 3.4vw, 38px)/1.1 var(--font-sans); letter-spacing: -.02em; }
 .docs-chapter-heading p { max-width: 690px; margin: 0; color: #707c72; font-size: 11px; line-height: 1.8; }
 
 .docs-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
@@ -176,7 +174,7 @@
 .docs-card:hover { border-color: #b9d1bc; box-shadow: 0 10px 24px rgba(25, 55, 34, .05); transform: translateY(-2px); }
 .docs-card-heading { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 13px; }
 .docs-card-heading > span { display: grid; width: 31px; height: 31px; flex: 0 0 31px; place-items: center; background: #eaf1e7; color: #36734b; }
-.docs-card-heading h3 { margin: 1px 0 0; color: #25372a; font: 600 11px/1.5 "DM Sans", sans-serif; }
+.docs-card-heading h3 { margin: 1px 0 0; color: #25372a; font: 600 11px/1.5 var(--font-sans); }
 .docs-card ul { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .docs-card li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 7px; color: #68746a; font-size: 10px; line-height: 1.75; }
 .docs-point-number { padding-top: 2px; color: #9aab9b; font-size: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -187,13 +185,13 @@
 
 .docs-no-results { padding: 55px 20px; border: 1px dashed #cbd4c8; background: #f6f5ee; color: #758075; text-align: center; }
 .docs-no-results > svg { color: #598064; }
-.docs-no-results strong { display: block; margin-top: 13px; color: #263a2b; font: 400 21px "DM Serif Display", Georgia, serif; }
+.docs-no-results strong { display: block; margin-top: 13px; color: #263a2b; font: 600 21px var(--font-sans); }
 .docs-no-results p { font-size: 10px; }
-.docs-no-results button { margin-top: 8px; padding: 10px 15px; border: 0; background: #1d5b39; color: #fff; font: 600 10px "DM Sans", sans-serif; cursor: pointer; }
+.docs-no-results button { margin-top: 8px; padding: 10px 15px; border: 0; background: #1d5b39; color: #fff; font: 600 10px var(--font-sans); cursor: pointer; }
 .docs-no-results button:hover { background: #2c7449; }
 
 .docs-next { display: flex; align-items: center; justify-content: space-between; gap: 30px; padding: 27px 30px; border: 1px solid #dce1d7; background: #f1f1e8; }
-.docs-next h2 { margin: 8px 0 6px; color: #203327; font: 400 26px "DM Serif Display", Georgia, serif; }
+.docs-next h2 { margin: 8px 0 6px; color: #203327; font: 600 26px var(--font-sans); }
 .docs-next p { max-width: 450px; margin: 0; color: #718074; font-size: 10px; line-height: 1.7; }
 .docs-next-links { display: flex; flex-wrap: wrap; gap: 16px; }
 .docs-next-links a { display: inline-flex; align-items: center; gap: 6px; color: #276843; font-size: 9px; font-weight: 700; }

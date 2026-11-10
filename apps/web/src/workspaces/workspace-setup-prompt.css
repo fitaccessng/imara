@@ -93,7 +93,7 @@
 }
 
 .workspace-setup-copy .eyebrow { color: #829478; font-size: 9px; }
-.workspace-setup-copy h1 { margin: 13px 0 11px; color: #284b41; font: 400 clamp(28px, 3.2vw, 40px)/1.12 Georgia, "Times New Roman", serif; letter-spacing: -.035em; }
+.workspace-setup-copy h1 { margin: 13px 0 11px; color: #284b41; font: 600 clamp(28px, 3.2vw, 40px)/1.12 var(--font-sans); letter-spacing: -.035em; }
 .workspace-setup-copy > p { max-width: 440px; margin: 0; color: #7d8c80; font-size: 13px; line-height: 1.75; }
 .workspace-setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 21px; margin-top: 25px; }
 .workspace-setup-cta { display: inline-flex; min-height: 43px; align-items: center; gap: 12px; border-radius: 3px; background: #315d43; padding: 0 16px; color: #fff; font-size: 12px; font-weight: 650; transition: background .16s, transform .16s; }

@@ -20,7 +20,7 @@
 
 .reminders-heading h1 {
   margin: 7px 0 5px;
-  font: 500 clamp(32px, 4vw, 46px)/1.05 Georgia, "Times New Roman", serif;
+  font: 600 clamp(32px, 4vw, 46px)/1.05 var(--font-sans);
   letter-spacing: -.045em;
 }
 
@@ -35,14 +35,14 @@
 .reminder-overview > div { position: relative; display: grid; min-height: 96px; grid-template-columns: 35px minmax(0, 1fr); align-content: center; align-items: center; gap: 2px 11px; background: #fff; padding: 13px 17px; }
 .reminder-overview-mark { display: grid; width: 33px; height: 33px; grid-row: span 3; place-items: center; border: 1px solid #e6ede3; border-radius: 8px; background: #f5f8f3; color: #638369; }
 .reminder-overview-label { color: #909b92; font-size: 8px; font-weight: 750; letter-spacing: .13em; }
-.reminder-overview strong { color: #304c39; font: 500 23px/1 Georgia, "Times New Roman", serif; }
+.reminder-overview strong { color: #304c39; font: 600 23px/1 var(--font-sans); }
 .reminder-overview small { color: #929b93; font-size: 9px; }
 
 .reminder-planner { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(290px, .9fr); overflow: hidden; min-height: 575px; border: 1px solid var(--reminder-line); border-radius: 12px; background: #fff; box-shadow: 0 14px 40px #253b2510; }
 .calendar-pane { padding: clamp(20px, 3vw, 32px); }
 .calendar-toolbar, .agenda-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .calendar-overline { color: #8a938c; font-size: 9px; font-weight: 750; letter-spacing: .16em; }
-.calendar-toolbar h2, .agenda-heading h2 { margin: 6px 0 0; font: 500 24px/1 Georgia, "Times New Roman", serif; letter-spacing: -.035em; }
+.calendar-toolbar h2, .agenda-heading h2 { margin: 6px 0 0; font: 600 24px/1 var(--font-sans); letter-spacing: -.035em; }
 .calendar-controls { display: flex; align-items: center; gap: 4px; }
 .calendar-controls button, .agenda-heading > button { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #536258; cursor: pointer; }
 .calendar-controls button:hover, .agenda-heading > button:hover { border-color: var(--reminder-line); background: #f8faf7; }
@@ -78,26 +78,26 @@
 .agenda-actions button:disabled { opacity: .5; cursor: wait; }
 .agenda-empty { display: grid; justify-items: center; gap: 8px; padding: 45px 8px; color: #9aa39b; text-align: center; }
 .agenda-empty > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #f0f4ee; color: #78927b; }
-.agenda-empty strong { color: #556259; font: 500 16px Georgia, "Times New Roman", serif; }
+.agenda-empty strong { color: #556259; font: 600 16px var(--font-sans); }
 .agenda-empty p { margin: 0; font-size: 10px; }
 
 .reminder-bottom-strip { display: flex; align-items: center; gap: 13px; margin-top: 16px; padding: 16px 19px; border: 1px solid #e8eee5; border-radius: 9px; background: #f4f7f1; }
 .reminder-strip-icon { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 8px; background: white; color: #648168; }
 .reminder-bottom-strip strong { color: #405543; font-size: 11px; }
 .reminder-bottom-strip p { margin: 4px 0 0; color: #839087; font-size: 10px; }
-.reminder-strip-count { margin-left: auto; color: #395c42; font: 500 20px Georgia, "Times New Roman", serif; text-align: right; }
-.reminder-strip-count small { display: block; margin-top: 3px; color: #9aa49a; font: 700 8px/1 sans-serif; letter-spacing: .14em; }
+.reminder-strip-count { margin-left: auto; color: #395c42; font: 600 20px var(--font-sans); text-align: right; }
+.reminder-strip-count small { display: block; margin-top: 3px; color: #9aa49a; font: 700 8px/1 var(--font-sans); letter-spacing: .14em; }
 .reminder-loading { padding: 32px; color: #718075; font-size: 13px; }
 .reminder-error { margin: 0 0 14px; padding: 12px 14px; border: 1px solid #eed9d2; border-radius: 7px; background: #fff8f6; color: #8c4c3b; font-size: 12px; }
 .reminder-empty-workspace { max-width: 620px; margin: 12vh auto; padding: 42px; border: 1px solid var(--reminder-line); border-radius: 12px; background: #fff; text-align: center; }
 .reminder-orbit { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 20px; border-radius: 50%; background: #edf4eb; color: #557a59; }
-.reminder-empty-workspace h2 { margin: 13px 0; font: 500 30px/1.1 Georgia, "Times New Roman", serif; letter-spacing: -.035em; }
+.reminder-empty-workspace h2 { margin: 13px 0; font: 600 30px/1.1 var(--font-sans); letter-spacing: -.035em; }
 .reminder-empty-workspace > p:last-child { max-width: 420px; margin: auto; color: #7d8980; font-size: 13px; line-height: 1.7; }
 
 .reminder-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: #17231ccc; backdrop-filter: blur(4px); animation: reminder-fade .18s ease; }
 .reminder-modal { width: min(100%, 560px); max-height: min(92vh, 760px); overflow: auto; border: 1px solid #e8ebe6; border-radius: 12px; background: #fff; box-shadow: 0 28px 90px #15251b40; }
 .reminder-modal > header { display: flex; justify-content: space-between; align-items: flex-start; padding: 24px 26px 19px; border-bottom: 1px solid var(--reminder-line); }
-.reminder-modal > header h2 { margin: 6px 0 0; font: 500 25px Georgia, "Times New Roman", serif; }
+.reminder-modal > header h2 { margin: 6px 0 0; font: 600 25px var(--font-sans); }
 .reminder-modal > header button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--reminder-line); border-radius: 6px; background: white; color: #728076; cursor: pointer; }
 .reminder-modal form { display: grid; gap: 15px; padding: 21px 26px 24px; }
 .reminder-modal label { display: grid; gap: 7px; color: #536258; font-size: 11px; font-weight: 650; }
