@@ -57,4 +57,25 @@ describe('ObjectStorageService local driver', () => {
 
     expect(() => storage.assertConfigured()).toThrow(ServiceUnavailableException);
   });
+
+  it('reports local storage health', async () => {
+    await expect(storage.healthCheck()).resolves.toEqual({
+      status: 'healthy',
+      driver: 'local',
+    });
+  });
+
+  it('reports missing production S3 configuration without exposing credentials', async () => {
+    process.env.OBJECT_STORAGE_DRIVER = 's3';
+    process.env.NODE_ENV = 'production';
+    delete process.env.DOCKHIVE_S3_ENDPOINT;
+    delete process.env.DOCKHIVE_ACCESS_KEY_ID;
+    delete process.env.DOCKHIVE_SECRET_ACCESS_KEY;
+    delete process.env.DOCKHIVE_BUCKET;
+
+    await expect(storage.healthCheck()).resolves.toEqual({
+      status: 'not-configured',
+      driver: 's3',
+    });
+  });
 });

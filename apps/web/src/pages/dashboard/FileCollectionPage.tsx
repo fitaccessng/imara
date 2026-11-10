@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, RotateCcw, Star, Trash2 } from "lucide-react";
+import { FileText, Folder, RotateCcw, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { apiRequest, type StoredFile } from "../../lib/api";
+import { Link } from "react-router-dom";
+import { apiRequest, type StoredFile, type UserFolder } from "../../lib/api";
 
 type Collection = "favorites" | "trash";
 
@@ -22,11 +23,17 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
     queryKey: [`storage-${collection}`],
     queryFn: () => apiRequest<StoredFile[]>(`/files/${collection}`),
   });
+  const foldersQuery = useQuery({
+    queryKey: ["storage-folder-favorites"],
+    queryFn: () => apiRequest<UserFolder[]>("/folders/favorites"),
+    enabled: !isTrash,
+  });
 
   async function refreshFiles() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["storage-files"] }),
       queryClient.invalidateQueries({ queryKey: ["storage-favorites"] }),
+      queryClient.invalidateQueries({ queryKey: ["storage-folder-favorites"] }),
       queryClient.invalidateQueries({ queryKey: ["storage-trash"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
     ]);
@@ -45,8 +52,17 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
     onSuccess: refreshFiles,
     onError: (error) => setActionError(error instanceof Error ? error.message : "Unable to update this file."),
   });
+  const updateFolder = useMutation({
+    mutationFn: (folder: UserFolder) => apiRequest(`/folders/${folder.id}/favorite`, {
+      method: "PATCH",
+      body: JSON.stringify({ isFavorite: false }),
+    }),
+    onSuccess: refreshFiles,
+    onError: (error) => setActionError(error instanceof Error ? error.message : "Unable to update this folder."),
+  });
 
   const files = filesQuery.data ?? [];
+  const folders = isTrash ? [] : foldersQuery.data ?? [];
   const title = isTrash ? "Recycle Bin" : "Favourites";
 
   return (
@@ -58,7 +74,7 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
           <p className="page-subtitle">
             {isTrash
               ? "Deleted files stay here until you restore or permanently delete them."
-              : "Quick access to the files you have marked as favourites."}
+              : "Quick access to the files and folders you have marked as favourites."}
           </p>
         </div>
       </div>
@@ -68,12 +84,30 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
         <div><strong>{title} couldn’t load.</strong><p>{filesQuery.error instanceof Error ? filesQuery.error.message : "Please try again."}</p></div>
         <button className="button button-outline button-small" onClick={() => void filesQuery.refetch()}>Try again</button>
       </div>}
+      {!isTrash && foldersQuery.isError && <div className="inline-error" role="alert">
+        <div><strong>Favourite folders couldn’t load.</strong><p>{foldersQuery.error instanceof Error ? foldersQuery.error.message : "Please try again."}</p></div>
+        <button className="button button-outline button-small" onClick={() => void foldersQuery.refetch()}>Try again</button>
+      </div>}
 
-      {filesQuery.isLoading ? (
+      {filesQuery.isLoading || (!isTrash && foldersQuery.isLoading) ? (
         <div className="page-loading"><span className="loader" />Loading {isTrash ? "Recycle Bin" : "favourites"}…</div>
       ) : filesQuery.data ? (
         <section className="file-list-card" aria-label={title}>
           <div className="file-list-header"><span>Name</span><span>Size</span><span>{isTrash ? "Deleted" : "Added"}</span><span className="file-actions-heading">Actions</span></div>
+          {folders.map((folder) => (
+            <div className="file-list-row" key={`folder-${folder.id}`}>
+              <Link className="file-name-button" to={`/files?folder=${encodeURIComponent(folder.id)}`}>
+                <Folder size={17} className="folder-icon" /><span>{folder.name}</span>
+              </Link>
+              <span className="file-secondary">Folder</span>
+              <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
+              <div className="file-row-actions">
+                <button aria-label={`Remove ${folder.name} from favourites`} title="Remove from favourites" disabled={updateFolder.isPending} onClick={() => updateFolder.mutate(folder)}>
+                  <Star size={15} fill="currentColor" />
+                </button>
+              </div>
+            </div>
+          ))}
           {files.map((file) => (
             <div className="file-list-row" key={file.id}>
               <div className="file-name-button file-name-static">
@@ -105,11 +139,11 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
               </div>
             </div>
           ))}
-          {files.length === 0 && (
+          {files.length === 0 && folders.length === 0 && (isTrash || foldersQuery.isSuccess) && (
             <div className="files-empty">
               <div className="empty-illustration"><div className="empty-paper"><i /><i /><i /></div></div>
               <h2>{isTrash ? "Your Recycle Bin is empty." : "No favourites yet."}</h2>
-              <p>{isTrash ? "Files you delete will appear here, where you can restore or permanently delete them." : "Mark a file as a favourite to find it quickly here."}</p>
+              <p>{isTrash ? "Files you delete will appear here, where you can restore or permanently delete them." : "Mark a file or folder as a favourite to find it quickly here."}</p>
             </div>
           )}
         </section>

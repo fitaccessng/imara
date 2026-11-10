@@ -2,7 +2,7 @@ import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { resolve } from 'path';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
@@ -17,6 +17,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { SignaturesModule } from './signatures/signatures.module';
 import { HealthController } from './health.controller';
+import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
 
 @Module({
   imports: [
@@ -40,6 +41,9 @@ import { HealthController } from './health.controller';
     SignaturesModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: ApiErrorLoggingInterceptor },
+  ],
 })
 export class AppModule {}

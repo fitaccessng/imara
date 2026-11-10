@@ -23,7 +23,13 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
-  app.enableCors({ origin: origins, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] });
+  app.enableCors({
+    origin: origins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['X-Request-Id'],
+  });
   app.use((req: Request, res: Response, next: NextFunction) => {
     const origin = req.headers.origin;
     if (origin && !origins.includes(origin)) {

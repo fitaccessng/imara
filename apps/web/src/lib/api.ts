@@ -159,6 +159,7 @@ export interface UserFolder {
   name: string;
   parentFolderId: string | null;
   createdAt: string;
+  isFavorite: boolean;
 }
 
 export interface DashboardSummary {

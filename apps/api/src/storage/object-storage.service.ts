@@ -102,7 +102,11 @@ export class ObjectStorageService {
     await this.getClient().send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
-  async healthCheck(): Promise<{ status: 'healthy' | 'unavailable' | 'not-configured'; driver: string }> {
+  async healthCheck(): Promise<{
+    status: 'healthy' | 'unavailable' | 'not-configured';
+    driver: string;
+    errorCode?: string;
+  }> {
     const driver = process.env.OBJECT_STORAGE_DRIVER ?? 's3';
     try {
       const local = this.localDirectory();
@@ -116,7 +120,11 @@ export class ObjectStorageService {
       if (error instanceof ServiceUnavailableException) {
         return { status: 'not-configured', driver };
       }
-      return { status: 'unavailable', driver };
+      const errorCode = typeof error === 'object' && error !== null && 'name' in error
+        && typeof error.name === 'string' && /^[A-Za-z0-9._-]{1,60}$/.test(error.name)
+        ? error.name
+        : 'OBJECT_STORAGE_UNAVAILABLE';
+      return { status: 'unavailable', driver, errorCode };
     }
   }
 }

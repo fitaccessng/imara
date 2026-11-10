@@ -45,6 +45,23 @@ export function getMaxUploadBytes(): number {
   return maxBytes;
 }
 
+function storageFailureContext(error: unknown): string {
+  if (!(error instanceof Error)) return 'name=UnknownError';
+  const context = [`name=${error.name}`];
+  if ('$metadata' in error) {
+    const metadata = error.$metadata;
+    if (typeof metadata === 'object' && metadata !== null) {
+      if ('httpStatusCode' in metadata && typeof metadata.httpStatusCode === 'number') {
+        context.push(`status=${metadata.httpStatusCode}`);
+      }
+      if ('requestId' in metadata && typeof metadata.requestId === 'string') {
+        context.push(`requestId=${metadata.requestId}`);
+      }
+    }
+  }
+  return context.join(' ');
+}
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
@@ -217,7 +234,7 @@ export class StorageService {
       this.prisma.folder.findMany({
         where: { userId, workspaceId: null, parentFolderId: folderId ?? null },
         orderBy: [{ name: 'asc' }, { createdAt: 'asc' }],
-        select: { id: true, name: true, parentFolderId: true, createdAt: true },
+        select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
       }),
       this.prisma.storedFile.findMany({
         where: { userId, workspaceId: null, folderId: folderId ?? null, status: StoredFileStatus.READY, deletedAt: null },
@@ -236,7 +253,7 @@ export class StorageService {
         where: { userId, workspaceId: null, name: { contains: term, mode: 'insensitive' } },
         orderBy: [{ name: 'asc' }, { createdAt: 'desc' }],
         take: 50,
-        select: { id: true, name: true, parentFolderId: true, createdAt: true },
+        select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
       }),
       this.prisma.storedFile.findMany({
         where: {
@@ -281,6 +298,14 @@ export class StorageService {
     }));
   }
 
+  listFolderFavorites(userId: string) {
+    return this.prisma.folder.findMany({
+      where: { userId, workspaceId: null, isFavorite: true },
+      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
+    });
+  }
+
   async listTrash(userId: string) {
     const files = await this.prisma.storedFile.findMany({
       where: { userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: { not: null } },
@@ -319,6 +344,15 @@ export class StorageService {
     return { id: fileId, isFavorite };
   }
 
+  async setFolderFavorite(userId: string, folderId: string, isFavorite: boolean) {
+    const updated = await this.prisma.folder.updateMany({
+      where: { id: folderId, userId, workspaceId: null },
+      data: { isFavorite },
+    });
+    if (!updated.count) throw new NotFoundException('Folder not found');
+    return { id: folderId, isFavorite };
+  }
+
   async restoreFile(userId: string, fileId: string) {
     const restored = await this.prisma.storedFile.updateMany({
       where: {
@@ -339,7 +373,7 @@ export class StorageService {
     return this.prisma.folder.findMany({
       where: { userId, workspaceId: null, parentFolderId: parentFolderId ?? null },
       orderBy: [{ name: 'asc' }, { createdAt: 'asc' }],
-      select: { id: true, name: true, parentFolderId: true, createdAt: true },
+      select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
     });
   }
 
@@ -347,14 +381,14 @@ export class StorageService {
     return this.prisma.folder.findMany({
       where: { userId, workspaceId: null },
       orderBy: [{ name: 'asc' }, { createdAt: 'asc' }],
-      select: { id: true, name: true, parentFolderId: true, createdAt: true },
+      select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
     });
   }
 
   async getFolder(userId: string, folderId: string) {
     const folder = await this.prisma.folder.findFirst({
       where: { id: folderId, userId, workspaceId: null },
-      select: { id: true, name: true, parentFolderId: true, createdAt: true },
+      select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
     });
     if (!folder) throw new NotFoundException('Folder not found');
     return folder;
@@ -366,7 +400,7 @@ export class StorageService {
     try {
       return await this.prisma.folder.create({
         data: { userId, workspaceId: null, name: normalizedName, parentFolderId: parentFolderId ?? null },
-        select: { id: true, name: true, parentFolderId: true, createdAt: true },
+        select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -383,7 +417,7 @@ export class StorageService {
       return await this.prisma.folder.update({
         where: { id: folder.id, workspaceId: null },
         data: { name: name.trim() },
-        select: { id: true, name: true, parentFolderId: true, createdAt: true },
+        select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -416,7 +450,7 @@ export class StorageService {
         return tx.folder.update({
           where: { id: folder.id, workspaceId: null },
           data: { parentFolderId: parentFolderId ?? null },
-          select: { id: true, name: true, parentFolderId: true, createdAt: true },
+          select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
         });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
@@ -564,19 +598,19 @@ export class StorageService {
       try {
         await this.objects.delete(reserved.objectKey);
         safelyRemoved = true;
-      } catch {
-        this.logger.error(`Could not remove failed upload object for file ${reserved.id}`);
+      } catch (cleanupError) {
+        this.logger.error(`Could not remove failed upload object for file ${reserved.id} (${storageFailureContext(cleanupError)})`);
       }
       if (safelyRemoved) {
         try {
           await this.rollbackUpload(userId, reserved.id, sizeBytes);
-        } catch {
-          this.logger.error(`Could not release failed upload reservation ${reserved.id}`);
+        } catch (cleanupError) {
+          this.logger.error(`Could not release failed upload reservation ${reserved.id} (${storageFailureContext(cleanupError)})`);
         }
       }
       if (error instanceof ConflictException || error instanceof PayloadTooLargeException || error instanceof NotFoundException) throw error;
       if (error instanceof Prisma.PrismaClientKnownRequestError) throw error;
-      this.logger.error(`Object storage upload failed for file ${reserved.id}`);
+      this.logger.error(`Object storage upload failed for file ${reserved.id} (${storageFailureContext(error)})`);
       throw new ServiceUnavailableException('File storage is temporarily unavailable.');
     }
   }
@@ -807,19 +841,19 @@ export class StorageService {
       try {
         await this.objects.delete(reserved.objectKey);
         safelyRemoved = true;
-      } catch {
-        this.logger.error(`Could not remove failed event upload object for file ${reserved.id}`);
+      } catch (cleanupError) {
+        this.logger.error(`Could not remove failed event upload object for file ${reserved.id} (${storageFailureContext(cleanupError)})`);
       }
       if (safelyRemoved) {
         try {
           await this.rollbackEventUpload(eventId, reserved.userId, reserved.id, sizeBytes);
-        } catch {
-          this.logger.error(`Could not release failed event upload reservation ${reserved.id}`);
+        } catch (cleanupError) {
+          this.logger.error(`Could not release failed event upload reservation ${reserved.id} (${storageFailureContext(cleanupError)})`);
         }
       }
       if (error instanceof ConflictException || error instanceof PayloadTooLargeException || error instanceof NotFoundException) throw error;
       if (error instanceof Prisma.PrismaClientKnownRequestError) throw error;
-      this.logger.error(`Object storage upload failed for event file ${reserved.id}`);
+      this.logger.error(`Object storage upload failed for event file ${reserved.id} (${storageFailureContext(error)})`);
       throw new ServiceUnavailableException('File storage is temporarily unavailable.');
     }
   }
@@ -834,6 +868,7 @@ export class StorageService {
       return { ...(await this.objects.get(file.objectKey)), name: file.originalName, contentType: file.mimeType };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ServiceUnavailableException) throw error;
+      this.logger.error(`Object storage read failed for file ${fileId} (${storageFailureContext(error)})`);
       throw new ServiceUnavailableException('File storage is temporarily unavailable.');
     }
   }
@@ -899,7 +934,7 @@ export class StorageService {
     }
     try {
       await this.objects.delete(file.objectKey);
-    } catch {
+    } catch (error) {
       if (file.status === StoredFileStatus.READY) {
         try {
           await this.prisma.storedFile.updateMany({
@@ -916,7 +951,7 @@ export class StorageService {
           throw new ServiceUnavailableException('File deletion could not be completed; quota remains reserved.');
         }
       }
-      this.logger.error(`Object storage deletion failed for file ${file.id}`);
+      this.logger.error(`Object storage deletion failed for file ${file.id} (${storageFailureContext(error)})`);
       throw new ServiceUnavailableException('File storage is temporarily unavailable.');
     }
 

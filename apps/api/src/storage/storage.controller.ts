@@ -47,6 +47,11 @@ export class StorageController {
     return this.storage.listFavorites(req.auth.userId);
   }
 
+  @Get('folders/favorites')
+  listFolderFavorites(@Req() req: AuthenticatedRequest) {
+    return this.storage.listFolderFavorites(req.auth.userId);
+  }
+
   @Get('files/smart-library')
   smartLibrary(@Req() req: AuthenticatedRequest) {
     return this.storage.smartLibrary(req.auth.userId);
@@ -78,6 +83,15 @@ export class StorageController {
     @Body() dto: UpdateFavoriteDto,
   ) {
     return this.storage.setFavorite(req.auth.userId, id, dto.isFavorite);
+  }
+
+  @Patch('folders/:id/favorite')
+  setFolderFavorite(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateFavoriteDto,
+  ) {
+    return this.storage.setFolderFavorite(req.auth.userId, id, dto.isFavorite);
   }
 
   @Post('files/:id/restore')

@@ -103,6 +103,7 @@ describe('StorageService quota-safe uploads', () => {
   const prisma = {
     folder: {
       findMany: folderFindMany,
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     storedFile: {
       findMany: storedFileFindMany,
@@ -239,7 +240,7 @@ describe('StorageService quota-safe uploads', () => {
     expect(transactionClient.folder.update).toHaveBeenCalledWith({
       where: { id: 'folder-id', workspaceId: null },
       data: { parentFolderId: 'target-id' },
-      select: { id: true, name: true, parentFolderId: true, createdAt: true },
+      select: { id: true, name: true, parentFolderId: true, createdAt: true, isFavorite: true },
     });
   });
 
@@ -379,6 +380,18 @@ describe('StorageService quota-safe uploads', () => {
         status: StoredFileStatus.READY,
         deletedAt: null,
       },
+      data: { isFavorite: true },
+    });
+  });
+
+  it('updates favourite state only for an owned personal folder', async () => {
+    await expect(service.setFolderFavorite('owner-id', 'folder-id', true)).resolves.toEqual({
+      id: 'folder-id',
+      isFavorite: true,
+    });
+
+    expect(prisma.folder.updateMany).toHaveBeenCalledWith({
+      where: { id: 'folder-id', userId: 'owner-id', workspaceId: null },
       data: { isFavorite: true },
     });
   });

@@ -106,6 +106,15 @@ export function FilesPage() {
     onSuccess: refreshLibrary,
     onError: (error) => setActionError(error instanceof Error ? error.message : "Unable to update this favourite."),
   });
+  const setFolderFavorite = useMutation({
+    mutationFn: ({ id, isFavorite }: { id: string; isFavorite: boolean }) =>
+      apiRequest<{ id: string; isFavorite: boolean }>(`/folders/${id}/favorite`, {
+        method: "PATCH",
+        body: JSON.stringify({ isFavorite }),
+      }),
+    onSuccess: refreshLibrary,
+    onError: (error) => setActionError(error instanceof Error ? error.message : "Unable to update this folder favourite."),
+  });
   const deleteFolder = useMutation({
     mutationFn: (id: string) => apiRequest<void>(`/folders/${id}`, { method: "DELETE" }),
     onSuccess: refreshLibrary,
@@ -260,6 +269,9 @@ export function FilesPage() {
               <span className="file-secondary">Folder</span>
               <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
               <span className="file-row-actions">
+                <button aria-label={`${folder.isFavorite ? "Remove" : "Add"} ${folder.name} ${folder.isFavorite ? "from" : "to"} favourites`} aria-pressed={folder.isFavorite} title={folder.isFavorite ? "Remove from favourites" : "Add to favourites"} disabled={setFolderFavorite.isPending} onClick={() => setFolderFavorite.mutate({ id: folder.id, isFavorite: !folder.isFavorite })}>
+                  <Star size={15} fill={folder.isFavorite ? "currentColor" : "none"} />
+                </button>
                 <button aria-label={`Move ${folder.name}`} title="Move folder" onClick={() => {
                   setActionError("");
                   setDestinationFolderId("");
