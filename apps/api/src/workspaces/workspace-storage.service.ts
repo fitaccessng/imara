@@ -3,7 +3,7 @@ import {
   BadRequestException, ConflictException, Injectable, Logger, NotFoundException, PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { Prisma, StoredFileStatus, WorkspaceRole } from '@prisma/client';
+import { FolderPermissionEffect, Prisma, StoredFileStatus, WorkspaceMemberStatus, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import { assertSameFileExtension, getMaxUploadBytes, UploadInput } from '../storage/storage.service';
@@ -97,20 +97,83 @@ export class WorkspaceStorageService {
     });
   }
 
-  async createFolder(workspaceId: string, userId: string, name: string, parentFolderId?: string) {
+  async createFolder(
+    workspaceId: string,
+    userId: string,
+    name: string,
+    parentFolderId?: string,
+    memberIds: string[] = [],
+  ) {
     const membership = await this.workspaces.authorizeWorkspace(workspaceId, userId);
     if (parentFolderId) await this.allowedFolder(workspaceId, userId, parentFolderId, 'createSubfolders');
     else if (membership.role !== WorkspaceRole.OWNER && membership.role !== WorkspaceRole.ADMIN) {
       throw new NotFoundException('Folder not found');
     }
+    if (memberIds.length && membership.role !== WorkspaceRole.OWNER && membership.role !== WorkspaceRole.ADMIN) {
+      throw new NotFoundException('Folder not found');
+    }
+    const uniqueMemberIds = [...new Set(memberIds)];
+    if (uniqueMemberIds.length !== memberIds.length) throw new BadRequestException('Team members can only be assigned once');
     const normalized = name.trim();
     try {
-      const folder = await this.prisma.folder.create({
-        data: { workspaceId, userId, name: normalized, parentFolderId: parentFolderId ?? null },
-        select: { id: true, name: true, parentFolderId: true, createdAt: true },
+      return await this.prisma.$transaction(async (tx) => {
+        const folder = await tx.folder.create({
+          data: { workspaceId, userId, name: normalized, parentFolderId: parentFolderId ?? null },
+          select: { id: true, name: true, parentFolderId: true, createdAt: true },
+        });
+        const assignedMembers = uniqueMemberIds.length
+          ? await tx.workspaceMember.findMany({
+            where: {
+              id: { in: uniqueMemberIds },
+              workspaceId,
+              status: WorkspaceMemberStatus.ACTIVE,
+              role: { in: [WorkspaceRole.MANAGER, WorkspaceRole.STAFF] },
+            },
+            select: { id: true, userId: true },
+          })
+          : [];
+        if (assignedMembers.length !== uniqueMemberIds.length) {
+          throw new NotFoundException('One or more selected team members are not eligible');
+        }
+        if (assignedMembers.length) {
+          const permissionKeys = ['viewFolder', 'viewFiles', 'downloadFiles', 'uploadFiles'];
+          await tx.folderPermission.createMany({
+            data: assignedMembers.map((member) => ({
+              workspaceId,
+              folderId: folder.id,
+              memberId: member.id,
+              effect: FolderPermissionEffect.GRANT,
+              permissionKeys,
+              inherit: true,
+              createdById: userId,
+              updatedById: userId,
+            })),
+          });
+          await tx.notification.createMany({
+            data: assignedMembers.map((member) => ({
+              workspaceId,
+              userId: member.userId,
+              type: 'FOLDER_ACCESS_GRANTED',
+              message: `You have view, download, and upload access to the “${folder.name}” folder`,
+              metadata: { folderId: folder.id } satisfies Prisma.InputJsonValue,
+            })),
+          });
+        }
+        await tx.auditLog.create({
+          data: {
+            workspaceId,
+            actorId: userId,
+            action: 'FOLDER_CREATED',
+            targetType: 'Folder',
+            targetId: folder.id,
+            metadata: {
+              parentFolderId: parentFolderId ?? null,
+              assignedMemberIds: assignedMembers.map((member) => member.id),
+            } satisfies Prisma.InputJsonValue,
+          },
+        });
+        return folder;
       });
-      await this.audit(workspaceId, userId, 'FOLDER_CREATED', 'Folder', folder.id, { parentFolderId: parentFolderId ?? null });
-      return folder;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('A folder with that name already exists here');

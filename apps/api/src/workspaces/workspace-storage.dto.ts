@@ -1,4 +1,13 @@
-import { IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { CreateFolderDto } from '../storage/storage.dto';
+
+export class CreateWorkspaceFolderDto extends CreateFolderDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  memberIds?: string[];
+}
 
 export class RenameWorkspaceFileDto {
   @IsString()

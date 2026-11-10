@@ -6,9 +6,9 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { CreateFolderDto, RenameFolderDto, UploadFileDto } from '../storage/storage.dto';
+import { RenameFolderDto, UploadFileDto } from '../storage/storage.dto';
 import { getMaxUploadBytes, UploadInput } from '../storage/storage.service';
-import { MoveWorkspaceFileDto, RenameWorkspaceFileDto } from './workspace-storage.dto';
+import { CreateWorkspaceFolderDto, MoveWorkspaceFileDto, RenameWorkspaceFileDto } from './workspace-storage.dto';
 import { WorkspaceStorageService } from './workspace-storage.service';
 
 @Controller('workspaces/:workspaceId')
@@ -48,9 +48,9 @@ export class WorkspaceStorageController {
   createFolder(
     @Req() req: AuthenticatedRequest,
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
-    @Body() dto: CreateFolderDto,
+    @Body() dto: CreateWorkspaceFolderDto,
   ) {
-    return this.storage.createFolder(workspaceId, req.auth.userId, dto.name, dto.parentFolderId);
+    return this.storage.createFolder(workspaceId, req.auth.userId, dto.name, dto.parentFolderId, dto.memberIds);
   }
 
   @Patch('folders/:folderId')

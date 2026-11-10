@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, LockKeyhole, Pencil, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, LockKeyhole, Pencil, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile } from "../lib/api";
@@ -7,7 +7,7 @@ import { ActionModal, type ActionModalRequest } from "../components/ActionModal"
 import { FileViewerModal } from "../components/FileViewerModal";
 import { PlanLimitMessage } from "../components/PlanLimitMessage";
 import { FolderZipTools } from "../components/FolderZipTools";
-import type { WorkspaceFile, WorkspaceFolder } from "./types";
+import type { WorkspaceFile, WorkspaceFolder, WorkspaceMember } from "./types";
 import { useWorkspaceScope } from "./useWorkspaceScope";
 import { WorkspaceSetupPrompt } from "./WorkspaceSetupPrompt";
 
@@ -34,6 +34,8 @@ export function WorkspaceStoragePage() {
   const folderId = searchParams.get("folder") || undefined;
   const queryClient = useQueryClient();
   const [folderName, setFolderName] = useState("");
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [actionError, setActionError] = useState("");
   const [downloadError, setDownloadError] = useState("");
   const [viewingFile, setViewingFile] = useState<WorkspaceFile | null>(null);
@@ -45,6 +47,13 @@ export function WorkspaceStoragePage() {
     queryFn: () => apiRequest<WorkspaceFolder[]>(`/workspaces/${workspaceId}/my-folders`),
     enabled: Boolean(workspaceId),
   });
+  const membersQuery = useQuery({
+    queryKey: ["workspace-members", workspaceId],
+    queryFn: () => apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`),
+    enabled: Boolean(workspaceId && isAdministrator && createFolderOpen),
+  });
+  const assignableMembers = (membersQuery.data ?? []).filter((member) =>
+    member.status === "ACTIVE" && (member.role === "MANAGER" || member.role === "STAFF"));
   const contentsQuery = useQuery({
     queryKey: ["workspace-storage", workspaceId, folderId ?? null],
     queryFn: () => apiRequest<WorkspaceFolderContents>(`/workspaces/${workspaceId}/storage${folderId ? `?folderId=${encodeURIComponent(folderId)}` : ""}`),
@@ -55,16 +64,21 @@ export function WorkspaceStoragePage() {
   const canCreateFolder = isAdministrator || rights.has("createSubfolders");
   const canUpload = isAdministrator || rights.has("uploadFiles");
   const createFolder = useMutation({
-    mutationFn: (name: string) => apiRequest<WorkspaceFolder>(`/workspaces/${workspaceId}/folders`, {
+    mutationFn: (input: { name: string; memberIds: string[] }) => apiRequest<WorkspaceFolder>(`/workspaces/${workspaceId}/folders`, {
       method: "POST",
-      body: JSON.stringify({ name, ...(folderId ? { parentFolderId: folderId } : {}) }),
+      body: JSON.stringify({
+        name: input.name,
+        ...(folderId ? { parentFolderId: folderId } : {}),
+        ...(input.memberIds.length ? { memberIds: input.memberIds } : {}),
+      }),
     }),
     onSuccess: async () => {
       setFolderName("");
+      setSelectedMemberIds([]);
+      setCreateFolderOpen(false);
       setActionError("");
       await refreshLibrary();
     },
-    onError: (error) => setActionError(error instanceof Error ? error.message : "Unable to create the folder."),
   });
   const uploadFile = useMutation({
     mutationFn: (file: File) => {
@@ -91,7 +105,14 @@ export function WorkspaceStoragePage() {
     event.preventDefault();
     const name = folderName.trim();
     if (!name) return;
-    await createFolder.mutateAsync(name).catch(() => undefined);
+    await createFolder.mutateAsync({ name, memberIds: selectedMemberIds }).catch(() => undefined);
+  }
+
+  function openCreateFolder() {
+    setFolderName("");
+    setSelectedMemberIds([]);
+    createFolder.reset();
+    setCreateFolderOpen(true);
   }
 
   async function renameFolder(folder: WorkspaceFolder) {
@@ -202,10 +223,9 @@ export function WorkspaceStoragePage() {
         </div>
         <div className="files-heading-actions">
           {canCreateFolder && (
-            <form className="workspace-folder-create-form" onSubmit={(event) => void submitFolder(event)}>
-              <input aria-label="New shared folder name" maxLength={120} placeholder="New folder name" value={folderName} onChange={(event) => setFolderName(event.target.value)} />
-              <button className="button button-green" disabled={busy || !folderName.trim()} type="submit"><FolderPlus size={15} /> Create folder</button>
-            </form>
+            <button className="button button-green" type="button" onClick={openCreateFolder}>
+              <FolderPlus size={15} /> Create a folder
+            </button>
           )}
           {canUpload && (
             <label className={`button button-green files-upload-button ${busy ? "button-disabled" : ""}`}>
@@ -311,6 +331,76 @@ export function WorkspaceStoragePage() {
         onDownload={() => void download(viewingFile)}
       />}
       {actionModal && <ActionModal request={actionModal} onClose={() => setActionModal(null)} />}
+      {createFolderOpen && (
+        <div className="folder-move-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !createFolder.isPending) setCreateFolderOpen(false);
+        }}>
+          <section className="folder-move-dialog create-shared-folder-dialog" role="dialog" aria-modal="true" aria-labelledby="create-shared-folder-title">
+            <div className="folder-move-heading">
+              <div><span className="eyebrow">SHARED FILES</span><h2 id="create-shared-folder-title">Create a folder</h2></div>
+              <button className="icon-button" type="button" aria-label="Close dialog" disabled={createFolder.isPending} onClick={() => setCreateFolderOpen(false)}><X size={18} /></button>
+            </div>
+            <p>Name the folder{isAdministrator ? " and choose which team members can access it." : "."}</p>
+            <form onSubmit={(event) => void submitFolder(event)}>
+              <label className="field" htmlFor="shared-folder-name">Folder name</label>
+              <input
+                id="shared-folder-name"
+                className="folder-dialog-input"
+                autoFocus
+                autoComplete="off"
+                maxLength={120}
+                placeholder="e.g. Operations"
+                required
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value)}
+              />
+              {isAdministrator && (
+                <section className="folder-staff-assignment" aria-labelledby="folder-staff-heading">
+                  <div className="folder-staff-heading">
+                    <span className="folder-staff-icon"><Users size={16} /></span>
+                    <span><strong id="folder-staff-heading">Assign team members</strong><small>They’ll be able to view, download, and upload files.</small></span>
+                  </div>
+                  {membersQuery.isLoading ? <p className="folder-staff-status">Loading active staff…</p>
+                    : membersQuery.isError ? <>
+                      <p className="form-alert" role="alert">{membersQuery.error instanceof Error ? membersQuery.error.message : "Could not load team members."}</p>
+                      <button className="subtle-link folder-staff-retry" type="button" onClick={() => void membersQuery.refetch()}>Try loading the team again</button>
+                    </>
+                      : assignableMembers.length ? (
+                        <div className="folder-staff-list">
+                          {assignableMembers.map((member) => {
+                            const name = member.displayName?.trim() || member.user.name;
+                            const checked = selectedMemberIds.includes(member.id);
+                            return (
+                              <label className={`folder-staff-option${checked ? " folder-staff-option-selected" : ""}`} key={member.id}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) => setSelectedMemberIds((current) =>
+                                    event.target.checked
+                                      ? [...current, member.id]
+                                      : current.filter((id) => id !== member.id))}
+                                />
+                                <span className="folder-staff-check" aria-hidden="true">{checked && <Check size={13} />}</span>
+                                <span className="folder-staff-person"><strong>{name}</strong><small>{member.user.email}</small></span>
+                                <span className="folder-staff-role">{member.role === "MANAGER" ? "Manager" : "Staff"}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : <p className="folder-staff-status">No active staff or managers yet. You can create the folder without assigning anyone.</p>}
+                </section>
+              )}
+              {createFolder.error && <p className="form-alert" role="alert">{createFolder.error instanceof Error ? createFolder.error.message : "Unable to create the folder."}</p>}
+              <div className="folder-move-actions">
+                <button className="button button-outline" type="button" onClick={() => setCreateFolderOpen(false)} disabled={createFolder.isPending}>Cancel</button>
+                <button className="button button-green" type="submit" disabled={createFolder.isPending || !folderName.trim() || membersQuery.isLoading || (isAdministrator && membersQuery.isError)}>
+                  {createFolder.isPending ? "Creating…" : "Create folder"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -802,8 +802,6 @@ button { color: inherit; }
 /* File library */
 .files-heading { align-items: flex-end; }
 .files-heading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
-.workspace-folder-create-form { display: flex; align-items: center; gap: 7px; }
-.workspace-folder-create-form input { width: 160px; height: 40px; border: 1px solid #e5eaf0; border-radius: 7px; background: #fff; padding: 0 10px; color: var(--ink); font-size: 12px; }
 .files-upload-button { position: relative; overflow: hidden; }
 .files-upload-button input { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; opacity: 0; }
 .files-upload-button.button-disabled { opacity: .63; }
@@ -845,8 +843,6 @@ button { color: inherit; }
   .files-heading { align-items: flex-start; }
   .files-heading-actions { width: 100%; }
   .files-heading-actions .button { flex: 1; }
-  .workspace-folder-create-form { min-width: 0; flex: 1 1 100%; }
-  .workspace-folder-create-form input { min-width: 0; flex: 1; }
   .files-upload-button { min-height: 42px; }
   .files-toolbar { align-items: stretch; flex-direction: column; gap: 12px; padding: 12px; }
   .folder-zip-tools { justify-content: flex-start; }
@@ -1471,6 +1467,27 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .button-danger { border: 1px solid #d64545; background: #d64545; color: #fff; }
 .button-danger:hover { border-color: #b83232; background: #b83232; }
 .action-modal .form-alert { margin: 4px 0 0; }
+.create-shared-folder-dialog { width: min(500px, 100%); }
+.create-shared-folder-dialog form { gap: 11px; }
+.create-shared-folder-dialog .field { color: #536779; font-size: 12px; font-weight: 600; }
+.folder-staff-assignment { display: grid; gap: 10px; margin-top: 6px; border: 1px solid #e5eaf0; border-radius: 9px; background: #f9fbfa; padding: 12px; }
+.folder-staff-heading { display: flex; align-items: center; gap: 9px; }
+.folder-staff-icon { display: grid; width: 31px; height: 31px; flex: none; place-items: center; border-radius: 8px; background: #eaf8ee; color: #168d34; }
+.folder-staff-heading > span:last-child, .folder-staff-person { display: grid; min-width: 0; gap: 3px; }
+.folder-staff-heading strong { color: #263d4e; font-size: 12px; }
+.folder-staff-heading small, .folder-staff-person small { overflow: hidden; color: #718096; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.folder-staff-list { display: grid; max-height: 220px; overflow-y: auto; gap: 6px; }
+.folder-staff-option { position: relative; display: flex; min-width: 0; align-items: center; gap: 9px; border: 1px solid #e5eaf0; border-radius: 7px; background: #fff; padding: 9px; cursor: pointer; transition: border-color .16s, background .16s; }
+.folder-staff-option:hover, .folder-staff-option-selected { border-color: #9bd5a7; background: #f3fbf4; }
+.folder-staff-option > input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.folder-staff-option > input:focus-visible + .folder-staff-check { outline: 3px solid #65b890; outline-offset: 3px; }
+.folder-staff-check { display: grid; width: 19px; height: 19px; flex: none; place-items: center; border: 1px solid #cbd6d0; border-radius: 5px; background: #fff; color: #168d34; }
+.folder-staff-option-selected .folder-staff-check { border-color: #20ad43; background: #eaf8ee; }
+.folder-staff-person { flex: 1; }
+.folder-staff-person strong { overflow: hidden; color: #263d4e; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.folder-staff-role { flex: none; border-radius: 999px; background: #edf2f6; padding: 4px 7px; color: #617386; font-size: 9px; font-weight: 600; }
+.folder-staff-status { margin: 0; color: #718096; font-size: 11px; line-height: 1.55; }
+.folder-staff-retry { width: fit-content; }
 .file-viewer-backdrop { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; background: rgba(16,43,70,.46); padding: 18px; }
 .file-viewer-dialog { position: relative; display: flex; width: min(1050px, 100%); height: min(780px, 92vh); min-height: 320px; flex-direction: column; overflow: hidden; border: 1px solid #e5eaf0; border-radius: 14px; background: #fff; box-shadow: 0 24px 80px rgba(16,43,70,.24); }
 .file-viewer-header { display: flex; min-height: 68px; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid #e5eaf0; padding: 12px 18px; }
