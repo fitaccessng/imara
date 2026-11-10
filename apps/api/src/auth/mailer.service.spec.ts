@@ -167,6 +167,46 @@ describe('MailerService local console delivery', () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  it('sends file attachments from the configured SMTP address using a sanitized workspace display name', async () => {
+    process.env.SMTP_HOST = 'smtp.example.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
+    const sendMail = jest.fn().mockResolvedValue(undefined);
+    jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
+    const { Readable } = await import('node:stream');
+    const body = Readable.from(Buffer.from('file'));
+
+    await mailer.sendFileAttachment(
+      ['recipient@example.com'], 'Acme\r\nBCC:bad@example.com', 'report.pdf', 'application/pdf', body, 'Review this',
+    );
+
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
+      from: { name: 'Acme BCC:bad@example.com', address: 'noreply@example.com' },
+      to: 'undisclosed-recipients:;',
+      bcc: ['recipient@example.com'],
+      attachments: [expect.objectContaining({ filename: 'report.pdf', contentType: 'application/pdf', content: body })],
+    }));
+  });
+
+  it('rejects CRLF injection in the configured sender address and requires SMTP for attachments', async () => {
+    await expect(mailer.sendFileAttachment(
+      ['recipient@example.com'], 'Workspace', 'report.pdf', 'application/pdf',
+      (await import('node:stream')).Readable.from(Buffer.from('file')),
+    )).rejects.toThrow('SMTP email delivery is not configured');
+
+    process.env.SMTP_HOST = 'smtp.example.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'sender@example.com\r\nBcc:attacker@example.com';
+    await expect(mailer.sendFileAttachment(
+      ['recipient@example.com'], 'Workspace', 'report.pdf', 'application/pdf',
+      (await import('node:stream')).Readable.from(Buffer.from('file')),
+    )).rejects.toThrow('configured SMTP sender address is invalid');
+  });
+
   it('does not allow console delivery in production', () => {
     process.env.NODE_ENV = 'production';
 

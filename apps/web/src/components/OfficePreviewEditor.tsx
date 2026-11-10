@@ -7,7 +7,7 @@ import { PlanLimitMessage } from "./PlanLimitMessage";
 import type { ViewableFile } from "./FileViewerModal";
 
 interface OfficePreviewEditorProps {
-  file: ViewableFile;
+  file: Pick<ViewableFile, "name" | "mimeType">;
   blob: Blob;
   saveUrl: string;
   canEdit: boolean;
@@ -75,7 +75,7 @@ function decodeGridRange(reference?: string): GridRange {
   return { start: decodeCellReference(start), end: decodeCellReference(end) };
 }
 
-async function loadOfficePreview(file: ViewableFile, blob: Blob): Promise<OfficePreviewData> {
+async function loadOfficePreview(file: Pick<ViewableFile, "name" | "mimeType">, blob: Blob): Promise<OfficePreviewData> {
   const extension = extensionOf(file.name);
   if (extension === "doc" || extension === "ppt") {
     throw new Error("Legacy .doc and .ppt files are not supported by this browser preview. Convert them to DOCX or PPTX first.");
@@ -151,6 +151,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
   const [paragraphDrafts, setParagraphDrafts] = useState<string[]>([]);
   const [slideDrafts, setSlideDrafts] = useState<string[][]>([]);
   const [hasEdits, setHasEdits] = useState(false);
+  const [changedCells, setChangedCells] = useState<string[]>([]);
 
   const extension = extensionOf(file.name);
   const spreadsheet = ["csv", "tsv", "xls", "xlsx"].includes(extension);
@@ -216,6 +217,8 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       }
     }
     setPreview({ ...preview, workbook: { ...preview.workbook, Sheets: { ...preview.workbook.Sheets } } });
+    const change = `${activeSheet}!${address}`;
+    setChangedCells((currentChanges) => currentChanges.includes(change) ? currentChanges : [...currentChanges, change]);
     setHasEdits(true);
   }
 
@@ -229,6 +232,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       setPreview((current) => ({ ...current, workbook }));
       setActiveSheet(workbook.SheetNames[0] ?? "");
       setEditing(true);
+      setChangedCells([]);
       setHasEdits(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to prepare this spreadsheet for editing.");
@@ -245,6 +249,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       setPreview((current) => ({ ...current, workbook }));
       setActiveSheet(workbook.SheetNames[0] ?? "");
       setEditing(false);
+      setChangedCells([]);
       setHasEdits(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to discard spreadsheet changes.");
@@ -253,6 +258,11 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
 
   async function saveSpreadsheet() {
     if (!preview?.workbook || !activeWorksheet) return;
+    if (!changedCells.length) {
+      setEditing(false);
+      setHasEdits(false);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -265,8 +275,12 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
           type: "array",
         });
       const updatedBlob = new Blob([output], { type: file.mimeType });
-      await upload(updatedBlob);
+      const displayedChanges = changedCells.slice(0, 10);
+      const extraChanges = changedCells.length - displayedChanges.length;
+      const changeSummary = `Edited ${changedCells.length} spreadsheet cell${changedCells.length === 1 ? "" : "s"}${displayedChanges.length ? `: ${displayedChanges.join(", ")}${extraChanges > 0 ? `, and ${extraChanges} more` : ""}` : ""}`;
+      await upload(updatedBlob, changeSummary);
       setEditing(false);
+      setChangedCells([]);
       setHasEdits(false);
     } catch (reason) {
       recordSaveError(reason, "Unable to save this spreadsheet.");
@@ -319,7 +333,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
         maxWidth,
       }));
       const updatedBlob = new Blob([await document.save()], { type: "application/pdf" });
-      await upload(updatedBlob);
+      await upload(updatedBlob, `Added a note to PDF page ${annotationPage}`);
       setAnnotation("");
       setEditing(false);
       setHasEdits(false);
@@ -330,16 +344,25 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
     }
   }
 
-  async function upload(updatedBlob: Blob) {
+  async function upload(updatedBlob: Blob, changeSummary: string) {
     const updatedFile = new File([updatedBlob], file.name, { type: file.mimeType });
     const body = new FormData();
     body.append("file", updatedFile);
+    body.append("changeSummary", changeSummary.slice(0, 200));
     await apiRequest(saveUrl, { method: "PATCH", body });
     await onSaved(updatedBlob);
   }
 
   async function saveTextDocument() {
     if (!preview?.archive || !preview.paragraphXml || !preview.paragraphs) return;
+    const changedParagraphs = preview.paragraphs
+      .map((_, index) => index)
+      .filter((index) => (preview.paragraphs?.[index] ?? "") !== (paragraphDrafts[index] ?? ""));
+    if (!changedParagraphs.length) {
+      setEditing(false);
+      setHasEdits(false);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -366,7 +389,10 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
       const source = new XMLSerializer().serializeToString(xml);
       preview.archive.file("word/document.xml", source);
       const updatedBlob = await preview.archive.generateAsync({ type: "blob", mimeType: file.mimeType });
-      await upload(updatedBlob);
+      const references = changedParagraphs.slice(0, 10).map((index) => `paragraph ${index + 1}`);
+      const extraChanges = changedParagraphs.length - references.length;
+      const summary = `Edited ${changedParagraphs.length} document paragraph${changedParagraphs.length === 1 ? "" : "s"}${references.length ? `: ${references.join(", ")}${extraChanges > 0 ? `, and ${extraChanges} more` : ""}` : ""}`;
+      await upload(updatedBlob, summary);
       setPreview({ ...preview, paragraphXml: source, paragraphs: [...paragraphDrafts] });
       setEditing(false);
       setHasEdits(false);
@@ -379,15 +405,28 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
 
   async function savePresentationText() {
     if (!preview?.archive || !preview.slideXmls) return;
+    const hasTextChanges = preview.slideXmls.some((slide, slideIndex) =>
+      slide.text.some((text, textIndex) => text !== (slideDrafts[slideIndex]?.[textIndex] ?? "")));
+    if (!hasTextChanges) {
+      setEditing(false);
+      setHasEdits(false);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       const updatedSlides: { path: string; xml: string; text: string[] }[] = [];
+      let changedTextCount = 0;
+      const changedSlideNumbers = new Set<number>();
       for (const [slideIndex, slide] of preview.slideXmls.entries()) {
         const xml = new DOMParser().parseFromString(slide.xml, "application/xml");
         if (xml.querySelector("parsererror")) throw new Error(`Slide ${slideIndex + 1} could not be updated.`);
         const textNodes = Array.from(xml.getElementsByTagNameNS("*", "t"));
         textNodes.forEach((text, textIndex) => {
+          if ((slide.text[textIndex] ?? "") !== (slideDrafts[slideIndex]?.[textIndex] ?? "")) {
+            changedTextCount += 1;
+            changedSlideNumbers.add(slideIndex + 1);
+          }
           text.textContent = slideDrafts[slideIndex]?.[textIndex] ?? "";
         });
         const source = new XMLSerializer().serializeToString(xml);
@@ -395,7 +434,9 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
         updatedSlides.push({ ...slide, xml: source, text: slideDrafts[slideIndex] ?? [] });
       }
       const updatedBlob = await preview.archive.generateAsync({ type: "blob", mimeType: file.mimeType });
-      await upload(updatedBlob);
+      const slides = [...changedSlideNumbers].slice(0, 10).map((number) => `slide ${number}`);
+      const extraSlides = changedSlideNumbers.size - slides.length;
+      await upload(updatedBlob, `Edited ${changedTextCount} text item${changedTextCount === 1 ? "" : "s"}${slides.length ? ` on ${slides.join(", ")}${extraSlides > 0 ? `, and ${extraSlides} more` : ""}` : ""}`);
       setPreview({ ...preview, slideXmls: updatedSlides, slides: slideDrafts.map((slide) => [...slide]) });
       setEditing(false);
       setHasEdits(false);

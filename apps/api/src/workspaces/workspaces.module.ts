@@ -10,11 +10,17 @@ import { PlanCatalogueModule } from '../subscriptions/plan-catalogue.module';
 import { WorkspaceStorageService } from './workspace-storage.service';
 import { WorkspaceChatController } from './workspace-chat.controller';
 import { WorkspaceChatService } from './workspace-chat.service';
+import { CalendarController } from './calendar.controller';
+import { CalendarService } from './calendar.service';
+import { FileDeliveryService } from './file-delivery.service';
 
 @Module({
   imports: [PrismaModule, PlanCatalogueModule],
-  controllers: [WorkspacesController, WorkspaceStorageController, WorkspaceChatController],
-  providers: [WorkspacesService, WorkspaceStorageService, WorkspaceChatService, ObjectStorageService, MailerService, SessionGuard],
+  controllers: [WorkspacesController, WorkspaceStorageController, WorkspaceChatController, CalendarController],
+  providers: [
+    WorkspacesService, WorkspaceStorageService, WorkspaceChatService, CalendarService, FileDeliveryService,
+    ObjectStorageService, MailerService, SessionGuard,
+  ],
   exports: [WorkspacesService, WorkspaceStorageService, WorkspaceChatService, ObjectStorageService],
 })
 export class WorkspacesModule {}

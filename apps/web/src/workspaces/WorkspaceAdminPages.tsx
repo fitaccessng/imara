@@ -920,21 +920,31 @@ export function WorkspaceActivityPage() {
   if (workspacesQuery.isError) return <WorkspaceLoadError error={workspacesQuery.error} retry={() => void workspacesQuery.refetch()} />;
   if (!workspace) return <CreateWorkspaceCard />;
   if (workspace.role !== "OWNER" && workspace.role !== "ADMIN") return <NavigateToWorkspace workspaceId={workspace.id} />;
+  function activityDetails(metadata: unknown) {
+    if (!metadata || typeof metadata !== "object") return {};
+    return {
+      fileName: "fileName" in metadata && typeof metadata.fileName === "string" ? metadata.fileName : null,
+      changeSummary: "changeSummary" in metadata && typeof metadata.changeSummary === "string" ? metadata.changeSummary : null,
+    };
+  }
 
   return (
     <div className="workspace-admin-page">
-      <WorkspaceHeader workspace={workspace} workspaces={workspaces} selectWorkspace={selectWorkspace} eyebrow="BUSINESS · GOVERNANCE" title="Workspace activity" subtitle="A record of membership and folder-access changes." />
+      <WorkspaceHeader workspace={workspace} workspaces={workspaces} selectWorkspace={selectWorkspace} eyebrow="BUSINESS · GOVERNANCE" title="Workspace activity" subtitle="A record of document edits, file activity, membership and folder-access changes." />
       <section className="workspace-panel">
         <div className="workspace-panel-heading"><div><span className="eyebrow">AUDIT LOG</span><h2>Recent activity</h2></div><span className="permission-tree-count">Latest 100 events</span></div>
         {activityQuery.isLoading ? <PageLoading label="Loading activity…" /> : activityQuery.isError ? <WorkspaceLoadError error={activityQuery.error} retry={() => void activityQuery.refetch()} /> : (
           <div className="workspace-activity-list">
-            {(activityQuery.data ?? []).map((event) => (
-              <article className="workspace-activity-row" key={event.id}>
+            {(activityQuery.data ?? []).map((event) => {
+              const details = activityDetails(event.metadata);
+              return <article className="workspace-activity-row" key={event.id}>
                 <span className="activity-mark"><Shield size={15} /></span>
-                <span className="workspace-activity-copy"><strong>{event.action.replace(/_/g, " ").toLowerCase()}</strong><small>{event.actor?.name ?? "System"} · {event.targetType}{event.targetId ? ` · ${event.targetId}` : ""}</small></span>
+                <span className="workspace-activity-copy"><strong>{event.action.replace(/_/g, " ").toLowerCase()}</strong><small>{event.actor?.name ?? "System"} · {event.targetType}{details.fileName ? ` · ${details.fileName}` : event.targetId ? ` · ${event.targetId}` : ""}</small>
+                  {details.changeSummary && <small>{details.changeSummary}</small>}
+                </span>
                 <time dateTime={event.createdAt}>{dateTimeFormat.format(new Date(event.createdAt))}</time>
-              </article>
-            ))}
+              </article>;
+            })}
             {!activityQuery.data?.length && <div className="workspace-list-empty"><Clock3 size={20} /><strong>No activity recorded</strong><span>Important workspace changes will appear here.</span></div>}
           </div>
         )}

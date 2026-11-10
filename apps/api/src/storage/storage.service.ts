@@ -623,7 +623,7 @@ export class StorageService {
     return this.upload(userId, file, folderId, 'canScanDocuments');
   }
 
-  async replaceContent(userId: string, fileId: string, replacement: UploadInput) {
+  async replaceContent(userId: string, fileId: string, replacement: UploadInput, _changeSummary?: string) {
     if (!replacement || !Buffer.isBuffer(replacement.buffer)
       || !Number.isSafeInteger(replacement.size) || replacement.buffer.length !== replacement.size) {
       throw new BadRequestException('The uploaded file is invalid');

@@ -103,7 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? `${nameParts[0][0]}${nameParts[nameParts.length - 1]?.[0]}`
     : nameParts[0]?.slice(0, 2) ?? "").toUpperCase();
   const isBusinessPage = pathname.startsWith("/workspace");
-  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Signatures" : pathname.startsWith("/workspace/approvals") ? "Approvals" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : pathname === "/workspace" && !businessWorkspace ? "Set up workspace" : isBusinessPage ? "Shared files" : "Overview";
+  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname === "/calendar" ? "Calendar" : pathname === "/workspace/calendar" ? "Shared calendar" : pathname === "/workspace/file-deliveries" ? "Private files" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Signatures" : pathname.startsWith("/workspace/approvals") ? "Approvals" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : pathname === "/workspace" && !businessWorkspace ? "Set up workspace" : isBusinessPage ? "Shared files" : "Overview";
   const workspaceName = isBusinessPage ? businessWorkspace?.name ?? "Business space" : "Personal space";
 
   return (
@@ -132,6 +132,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink to="/files" end className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Files size={17} strokeWidth={1.8} /><span>Your files</span>
+          </NavLink>
+          <NavLink to="/calendar" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <CalendarDays size={17} strokeWidth={1.8} /><span>Calendar</span>
           </NavLink>
           <NavLink to="/favorites" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Star size={17} strokeWidth={1.8} /><span>Favourites</span>
@@ -168,6 +171,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : <>
             <NavLink to={businessHref("/workspace")} end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
               <Files size={17} strokeWidth={1.8} /><span>Shared files</span>
+            </NavLink>
+            <NavLink to={businessHref("/workspace/calendar")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <CalendarDays size={17} strokeWidth={1.8} /><span>Shared calendar</span>
+            </NavLink>
+            <NavLink to={businessHref("/workspace/file-deliveries")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <Files size={17} strokeWidth={1.8} /><span>Private files</span>
             </NavLink>
             <NavLink to={businessHref("/workspace/signatures")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
               <FileSignature size={17} strokeWidth={1.8} /><span>Signatures</span>

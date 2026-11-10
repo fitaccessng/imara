@@ -6,6 +6,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
+import { FileSharesModule } from './storage/file-shares.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { EventsModule } from './events/events.module';
 import { AdminModule } from './admin/admin.module';
@@ -30,6 +31,7 @@ import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
     PlanCatalogueModule,
     AuthModule,
     StorageModule,
+    FileSharesModule,
     WorkspacesModule,
     EventsModule,
     AdminModule,

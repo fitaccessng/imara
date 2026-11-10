@@ -21,7 +21,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { CreateFolderDto, MoveFolderDto, RenameFolderDto, SearchFilesDto, UpdateFavoriteDto, UpdateFileOrganizationDto, UploadFileDto } from './storage.dto';
+import { CreateFolderDto, MoveFolderDto, RenameFolderDto, ReplaceFileContentDto, SearchFilesDto, UpdateFavoriteDto, UpdateFileOrganizationDto, UploadFileDto } from './storage.dto';
 import { getMaxUploadBytes, StorageService, type UploadInput } from './storage.service';
 
 @Controller()
@@ -140,8 +140,9 @@ export class StorageController {
     @Req() req: AuthenticatedRequest,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @UploadedFile() file: UploadInput,
+    @Body() dto: ReplaceFileContentDto,
   ) {
-    return this.storage.replaceContent(req.auth.userId, id, file);
+    return this.storage.replaceContent(req.auth.userId, id, file, dto.changeSummary);
   }
 
   @Get('files/:id/download')

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, LockKeyhole, Pencil, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, LockKeyhole, Pencil, Send, Share2, ShieldCheck, Trash2, Users, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile } from "../lib/api";
@@ -7,6 +7,10 @@ import { ActionModal, type ActionModalRequest } from "../components/ActionModal"
 import { FileViewerModal } from "../components/FileViewerModal";
 import { PlanLimitMessage } from "../components/PlanLimitMessage";
 import { FolderZipTools } from "../components/FolderZipTools";
+import { BatchUploadControls } from "../components/BatchUploadControls";
+import { CreateDocumentButton } from "../components/CreateDocumentButton";
+import { FileShareDialog } from "../components/FileShareDialog";
+import { SendWorkspaceFileDialog } from "../components/SendWorkspaceFileDialog";
 import type { WorkspaceFile, WorkspaceFolder, WorkspaceMember } from "./types";
 import { useWorkspaceScope } from "./useWorkspaceScope";
 import { WorkspaceSetupPrompt } from "./WorkspaceSetupPrompt";
@@ -38,7 +42,10 @@ export function WorkspaceStoragePage() {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [actionError, setActionError] = useState("");
   const [downloadError, setDownloadError] = useState("");
+  const [batchUploadBusy, setBatchUploadBusy] = useState(false);
   const [viewingFile, setViewingFile] = useState<WorkspaceFile | null>(null);
+  const [sharingFile, setSharingFile] = useState<WorkspaceFile | null>(null);
+  const [sendingFile, setSendingFile] = useState<WorkspaceFile | null>(null);
   const [actionModal, setActionModal] = useState<ActionModalRequest | null>(null);
   const isAdministrator = workspace?.role === "OWNER" || workspace?.role === "ADMIN";
 
@@ -208,7 +215,7 @@ export function WorkspaceStoragePage() {
   const folders = contentsQuery.data?.folders ?? [];
   const files = contentsQuery.data?.files ?? [];
   const currentPermissions = currentFolder?.permissions ?? [];
-  const busy = createFolder.isPending || uploadFile.isPending;
+  const busy = createFolder.isPending || uploadFile.isPending || batchUploadBusy;
   const canViewFiles = isAdministrator || currentPermissions.includes("viewFiles");
   const hasWorkspaceContent = Boolean(folders.length || files.length);
 
@@ -228,14 +235,31 @@ export function WorkspaceStoragePage() {
             </button>
           )}
           {canUpload && (
-            <label className={`button button-green files-upload-button ${busy ? "button-disabled" : ""}`}>
-              <Upload size={15} />{uploadFile.isPending ? "Uploading…" : "Upload a file"}
-              <input type="file" disabled={busy} onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) void uploadFile.mutateAsync(file).catch(() => undefined);
-                event.currentTarget.value = "";
-              }} />
-            </label>
+            <>
+              <CreateDocumentButton<WorkspaceFile>
+                disabled={busy}
+                onCreate={(file) => uploadFile.mutateAsync(file)}
+                onCreated={setViewingFile}
+              />
+              <BatchUploadControls
+                disabled={busy}
+                canCreateFolders={canCreateFolder}
+                rootFolderId={folderId}
+                getFolders={async (parentFolderId) => (await apiRequest<WorkspaceFolderContents>(`/workspaces/${workspaceId}/storage${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`)).folders}
+                createFolder={(name, parentFolderId) => apiRequest<WorkspaceFolder>(`/workspaces/${workspaceId}/folders`, {
+                  method: "POST",
+                  body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
+                })}
+                uploadFile={(file, parentFolderId) => {
+                  const form = new FormData();
+                  form.append("file", file);
+                  if (parentFolderId) form.append("folderId", parentFolderId);
+                  return apiRequest<WorkspaceFile>(`/workspaces/${workspaceId}/files`, { method: "POST", body: form });
+                }}
+                onComplete={refreshLibrary}
+                onBusyChange={setBatchUploadBusy}
+              />
+            </>
           )}
         </div>
       </div>
@@ -304,6 +328,8 @@ export function WorkspaceStoragePage() {
                 />
                 {(isAdministrator || currentPermissions.includes("viewFiles")) && <button aria-label={`View ${file.name}`} title="View file" onClick={() => setViewingFile(file)}><Eye size={15} /></button>}
                 {(isAdministrator || currentPermissions.includes("downloadFiles")) && <button aria-label={`Download ${file.name}`} title="Download file" onClick={() => void download(file)}><Download size={15} /></button>}
+                {(isAdministrator || currentPermissions.includes("shareFiles")) && <button aria-label={`Share ${file.name} externally`} title="Create public share link" onClick={() => setSharingFile(file)}><Share2 size={15} /></button>}
+                {(isAdministrator || currentPermissions.includes("shareFiles")) && <button aria-label={`Send ${file.name}`} title="Send privately or by email" onClick={() => setSendingFile(file)}><Send size={15} /></button>}
                 {(isAdministrator || currentPermissions.includes("renameFiles")) && <button aria-label={`Rename ${file.name}`} title="Rename file" onClick={() => void renameFile(file)}><Pencil size={15} /></button>}
                 {(isAdministrator || currentPermissions.includes("deleteFiles")) && <button aria-label={`Delete ${file.name}`} title="Delete file" onClick={() => void deleteFile(file)}><Trash2 size={15} /></button>}
               </div>
@@ -329,6 +355,17 @@ export function WorkspaceStoragePage() {
         onClose={() => setViewingFile(null)}
         onSaved={refreshLibrary}
         onDownload={() => void download(viewingFile)}
+      />}
+      {sharingFile && workspaceId && <FileShareDialog
+        file={sharingFile}
+        sharesUrl={`/workspaces/${encodeURIComponent(workspaceId)}/files/${encodeURIComponent(sharingFile.id)}/shares`}
+        onClose={() => setSharingFile(null)}
+      />}
+      {sendingFile && workspaceId && <SendWorkspaceFileDialog
+        workspaceId={workspaceId}
+        workspaceName={workspace.name}
+        file={sendingFile}
+        onClose={() => setSendingFile(null)}
       />}
       {actionModal && <ActionModal request={actionModal} onClose={() => setActionModal(null)} />}
       {createFolderOpen && (

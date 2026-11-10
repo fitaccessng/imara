@@ -6,15 +6,17 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { RenameFolderDto, UploadFileDto } from '../storage/storage.dto';
+import { RenameFolderDto, ReplaceFileContentDto, UploadFileDto } from '../storage/storage.dto';
 import { getMaxUploadBytes, UploadInput } from '../storage/storage.service';
 import { CreateWorkspaceFolderDto, MoveWorkspaceFileDto, RenameWorkspaceFileDto } from './workspace-storage.dto';
 import { WorkspaceStorageService } from './workspace-storage.service';
+import { FileDeliveryService } from './file-delivery.service';
+import { SendWorkspaceFileDto } from './file-delivery.dto';
 
 @Controller('workspaces/:workspaceId')
 @UseGuards(SessionGuard)
 export class WorkspaceStorageController {
-  constructor(private readonly storage: WorkspaceStorageService) {}
+  constructor(private readonly storage: WorkspaceStorageService, private readonly deliveries: FileDeliveryService) {}
 
   @Get('storage')
   list(
@@ -104,8 +106,9 @@ export class WorkspaceStorageController {
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
     @Param('fileId', ParseUUIDPipe) fileId: string,
     @UploadedFile() file: UploadInput,
+    @Body() dto: ReplaceFileContentDto,
   ) {
-    return this.storage.replaceContent(workspaceId, req.auth.userId, fileId, file);
+    return this.storage.replaceContent(workspaceId, req.auth.userId, fileId, file, dto.changeSummary);
   }
 
   @Get('files/:fileId/download')
@@ -116,6 +119,37 @@ export class WorkspaceStorageController {
     @Res() response: Response,
   ) {
     const file = await this.storage.download(workspaceId, req.auth.userId, fileId);
+    response.setHeader('Content-Type', file.contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    file.body.pipe(response);
+  }
+
+  @Post('files/:fileId/send')
+  @HttpCode(HttpStatus.OK)
+  sendFile(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Body() dto: SendWorkspaceFileDto,
+  ) {
+    return this.deliveries.send(workspaceId, req.auth.userId, fileId, dto);
+  }
+
+  @Get('file-deliveries')
+  listDeliveries(@Req() req: AuthenticatedRequest, @Param('workspaceId', ParseUUIDPipe) workspaceId: string) {
+    return this.deliveries.list(workspaceId, req.auth.userId);
+  }
+
+  @Get('file-deliveries/:deliveryId/download')
+  async downloadDelivery(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('deliveryId', ParseUUIDPipe) deliveryId: string,
+    @Res() response: Response,
+  ) {
+    const file = await this.deliveries.download(workspaceId, req.auth.userId, deliveryId);
     response.setHeader('Content-Type', file.contentType);
     response.setHeader('Content-Disposition', `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(file.name)}`);
     response.setHeader('Cache-Control', 'private, no-store');

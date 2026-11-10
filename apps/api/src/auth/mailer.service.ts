@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import type { Readable } from 'node:stream';
 
 @Injectable()
 export class MailerService implements OnModuleDestroy {
@@ -152,6 +153,39 @@ export class MailerService implements OnModuleDestroy {
       reminderUrl,
       true,
     );
+  }
+
+  async sendFileAttachment(
+    recipients: string[],
+    senderDisplayName: string,
+    filename: string,
+    contentType: string,
+    content: Readable,
+    message?: string,
+  ): Promise<void> {
+    if (!this.isSmtpConfigured()) {
+      throw new ServiceUnavailableException('SMTP email delivery is not configured for file delivery.');
+    }
+    const configuredFrom = process.env.SMTP_FROM!;
+    if (/[\r\n\u0000]/.test(configuredFrom)) {
+      throw new ServiceUnavailableException('The configured SMTP sender address is invalid.');
+    }
+    const addressMatch = configuredFrom.match(/<\s*([^<>]+?)\s*>/);
+    const address = (addressMatch?.[1] ?? configuredFrom).trim();
+    if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(address)) {
+      throw new ServiceUnavailableException('The configured SMTP sender address is invalid.');
+    }
+    const safeDisplayName = senderDisplayName.replace(/[\r\n]+/g, ' ')
+      .replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160) || 'IMARA';
+    const safeFilename = filename.replace(/[\r\n\u0000-\u001f\u007f/\\"]/g, '_').slice(0, 255) || 'file';
+    await this.sendSmtpMail({
+      from: { name: safeDisplayName, address },
+      to: 'undisclosed-recipients:;',
+      bcc: recipients,
+      subject: `File shared by ${safeDisplayName}`,
+      text: `${message?.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim() || 'A file has been shared with you.'}`,
+      attachments: [{ filename: safeFilename, contentType, content }],
+    });
   }
 
   async healthCheck(): Promise<'healthy' | 'unavailable' | 'not-configured'> {

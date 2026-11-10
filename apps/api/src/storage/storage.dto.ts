@@ -1,4 +1,5 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { FileCategory } from '@prisma/client';
 
 export class SearchFilesDto {
@@ -36,6 +37,14 @@ export class UploadFileDto {
   @IsOptional()
   @IsUUID()
   folderId?: string;
+}
+
+export class ReplaceFileContentDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @Length(1, 200)
+  changeSummary?: string;
 }
 
 export class UpdateFavoriteDto {

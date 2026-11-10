@@ -15,6 +15,7 @@ import { CheckoutPage, PaymentStatusPage, PricingPlansPage, SubscriptionOverview
 import { AppShell } from "./components/AppShell";
 import { ApprovalsPage } from "./approvals/ApprovalsPage";
 import { RemindersPage } from "./reminders/RemindersPage";
+import { CalendarPage } from "./calendar/CalendarPage";
 import { SmartFilesPage } from "./smart-files/SmartFilesPage";
 import { SignaturesPage } from "./signatures/SignaturesPage";
 import {
@@ -43,8 +44,10 @@ import {
 } from "./workspaces/WorkspaceAdminPages";
 import { WorkspaceStoragePage } from "./workspaces/WorkspaceStoragePage";
 import { WorkspaceChatPage } from "./workspaces/WorkspaceChatPage";
+import { WorkspaceFileDeliveriesPage } from "./workspaces/WorkspaceFileDeliveriesPage";
 import { AdminLoginPage } from "./pages/admin/AdminLoginPage";
 import { AdminPortal } from "./pages/admin/AdminPortal";
+import { SharedFilePreviewPage } from "./pages/sharing/SharedFilePreviewPage";
 
 const EventsPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.EventsPage })));
 const CreateEventPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.CreateEventPage })));
@@ -81,6 +84,7 @@ function ProtectedRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dashboard/storage" element={<DashboardPage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/smart-files" element={<SmartFilesPage />} />
         <Route path="/favorites" element={<StarredFilesPage />} />
         <Route path="/starred" element={<StarredFilesPage />} />
@@ -108,6 +112,8 @@ function ProtectedRoutes() {
         <Route path="/workspace/approvals" element={<ApprovalsPage />} />
         <Route path="/workspace/signatures" element={<SignaturesPage />} />
         <Route path="/workspace/reminders" element={<RemindersPage />} />
+        <Route path="/workspace/calendar" element={<CalendarPage shared />} />
+        <Route path="/workspace/file-deliveries" element={<WorkspaceFileDeliveriesPage />} />
         <Route path="/workspace/chat" element={<WorkspaceChatPage />} />
         <Route path="/workspace" element={<WorkspaceStoragePage />} />
         <Route path="/workspace/shared-folders" element={<WorkspaceStoragePage />} />
@@ -159,6 +165,7 @@ export function App() {
         <Route path="/workspace/invitations/accept" element={<AcceptWorkspaceInvitationPage />} />
         <Route path="/capture/:token" element={<CaptureEventPage />} />
         <Route path="/gallery/:token" element={<EventGalleryPage />} />
+        <Route path="/share/:token" element={<SharedFilePreviewPage />} />
         <Route path="/*" element={<ProtectedRoutes />} />
       </Routes>
     </Suspense>

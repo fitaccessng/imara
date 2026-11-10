@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, Move, Pencil, Star, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, Move, Pencil, Share2, Star, Trash2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile, type StoredFile, type UserFolder } from "../lib/api";
@@ -7,6 +7,9 @@ import { FileViewerModal } from "../components/FileViewerModal";
 import { PlanLimitMessage } from "../components/PlanLimitMessage";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
 import { FolderZipTools } from "../components/FolderZipTools";
+import { BatchUploadControls } from "../components/BatchUploadControls";
+import { CreateDocumentButton } from "../components/CreateDocumentButton";
+import { FileShareDialog } from "../components/FileShareDialog";
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
@@ -31,9 +34,11 @@ export function FilesPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [actionError, setActionError] = useState("");
   const [downloadError, setDownloadError] = useState("");
+  const [batchUploadBusy, setBatchUploadBusy] = useState(false);
   const [movingFolder, setMovingFolder] = useState<UserFolder | null>(null);
   const [destinationFolderId, setDestinationFolderId] = useState("");
   const [viewingFile, setViewingFile] = useState<StoredFile | null>(null);
+  const [sharingFile, setSharingFile] = useState<StoredFile | null>(null);
   const [actionModal, setActionModal] = useState<ActionModalRequest | null>(null);
 
   function setCreateFolderOpen(open: boolean) {
@@ -229,7 +234,7 @@ export function FilesPage() {
     }
   }
   const moveTargets = folderTree.filter((folder) => !excludedMoveTargets.has(folder.id));
-  const busy = createFolder.isPending || uploadFile.isPending || deleteFile.isPending || setFavorite.isPending || deleteFolder.isPending || moveFolder.isPending;
+  const busy = createFolder.isPending || uploadFile.isPending || batchUploadBusy || deleteFile.isPending || setFavorite.isPending || deleteFolder.isPending || moveFolder.isPending;
 
   return (
     <div className="files-page">
@@ -246,18 +251,29 @@ export function FilesPage() {
           <button className="button button-outline" type="button" onClick={() => setCreateFolderOpen(true)}>
             <FolderPlus size={15} /> New folder
           </button>
-          <label className={`button button-green files-upload-button ${busy ? "button-disabled" : ""}`}>
-            <Upload size={15} />{uploadFile.isPending ? "Uploading…" : "Upload a file"}
-            <input
-              type="file"
-              disabled={busy}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) void uploadFile.mutateAsync(file).catch(() => undefined);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+          <CreateDocumentButton<StoredFile>
+            disabled={busy}
+            onCreate={(file) => uploadFile.mutateAsync(file)}
+            onCreated={setViewingFile}
+          />
+          <BatchUploadControls
+            disabled={busy}
+            canCreateFolders
+            rootFolderId={folderId}
+            getFolders={async (parentFolderId) => (await apiRequest<FolderContents>(`/files${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`)).folders}
+            createFolder={(name, parentFolderId) => apiRequest<UserFolder>("/folders", {
+              method: "POST",
+              body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
+            })}
+            uploadFile={(file, parentFolderId) => {
+              const form = new FormData();
+              form.append("file", file);
+              if (parentFolderId) form.append("folderId", parentFolderId);
+              return apiRequest<StoredFile>("/files", { method: "POST", body: form });
+            }}
+            onComplete={refreshLibrary}
+            onBusyChange={setBatchUploadBusy}
+          />
         </div>
       </div>
 
@@ -333,6 +349,7 @@ export function FilesPage() {
                 />
                 <button aria-label={`View ${file.name}`} title="View file" onClick={() => setViewingFile(file)}><Eye size={15} /></button>
                 <button aria-label={`Download ${file.name}`} title="Download file" onClick={() => void handleDownload(file)}><Download size={15} /></button>
+                <button aria-label={`Share ${file.name} externally`} title="Create public share link" onClick={() => setSharingFile(file)}><Share2 size={15} /></button>
                 <button aria-label={`${file.isFavorite ? "Remove" : "Add"} ${file.name} ${file.isFavorite ? "from" : "to"} favourites`} aria-pressed={Boolean(file.isFavorite)} title={file.isFavorite ? "Remove from favourites" : "Add to favourites"} disabled={setFavorite.isPending} onClick={() => setFavorite.mutate({ id: file.id, isFavorite: !file.isFavorite })}>
                   <Star size={15} fill={file.isFavorite ? "currentColor" : "none"} />
                 </button>
@@ -440,6 +457,7 @@ export function FilesPage() {
         onSaved={refreshLibrary}
         onDownload={() => void handleDownload(viewingFile)}
       />}
+      {sharingFile && <FileShareDialog file={sharingFile} sharesUrl={`/files/${encodeURIComponent(sharingFile.id)}/shares`} onClose={() => setSharingFile(null)} />}
       {actionModal && <ActionModal request={actionModal} onClose={() => setActionModal(null)} />}
       <p className="storage-footnote">Files use your account’s storage quota. Individual uploads are limited to 25 MiB.</p>
     </div>

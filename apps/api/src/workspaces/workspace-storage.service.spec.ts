@@ -130,6 +130,72 @@ describe('workspace storage authorization', () => {
     expect(permissionCreateMany).not.toHaveBeenCalled();
   });
 
+  it('records the edited document and changed locations in workspace activity', async () => {
+    const auditCreate = jest.fn().mockResolvedValue({ id: 'audit-id' });
+    const file = {
+      id: 'file-a',
+      userId: 'owner-a',
+      folderId: null,
+      objectKey: 'old-key',
+      originalName: 'Plan.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      sizeBytes: 4n,
+    };
+    const tx = {
+      workspace: { findUnique: jest.fn().mockResolvedValue({ storageUsedBytes: 4n, storageReservedBytes: 0n }) },
+      subscription: { findUnique: jest.fn().mockResolvedValue({}) },
+      storedFile: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      auditLog: { create: auditCreate },
+    };
+    const prisma = {
+      storedFile: { findFirst: jest.fn().mockResolvedValue(file) },
+      subscription: { findUnique: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx)),
+    };
+    const objects = {
+      assertConfigured: jest.fn().mockResolvedValue(undefined),
+      put: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+    const workspaces = {
+      authorizeWorkspace: jest.fn().mockResolvedValue({
+        role: WorkspaceRole.OWNER,
+        workspace: { ownerUserId: 'owner-a' },
+      }),
+      authorizeFolder,
+    };
+    const plans = {
+      currentPlan: jest.fn().mockResolvedValue('BUSINESS'),
+      getEntitlements: jest.fn().mockResolvedValue({ storageLimitBytes: 1024n }),
+      requireFeature: jest.fn().mockResolvedValue(undefined),
+    };
+    const storage = new WorkspaceStorageService(
+      prisma as unknown as PrismaService,
+      objects as unknown as ObjectStorageService,
+      workspaces as unknown as WorkspacesService,
+      plans as never,
+    );
+
+    await expect(storage.replaceContent(
+      'workspace-a',
+      'owner-a',
+      'file-a',
+      { buffer: Buffer.from('edit'), size: 4, originalname: 'Plan.xlsx', mimetype: file.mimeType },
+      'Edited 2 spreadsheet cells: Sheet1!A1, Sheet1!B2',
+    )).resolves.toMatchObject({ id: 'file-a', name: 'Plan.xlsx' });
+
+    expect(auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'FILE_EDITED',
+        targetId: 'file-a',
+        metadata: {
+          fileName: 'Plan.xlsx',
+          changeSummary: 'Edited 2 spreadsheet cells: Sheet1!A1, Sheet1!B2',
+        },
+      }),
+    });
+  });
+
   it('shows an assigned subfolder at the top level when its parent is inaccessible', async () => {
     authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF });
     folderFindMany.mockResolvedValue([

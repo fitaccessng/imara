@@ -229,6 +229,9 @@ model User {
   supportMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
   notifications   Notification[]
   events          Event[]
+  createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreator")
+  sentFileDeliveries FileDelivery[] @relation("FileDeliverySender")
+  receivedFileDeliveries FileDelivery[] @relation("FileDeliveryRecipient")
   galleryGrants   EventGalleryGrant[]
   requestedApprovals ApprovalRequest[] @relation("ApprovalRequester")
   approvalActivities ApprovalActivity[] @relation("ApprovalActivityActor")
@@ -384,6 +387,8 @@ model StoredFile {
   signatureSourceRequests SignatureRequest[] @relation("SignatureSourceFile")
   signatureFinalRequest SignatureRequest? @relation("SignatureFinalFile")
   chatMessages WorkspaceChatMessage[]
+  deliveries    FileDelivery[]
+  publicShares PublicFileShare[]
 
   @@index([userId, folderId, status, createdAt])
   @@index([userId, workspaceId, isFavorite, deletedAt, createdAt])
@@ -392,6 +397,17 @@ model StoredFile {
   @@index([userId, workspaceId, contentHash, status])
   @@index([eventId, status, createdAt])
   @@unique([workspaceId, id])
+}
+
+model PublicFileShare {
+  id        String      @id @default(uuid()) @db.Uuid
+  fileId    String      @db.Uuid
+  tokenHash String      @unique @db.Char(64)
+  createdAt DateTime    @default(now())
+  revokedAt DateTime?
+  file      StoredFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId, createdAt])
 }
 
 model Event {
@@ -456,6 +472,8 @@ model Workspace {
   signatureRequests SignatureRequest[]
   chatConversations WorkspaceChatConversation[]
   chatMessages WorkspaceChatMessage[]
+  calendarEvents CalendarEvent[]
+  fileDeliveries FileDelivery[]
 
   @@index([ownerUserId])
 }
@@ -565,6 +583,42 @@ model WorkspaceChatMessage {
 
   @@index([workspaceId, conversationId, createdAt, id])
   @@index([senderMemberId, createdAt])
+  @@index([fileId])
+}
+
+model CalendarEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  createdById String    @db.Uuid
+  workspaceId String?   @db.Uuid
+  title       String    @db.VarChar(200)
+  description String?   @db.VarChar(4000)
+  startsAt    DateTime
+  endsAt      DateTime
+  allDay      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  creator     User      @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([createdById, workspaceId, startsAt])
+  @@index([workspaceId, startsAt, endsAt])
+}
+
+model FileDelivery {
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @db.Uuid
+  fileId      String      @db.Uuid
+  senderId    String      @db.Uuid
+  recipientId String      @db.Uuid
+  message     String?     @db.VarChar(2000)
+  createdAt   DateTime    @default(now())
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  file        StoredFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  sender      User        @relation("FileDeliverySender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User        @relation("FileDeliveryRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, senderId, createdAt])
+  @@index([workspaceId, recipientId, createdAt])
   @@index([fileId])
 }
 

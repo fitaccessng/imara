@@ -338,7 +338,7 @@ export class WorkspaceStorageService {
         });
         await tx.auditLog.create({
           data: { workspaceId, actorId: userId, action: 'FILE_UPLOADED', targetType: 'StoredFile', targetId: reservation.id,
-            metadata: { folderId: folderId ?? null } satisfies Prisma.InputJsonValue },
+            metadata: { folderId: folderId ?? null, fileName: originalName } satisfies Prisma.InputJsonValue },
         });
         return { ...stored, name: stored.originalName, sizeBytes: stored.sizeBytes.toString() };
       });
@@ -384,7 +384,7 @@ export class WorkspaceStorageService {
     return this.upload(workspaceId, userId, file, folderId, 'canScanDocuments');
   }
 
-  async replaceContent(workspaceId: string, userId: string, fileId: string, replacement: UploadInput) {
+  async replaceContent(workspaceId: string, userId: string, fileId: string, replacement: UploadInput, changeSummary?: string) {
     if (!replacement || !Buffer.isBuffer(replacement.buffer)
       || !Number.isSafeInteger(replacement.size) || replacement.buffer.length !== replacement.size) {
       throw new BadRequestException('The uploaded file is invalid');
@@ -446,7 +446,18 @@ export class WorkspaceStorageService {
         });
         if (!updated.count) throw new ConflictException('This file changed while you were editing. Reload it and try again.');
         await tx.auditLog.create({
-          data: { workspaceId, actorId: userId, action: 'FILE_EDITED', targetType: 'StoredFile', targetId: fileId },
+          data: {
+            workspaceId,
+            actorId: userId,
+            action: 'FILE_EDITED',
+            targetType: 'StoredFile',
+            targetId: fileId,
+            metadata: {
+              fileName: current.originalName,
+              changeSummary: changeSummary?.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 200)
+                || 'Updated file contents',
+            } satisfies Prisma.InputJsonValue,
+          },
         });
       });
     } catch (error) {
