@@ -227,10 +227,19 @@ interface AdminAnnouncement {
   title: string;
   body: string;
   audience: "ALL" | "FREE" | "PRO" | "BUSINESS";
+  target: "AUDIENCE" | "SIGNUP_WINDOW" | "SELECTED";
+  signupWindowMinutes: number | null;
   emailEnabled: boolean;
   createdAt: string;
   recipientCount: number;
   emailDelivery: Record<string, number>;
+}
+
+interface AdminAnnouncementRecipient {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
 }
 
 interface AdminUploadMonitoring {
@@ -1001,18 +1010,64 @@ function AdminAnnouncements() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [audience, setAudience] = useState<AdminAnnouncement["audience"]>("ALL");
+  const [target, setTarget] = useState<AdminAnnouncement["target"]>("AUDIENCE");
+  const [signupWindowMinutes, setSignupWindowMinutes] = useState(1440);
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [debouncedRecipientSearch, setDebouncedRecipientSearch] = useState("");
+  const [selectedRecipients, setSelectedRecipients] = useState<AdminAnnouncementRecipient[]>([]);
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [actionError, setActionError] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedRecipientSearch(recipientSearch.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [recipientSearch]);
+  useEffect(() => {
+    setPreviewOpen(false);
+  }, [audience, target, signupWindowMinutes, selectedRecipients]);
+  const recipientQuery = useQuery({
+    queryKey: ["admin-announcement-recipients", target, audience, signupWindowMinutes, debouncedRecipientSearch],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: "1", pageSize: target === "SELECTED" ? "20" : "1" });
+      if (target === "AUDIENCE") params.set("audience", audience);
+      if (target === "SIGNUP_WINDOW") params.set("createdWithinMinutes", String(signupWindowMinutes));
+      if (target === "SELECTED") params.set("q", debouncedRecipientSearch);
+      return apiRequest<PageResult<AdminAnnouncementRecipient>>(`/admin/announcements/recipients?${params.toString()}`);
+    },
+    enabled: target !== "SELECTED" || debouncedRecipientSearch.length >= 2,
+  });
+  const selectedRecipientIds = new Set(selectedRecipients.map((recipient) => recipient.id));
+  const recipientCount = target === "SELECTED"
+    ? selectedRecipients.length
+    : recipientQuery.data?.page.totalItems ?? 0;
+  const recipientSearchPending = target === "SELECTED"
+    && recipientSearch.trim() !== debouncedRecipientSearch;
+  const recipientFilterLoading = target === "SELECTED"
+    ? recipientSearchPending || (debouncedRecipientSearch.length >= 2 && recipientQuery.isFetching)
+    : recipientQuery.isFetching;
+  const canPreview = target === "SELECTED"
+    ? selectedRecipients.length > 0
+    : Boolean(recipientQuery.data && !recipientQuery.isError);
   const sendAnnouncement = useMutation({
     mutationFn: () => apiRequest<AdminAnnouncement>("/admin/announcements", {
       method: "POST",
-      body: JSON.stringify({ title, body, audience, emailEnabled }),
+      body: JSON.stringify({
+        title,
+        body,
+        audience: target === "AUDIENCE" ? audience : "ALL",
+        target,
+        ...(target === "SIGNUP_WINDOW" ? { signupWindowMinutes } : {}),
+        ...(target === "SELECTED" ? { userIds: selectedRecipients.map(({ id }) => id) } : {}),
+        emailEnabled,
+      }),
     }),
     onSuccess: async (created) => {
       setTitle("");
       setBody("");
+      setSelectedRecipients([]);
+      setRecipientSearch("");
+      setDebouncedRecipientSearch("");
       setPreviewOpen(false);
       setActionError("");
       setNotice(`Announcement queued for ${formatNumber(created.recipientCount)} active accounts.`);
@@ -1039,6 +1094,22 @@ function AdminAnnouncements() {
   if (query.isError) return <AdminPageState title="Announcements could not load" error={query.error} retry={() => void query.refetch()} />;
   const announcements = query.data.items;
   const failedEmailCount = (item: AdminAnnouncement) => item.emailDelivery.FAILED ?? 0;
+  const audienceLabel = (item: AdminAnnouncement) => {
+    if (item.target === "SELECTED") return "Selected customers";
+    if (item.target === "SIGNUP_WINDOW") {
+      const minutes = item.signupWindowMinutes ?? 0;
+      const duration = minutes < 60 ? `${minutes} minutes` : minutes % 1440 === 0
+        ? `${minutes / 1440} days`
+        : minutes % 60 === 0 ? `${minutes / 60} hours` : `${minutes} minutes`;
+      return `Signed up within ${duration}`;
+    }
+    return item.audience === "ALL" ? "All active customers" : `${item.audience} plan`;
+  };
+  const currentTargetLabel = target === "AUDIENCE"
+    ? audience === "ALL" ? "All active customers" : `${audience} plan`
+    : target === "SIGNUP_WINDOW"
+      ? `Signed up within ${signupWindowMinutes < 60 ? `${signupWindowMinutes} minutes` : signupWindowMinutes % 1440 === 0 ? `${signupWindowMinutes / 1440} days` : `${signupWindowMinutes / 60} hours`}`
+      : `${selectedRecipients.length} selected customers`;
 
   return <div className="admin-page-content">
     <header className="admin-page-heading">
@@ -1051,22 +1122,78 @@ function AdminAnnouncements() {
       <div className="admin-panel-heading"><div><span className="admin-eyebrow">COMPOSE</span><h2>New announcement</h2></div><Megaphone size={18} /></div>
       <form className="admin-announcement-form" onSubmit={(event) => { event.preventDefault(); setPreviewOpen(true); }}>
         <label><span>Title</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} required /></label>
-        <label><span>Audience</span><select value={audience} onChange={(event) => setAudience(event.target.value as AdminAnnouncement["audience"])}>
-          <option value="ALL">All active customers</option><option value="FREE">Free plan</option><option value="PRO">Pro plan</option><option value="BUSINESS">Business plan</option>
+        <label><span>Who should receive this?</span><select value={target} onChange={(event) => {
+          setTarget(event.target.value as AdminAnnouncement["target"]);
+          setPreviewOpen(false);
+        }}>
+          <option value="AUDIENCE">Customer audience or plan</option>
+          <option value="SIGNUP_WINDOW">New signups</option>
+          <option value="SELECTED">Choose customers individually</option>
         </select></label>
+        {target === "AUDIENCE" && <label><span>Customer audience</span><select value={audience} onChange={(event) => setAudience(event.target.value as AdminAnnouncement["audience"])}>
+          <option value="ALL">All active customers</option><option value="FREE">Free plan</option><option value="PRO">Pro plan</option><option value="BUSINESS">Business plan</option>
+        </select></label>}
+        {target === "SIGNUP_WINDOW" && <label><span>Signed up within</span><select value={signupWindowMinutes} onChange={(event) => setSignupWindowMinutes(Number(event.target.value))}>
+          <option value={30}>Last 30 minutes</option>
+          <option value={60}>Last hour</option>
+          <option value={1440}>Last 24 hours</option>
+          <option value={10080}>Last 7 days</option>
+          <option value={43200}>Last 30 days</option>
+        </select></label>}
+        {target === "SELECTED" && <div className="admin-recipient-picker">
+          <label className="admin-recipient-search"><span>Find a customer</span><div><Search size={14} /><input value={recipientSearch} onChange={(event) => setRecipientSearch(event.target.value)} placeholder="Search by name or email" autoComplete="off" /></div></label>
+          {selectedRecipients.length > 0 && <div className="admin-selected-recipients" aria-live="polite">
+            <strong>{selectedRecipients.length} selected</strong>
+            {selectedRecipients.map((recipient) => <button key={recipient.id} type="button" onClick={() => setSelectedRecipients((current) => current.filter(({ id }) => id !== recipient.id))} aria-label={`Remove ${recipient.name}`}>
+              {recipient.name}<span aria-hidden="true">×</span>
+            </button>)}
+          </div>}
+          {debouncedRecipientSearch.length < 2
+            ? <p className="admin-recipient-hint">Enter at least two characters to find active customers.</p>
+            : recipientQuery.isError
+              ? <p className="admin-signout-error" role="alert">{recipientQuery.error instanceof Error ? recipientQuery.error.message : "Customers could not be loaded."}</p>
+              : recipientFilterLoading
+                ? <p className="admin-recipient-hint">Searching active customers…</p>
+                : recipientQuery.data?.items.length
+                  ? <div className="admin-recipient-results" aria-label="Customer search results">
+                    {recipientQuery.data.items.map((recipient) => {
+                      const checked = selectedRecipientIds.has(recipient.id);
+                      return <label className="admin-recipient-option" key={recipient.id}>
+                        <input type="checkbox" checked={checked} onChange={(event) => setSelectedRecipients((current) =>
+                          event.target.checked
+                            ? [...current, recipient]
+                            : current.filter(({ id }) => id !== recipient.id))}
+                          disabled={!checked && selectedRecipients.length >= 500} />
+                        <span><strong>{recipient.name}</strong><small>{recipient.email}</small></span>
+                        <time dateTime={recipient.createdAt}>{formatDate(recipient.createdAt)}</time>
+                      </label>;
+                    })}
+                    {selectedRecipients.length >= 500 && <small className="admin-recipient-hint">The maximum of 500 recipients has been reached.</small>}
+                    {recipientQuery.data.page.totalItems > recipientQuery.data.items.length && <small className="admin-recipient-hint">Showing the first {recipientQuery.data.items.length} matches. Refine your search to find a specific customer.</small>}
+                  </div>
+                  : <p className="admin-recipient-hint">No active customers match that search.</p>}
+        </div>}
+        {target !== "SELECTED" && <div className="admin-recipient-count" aria-live="polite">
+          <Users size={15} />
+          {recipientFilterLoading ? <span>Counting eligible customers…</span>
+            : recipientQuery.isError ? <span role="alert">Recipient count is unavailable. Try again before previewing.</span>
+              : <span><strong>{formatNumber(recipientCount)}</strong> active customer{recipientCount === 1 ? "" : "s"} match this filter.</span>}
+        </div>}
         <label className="admin-announcement-body"><span>Message</span><textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={5000} rows={6} required /></label>
         <label className="admin-checkbox-label"><input type="checkbox" checked={emailEnabled} onChange={(event) => setEmailEnabled(event.target.checked)} /><span>Also email recipients using configured SMTP</span></label>
         {emailEnabled && <p className="admin-panel-note">Email delivery is asynchronous. Status and failed deliveries are tracked below; SMTP must be configured on the API.</p>}
-        <button className="admin-button admin-button-primary" type="submit"><Mail size={14} /> Preview announcement</button>
+        <button className="admin-button admin-button-primary" type="submit" disabled={!canPreview || recipientFilterLoading || recipientCount === 0}>
+          <Mail size={14} /> Preview {recipientCount ? `${formatNumber(recipientCount)} recipient${recipientCount === 1 ? "" : "s"}` : "announcement"}
+        </button>
       </form>
       {previewOpen && <div className="admin-announcement-preview" aria-label="Announcement preview">
-        <span className="admin-eyebrow">PREVIEW · {audience === "ALL" ? "ALL ACTIVE CUSTOMERS" : `${audience} PLAN`}</span>
+        <span className="admin-eyebrow">PREVIEW · {currentTargetLabel.toUpperCase()}</span>
         <h3>{title}</h3>
         <p>{body}</p>
-        <p className="admin-panel-note">Delivery: in-app{emailEnabled ? " and email" : ""}. Confirm to create the announcement and delivery records.</p>
+        <p className="admin-panel-note">Recipients: {formatNumber(recipientCount)} active customer{recipientCount === 1 ? "" : "s"}. Delivery: in-app{emailEnabled ? " and email" : ""}.</p>
         <div className="admin-form-actions">
           <button type="button" className="admin-button admin-button-secondary" onClick={() => setPreviewOpen(false)}>Continue editing</button>
-          <button type="button" className="admin-button admin-button-primary" disabled={sendAnnouncement.isPending} onClick={() => sendAnnouncement.mutate()}>
+          <button type="button" className="admin-button admin-button-primary" disabled={sendAnnouncement.isPending || recipientCount === 0} onClick={() => sendAnnouncement.mutate()}>
             {sendAnnouncement.isPending ? "Queueing…" : "Send announcement"}
           </button>
         </div>
@@ -1076,10 +1203,10 @@ function AdminAnnouncements() {
       <div className="admin-panel-heading"><div><span className="admin-eyebrow">DELIVERY HISTORY</span><h2>Sent announcements</h2></div></div>
       {!announcements.length ? <div className="admin-empty-state"><Megaphone size={20} /><strong>No announcements yet</strong><span>Confirmed announcements and their delivery status will appear here.</span></div> : (
         <div className="admin-table-wrap"><table className="admin-table">
-          <thead><tr><th>Announcement</th><th>Audience</th><th>Recipients</th><th>Email delivery</th><th>Created</th><th /></tr></thead>
+          <thead><tr><th>Announcement</th><th>Target</th><th>Recipients</th><th>Email delivery</th><th>Created</th><th /></tr></thead>
           <tbody>{announcements.map((item) => <tr key={item.id}>
             <td><strong>{item.title}</strong><small>{item.body.slice(0, 100)}{item.body.length > 100 ? "…" : ""}</small></td>
-            <td>{item.audience}</td><td>{formatNumber(item.recipientCount)}</td>
+            <td>{audienceLabel(item)}</td><td>{formatNumber(item.recipientCount)}</td>
             <td>{item.emailEnabled ? <span>{formatNumber(item.emailDelivery.SENT ?? 0)} sent · {formatNumber(item.emailDelivery.PENDING ?? 0)} pending · {formatNumber(failedEmailCount(item))} failed</span> : "Not requested"}</td>
             <td>{formatDate(item.createdAt)}</td>
             <td>{item.emailEnabled && failedEmailCount(item) > 0 && <button className="admin-row-action" type="button" disabled={retryEmail.isPending} onClick={() => retryEmail.mutate(item.id)}>Retry failed <RotateCcw size={13} /></button>}</td>

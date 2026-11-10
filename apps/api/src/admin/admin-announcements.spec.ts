@@ -30,7 +30,9 @@ describe('AdminService announcements', () => {
           id: 'announcement-id',
           title: 'Update',
           audience: 'PRO',
-          emailEnabled: true,
+              target: 'AUDIENCE',
+              signupWindowMinutes: null,
+              emailEnabled: true,
           createdAt: new Date('2026-11-08T00:00:00Z'),
         }),
       },
@@ -54,6 +56,7 @@ describe('AdminService announcements', () => {
       title: 'Update',
       body: 'A new feature is available',
       audience: 'PRO' as never,
+      target: 'AUDIENCE' as never,
       emailEnabled: true,
     }, request())).resolves.toMatchObject({
       id: 'announcement-id',
@@ -78,8 +81,91 @@ describe('AdminService announcements', () => {
       data: expect.objectContaining({
         action: 'admin.announcement.create',
         resourceId: 'announcement-id',
-        metadata: { audience: 'PRO', recipientCount: 2, emailEnabled: true },
+        metadata: expect.objectContaining({
+          audience: 'PRO',
+          target: 'AUDIENCE',
+          signupWindowMinutes: null,
+          recipientCount: 2,
+          emailEnabled: true,
+        }),
       }),
+    }));
+  });
+
+  it('targets active accounts created within the selected signup window', async () => {
+    const tx = {
+      platformAnnouncement: { create: jest.fn().mockResolvedValue({ id: 'announcement-id' }) },
+      platformAnnouncementDelivery: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      platformAdminAuditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-id' }) },
+    };
+    const prisma = {
+      user: { findMany: jest.fn().mockResolvedValue([{ id: 'recent-user' }]) },
+      $transaction: jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx)),
+    };
+    const service = new AdminService(prisma as unknown as PrismaService);
+    const beforeSend = Date.now();
+
+    await expect(service.createAnnouncement({
+      title: 'Welcome',
+      body: 'Thanks for joining',
+      audience: 'ALL' as never,
+      target: 'SIGNUP_WINDOW' as never,
+      signupWindowMinutes: 30,
+      emailEnabled: false,
+    }, request())).resolves.toMatchObject({ recipientCount: 1 });
+
+    const query = prisma.user.findMany.mock.calls[0][0] as { where: { createdAt: { gte: Date } } };
+    expect(query.where).toMatchObject({
+      role: 'USER',
+      accountStatus: 'ACTIVE',
+    });
+    expect(query.where.createdAt.gte.getTime()).toBeGreaterThanOrEqual(beforeSend - 30 * 60_000);
+    expect(query.where.createdAt.gte.getTime()).toBeLessThanOrEqual(Date.now() - 30 * 60_000);
+  });
+
+  it('rejects selected users that are not active customers', async () => {
+    const prisma = {
+      user: { findMany: jest.fn().mockResolvedValue([{ id: 'active-user' }]) },
+    };
+    const service = new AdminService(prisma as unknown as PrismaService);
+
+    await expect(service.createAnnouncement({
+      title: 'Targeted',
+      body: 'Message',
+      audience: 'ALL' as never,
+      target: 'SELECTED' as never,
+      userIds: ['active-user', 'unavailable-user'],
+      emailEnabled: false,
+    }, request())).rejects.toThrow('inactive or unavailable');
+  });
+
+  it('searches only active customer accounts for individual targeting', async () => {
+    const prisma = {
+      user: {
+        count: jest.fn().mockResolvedValue(1),
+        findMany: jest.fn().mockResolvedValue([{
+          id: 'user-id',
+          name: 'Customer',
+          email: 'customer@example.test',
+          createdAt: new Date('2026-11-10T00:00:00Z'),
+        }]),
+      },
+      platformAdminAuditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-id' }) },
+    };
+    const service = new AdminService(prisma as unknown as PrismaService);
+
+    await expect(service.announcementRecipients({
+      page: 1,
+      pageSize: 20,
+      q: 'customer',
+    }, request())).resolves.toMatchObject({
+      items: [{ id: 'user-id', email: 'customer@example.test' }],
+      page: { totalItems: 1 },
+    });
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ role: 'USER', accountStatus: 'ACTIVE' }),
+      select: { id: true, name: true, email: true, createdAt: true },
     }));
   });
 
@@ -92,6 +178,7 @@ describe('AdminService announcements', () => {
       title: 'Update',
       body: 'Body',
       audience: 'ALL' as never,
+      target: 'AUDIENCE' as never,
       emailEnabled: true,
     }, request())).rejects.toThrow('Configure SMTP email delivery');
   });

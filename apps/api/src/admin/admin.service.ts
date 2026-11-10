@@ -12,6 +12,7 @@ import {
   PaymentAttemptStatus,
   PlatformAnnouncementAudience,
   PlatformAnnouncementEmailStatus,
+  PlatformAnnouncementTarget,
   PlatformAdminRole,
   PlatformAdminStatus,
   Plan,
@@ -23,6 +24,7 @@ import {
 import type { PlatformAdminRequest } from './platform-admin.types';
 import type {
   AdminAnalyticsQueryDto,
+  AdminAnnouncementRecipientsQueryDto,
   AdminAuditQueryDto,
   AdminEventsQueryDto,
   AdminPaymentsQueryDto,
@@ -747,6 +749,8 @@ export class AdminService {
           title: true,
           body: true,
           audience: true,
+          target: true,
+          signupWindowMinutes: true,
           emailEnabled: true,
           createdAt: true,
           _count: { select: { deliveries: true } },
@@ -774,6 +778,59 @@ export class AdminService {
     };
   }
 
+  async announcementRecipients(
+    query: AdminAnnouncementRecipientsQueryDto,
+    request: PlatformAdminRequest,
+  ) {
+    if (!query.q && query.createdWithinMinutes === undefined && query.audience === undefined) {
+      throw new BadRequestException('Search for a customer or choose a recipient filter');
+    }
+    if (query.q && query.q.length < 2) {
+      throw new BadRequestException('Enter at least two characters to search for customers');
+    }
+    const planByAudience: Partial<Record<PlatformAnnouncementAudience, Plan>> = {
+      [PlatformAnnouncementAudience.FREE]: Plan.FREE,
+      [PlatformAnnouncementAudience.PRO]: Plan.PRO,
+      [PlatformAnnouncementAudience.BUSINESS]: Plan.BUSINESS,
+    };
+    const selectedPlan = query.audience ? planByAudience[query.audience] : undefined;
+    const where: Prisma.UserWhereInput = {
+      role: UserRole.USER,
+      accountStatus: UserAccountStatus.ACTIVE,
+      ...(selectedPlan ? { subscription: { is: { plan: selectedPlan } } } : {}),
+      ...(query.createdWithinMinutes !== undefined
+        ? { createdAt: { gte: new Date(Date.now() - query.createdWithinMinutes * 60_000) } }
+        : {}),
+      ...(query.q
+        ? {
+          OR: [
+            { email: { contains: query.q, mode: 'insensitive' } },
+            { name: { contains: query.q, mode: 'insensitive' } },
+          ],
+        }
+        : {}),
+    };
+    await this.auditRead(request, 'admin.announcement.recipients.read', 'user', {
+      searchApplied: Boolean(query.q),
+      createdWithinMinutes: query.createdWithinMinutes ?? null,
+      audience: query.audience ?? null,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+    const { skip, take } = pagination(query);
+    const [totalItems, items] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take,
+        select: { id: true, name: true, email: true, createdAt: true },
+      }),
+    ]);
+    return { items, page: pageMetadata(query, totalItems) };
+  }
+
   async createAnnouncement(
     input: AdminAnnouncementCreateDto,
     request: PlatformAdminRequest,
@@ -784,15 +841,34 @@ export class AdminService {
       );
     }
 
+    if (input.target === PlatformAnnouncementTarget.SIGNUP_WINDOW
+      && input.signupWindowMinutes === undefined) {
+      throw new BadRequestException('Choose how recently recipients must have signed up');
+    }
+    if (input.target !== PlatformAnnouncementTarget.SIGNUP_WINDOW && input.signupWindowMinutes !== undefined) {
+      throw new BadRequestException('Signup window is only valid for recent-signup announcements');
+    }
+    if (input.target === PlatformAnnouncementTarget.SELECTED && !input.userIds?.length) {
+      throw new BadRequestException('Select at least one active customer');
+    }
+    if (input.target !== PlatformAnnouncementTarget.SELECTED && input.userIds?.length) {
+      throw new BadRequestException('Selected customers are only valid for individual targeting');
+    }
     const planByAudience: Partial<Record<PlatformAnnouncementAudience, Plan>> = {
       [PlatformAnnouncementAudience.FREE]: Plan.FREE,
       [PlatformAnnouncementAudience.PRO]: Plan.PRO,
       [PlatformAnnouncementAudience.BUSINESS]: Plan.BUSINESS,
     };
-    const selectedPlan = planByAudience[input.audience];
-    const audienceFilter: Prisma.UserWhereInput = selectedPlan
-      ? { subscription: { is: { plan: selectedPlan } } }
-      : {};
+    const selectedPlan = input.target === PlatformAnnouncementTarget.AUDIENCE
+      ? planByAudience[input.audience]
+      : undefined;
+    const audienceFilter: Prisma.UserWhereInput = {
+      ...(selectedPlan ? { subscription: { is: { plan: selectedPlan } } } : {}),
+      ...(input.target === PlatformAnnouncementTarget.SIGNUP_WINDOW && input.signupWindowMinutes !== undefined
+        ? { createdAt: { gte: new Date(Date.now() - input.signupWindowMinutes * 60_000) } }
+        : {}),
+      ...(input.target === PlatformAnnouncementTarget.SELECTED ? { id: { in: input.userIds } } : {}),
+    };
     const recipients = await this.prisma.user.findMany({
       where: {
         role: UserRole.USER,
@@ -801,6 +877,9 @@ export class AdminService {
       },
       select: { id: true },
     });
+    if (input.target === PlatformAnnouncementTarget.SELECTED && recipients.length !== input.userIds?.length) {
+      throw new BadRequestException('One or more selected customers are inactive or unavailable');
+    }
     if (!recipients.length) throw new BadRequestException('The selected audience has no active accounts');
 
     return this.prisma.$transaction(async (tx) => {
@@ -809,6 +888,8 @@ export class AdminService {
           title: input.title,
           body: input.body,
           audience: input.audience,
+          target: input.target,
+          signupWindowMinutes: input.signupWindowMinutes ?? null,
           emailEnabled: input.emailEnabled,
           createdByUserId: request.platformAdmin.id,
         },
@@ -816,6 +897,8 @@ export class AdminService {
           id: true,
           title: true,
           audience: true,
+          target: true,
+          signupWindowMinutes: true,
           emailEnabled: true,
           createdAt: true,
         },
@@ -837,6 +920,8 @@ export class AdminService {
         announcement.id,
         {
           audience: input.audience,
+          target: input.target,
+          signupWindowMinutes: input.signupWindowMinutes ?? null,
           recipientCount: recipients.length,
           emailEnabled: input.emailEnabled,
         },

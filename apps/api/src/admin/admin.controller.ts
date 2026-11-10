@@ -30,6 +30,7 @@ import {
   AdminAnalyticsQueryDto,
   AdminAuditQueryDto,
   AdminAnnouncementCreateDto,
+  AdminAnnouncementRecipientsQueryDto,
   AdminEventsQueryDto,
   AdminPaymentsQueryDto,
   AdminPlatformAdminUpdateDto,
@@ -171,6 +172,15 @@ export class AdminController {
   @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_READ)
   announcements(@Query() query: AdminPageQueryDto, @Req() request: PlatformAdminRequest) {
     return this.admin.announcements(query, request);
+  }
+
+  @Get('announcements/recipients')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_READ)
+  announcementRecipients(
+    @Query() query: AdminAnnouncementRecipientsQueryDto,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.announcementRecipients(query, request);
   }
 
   @Post('announcements')

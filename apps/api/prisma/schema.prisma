@@ -50,6 +50,12 @@ enum PlatformAnnouncementAudience {
   BUSINESS
 }
 
+enum PlatformAnnouncementTarget {
+  AUDIENCE
+  SIGNUP_WINDOW
+  SELECTED
+}
+
 enum PlatformAnnouncementEmailStatus {
   NOT_REQUESTED
   PENDING
@@ -645,6 +651,8 @@ model PlatformAnnouncement {
   title           String                       @db.VarChar(120)
   body            String                       @db.VarChar(5000)
   audience        PlatformAnnouncementAudience
+  target          PlatformAnnouncementTarget   @default(AUDIENCE)
+  signupWindowMinutes Int?
   emailEnabled    Boolean                      @default(false)
   createdAt       DateTime                     @default(now())
   createdByUserId String                       @db.Uuid

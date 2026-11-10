@@ -3,15 +3,20 @@ import {
   IsDateString,
   IsBoolean,
   IsEnum,
+  IsIn,
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  ArrayMaxSize,
+  ArrayUnique,
   Max,
   MaxLength,
   Matches,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import {
   EventGallerySetting,
@@ -19,6 +24,7 @@ import {
   PaymentAttemptStatus,
   Plan,
   PlatformAnnouncementAudience,
+  PlatformAnnouncementTarget,
   PlatformAdminRole,
   PlatformAdminStatus,
   SupportTicketCategory,
@@ -171,8 +177,36 @@ export class AdminAnnouncementCreateDto {
   @IsEnum(PlatformAnnouncementAudience)
   audience!: PlatformAnnouncementAudience;
 
+  @IsEnum(PlatformAnnouncementTarget)
+  target: PlatformAnnouncementTarget = PlatformAnnouncementTarget.AUDIENCE;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([30, 60, 1440, 10080, 43200])
+  signupWindowMinutes?: number;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  userIds?: string[];
+
   @IsBoolean()
   emailEnabled!: boolean;
+}
+
+export class AdminAnnouncementRecipientsQueryDto extends AdminPageQueryDto {
+  @IsOptional()
+  @IsEnum(PlatformAnnouncementAudience)
+  audience?: PlatformAnnouncementAudience;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([30, 60, 1440, 10080, 43200])
+  createdWithinMinutes?: number;
 }
 
 export class SupportTicketCreateDto {

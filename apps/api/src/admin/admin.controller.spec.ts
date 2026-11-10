@@ -83,6 +83,7 @@ describe('AdminController', () => {
       uploadMonitoring: jest.fn().mockResolvedValue({ byStatus: {} }),
       systemHealth: jest.fn().mockResolvedValue({ status: 'healthy' }),
       announcements: jest.fn().mockResolvedValue({ items: [], page: {} }),
+      announcementRecipients: jest.fn().mockResolvedValue({ items: [], page: {} }),
       createAnnouncement: jest.fn().mockResolvedValue({ id: 'announcement-id' }),
       retryAnnouncementEmail: jest.fn().mockResolvedValue({ queuedRecipientCount: 0 }),
     };
@@ -142,6 +143,8 @@ describe('AdminController', () => {
     await expect(controller.uploadMonitoring(request)).resolves.toEqual({ byStatus: {} });
     await expect(controller.systemHealth(request)).resolves.toEqual({ status: 'healthy' });
     await expect(controller.announcements({ page: 1, pageSize: 10 } as never, request))
+      .resolves.toEqual({ items: [], page: {} });
+    await expect(controller.announcementRecipients({ q: 'sample' } as never, request))
       .resolves.toEqual({ items: [], page: {} });
     await expect(controller.createAnnouncement({} as never, request)).resolves.toEqual({ id: 'announcement-id' });
     await expect(controller.retryAnnouncementEmail('announcement-id', request))

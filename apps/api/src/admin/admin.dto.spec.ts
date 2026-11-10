@@ -148,12 +148,14 @@ describe('admin directory query validation', () => {
       title: '  Service update  ',
       body: '  A product improvement is now available.  ',
       audience: 'PRO',
+      target: 'AUDIENCE',
       emailEnabled: true,
     });
     const invalid = plainToInstance(AdminAnnouncementCreateDto, {
       title: '',
       body: '',
       audience: 'ENTERPRISE',
+      target: 'UNKNOWN',
       emailEnabled: 'yes',
     });
 
@@ -163,6 +165,31 @@ describe('admin directory query validation', () => {
       body: 'A product improvement is now available.',
     });
     expect((await validate(invalid)).length).toBeGreaterThan(0);
+  });
+
+  it('keeps existing announcement callers on the default audience target', async () => {
+    const announcement = plainToInstance(AdminAnnouncementCreateDto, {
+      title: 'Update',
+      body: 'A message for customers',
+      audience: 'ALL',
+      emailEnabled: false,
+    });
+
+    expect(announcement.target).toBe('AUDIENCE');
+    await expect(validate(announcement)).resolves.toHaveLength(0);
+  });
+
+  it('rejects a null signup window instead of treating it as an unfiltered target', async () => {
+    const announcement = plainToInstance(AdminAnnouncementCreateDto, {
+      title: 'Welcome',
+      body: 'Thanks for joining',
+      audience: 'ALL',
+      target: 'SIGNUP_WINDOW',
+      signupWindowMinutes: null,
+      emailEnabled: false,
+    });
+
+    expect((await validate(announcement)).length).toBeGreaterThan(0);
   });
 
   it('validates customer tickets and admin ticket filters and updates', async () => {
