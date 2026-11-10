@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, LockKeyhole, Pencil, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile } from "../lib/api";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
 import { FileViewerModal } from "../components/FileViewerModal";
@@ -9,6 +9,7 @@ import { PlanLimitMessage } from "../components/PlanLimitMessage";
 import { FolderZipTools } from "../components/FolderZipTools";
 import type { WorkspaceFile, WorkspaceFolder } from "./types";
 import { useWorkspaceScope } from "./useWorkspaceScope";
+import { WorkspaceSetupPrompt } from "./WorkspaceSetupPrompt";
 
 interface WorkspaceFolderContents {
   workspaceId: string;
@@ -163,7 +164,7 @@ export function WorkspaceStoragePage() {
 
   if (workspacesQuery.isLoading) return <div className="page-loading"><span className="loader" />Loading workspace…</div>;
   if (workspacesQuery.isError) return <div className="inline-error" role="alert"><div><strong>Workspace could not load.</strong><p>{workspacesQuery.error instanceof Error ? workspacesQuery.error.message : "Please try again."}</p></div><button className="button button-outline button-small" onClick={() => void workspacesQuery.refetch()}>Try again</button></div>;
-  if (!workspace) return <div className="workspace-empty-card"><div className="workspace-empty-mark"><Folder size={19} /></div><span className="eyebrow">BUSINESS WORKSPACE</span><h2>No business space yet.</h2><p>Create a workspace or accept an invitation to get started.</p><Link className="button button-green" to="/workspace/team">Set up a workspace</Link></div>;
+  if (!workspace) return <WorkspaceSetupPrompt title="Bring your team into one secure space." description="Create a dedicated workspace to organize shared files, set access and bring your business workflows together." />;
 
   const folders = contentsQuery.data?.folders ?? [];
   const files = contentsQuery.data?.files ?? [];

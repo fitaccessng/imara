@@ -17,6 +17,11 @@
 .approval-hero-mark span { font-size: 8px; font-weight: 700; letter-spacing: .24em; }
 .approval-hero-mark strong { align-self: flex-start; color: #d3dd9c; font: 400 70px/.9 Georgia, "Times New Roman", serif; }
 .approval-hero-mark i { font-size: 8px; font-style: normal; font-weight: 600; letter-spacing: .16em; line-height: 1.6; text-align: right; }
+.approval-overview-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid #dfe5dc; border-radius: 5px; background: #dfe5dc; margin-top: 13px; }
+.approval-overview-strip > div { display: grid; min-height: 82px; align-content: center; gap: 4px; background: #fbfcf8; padding: 12px 19px; }
+.approval-overview-strip > div > span { color: #8a9a88; font-size: 8px; font-weight: 750; letter-spacing: .15em; }
+.approval-overview-strip strong { color: #315244; font: 400 23px/1 Georgia, "Times New Roman", serif; }
+.approval-overview-strip small { color: #89978d; font-size: 9px; }
 .approval-toolbar { display: flex; min-height: 86px; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid #dfe6dc; margin: 8px 0 20px; }
 .approval-toolbar .eyebrow { margin-bottom: 4px; color: #798d76; font-size: 8px; }
 .approval-toolbar h2 { margin: 0; color: #284b41; font: 400 23px/1.2 Georgia, "Times New Roman", serif; }
@@ -167,6 +172,10 @@
 @media (max-width: 680px) {
   .approval-hero { min-height: 195px; padding: 26px 22px; }
   .approval-hero-mark { display: none; }
+  .approval-overview-strip > div { min-height: 72px; padding: 9px; }
+  .approval-overview-strip > div > span { font-size: 7px; letter-spacing: .08em; }
+  .approval-overview-strip strong { font-size: 20px; }
+  .approval-overview-strip small { font-size: 8px; }
   .approval-toolbar { align-items: flex-start; flex-direction: column; padding: 15px 0; }
   .approval-toolbar-actions { width: 100%; }
   .approval-toolbar-actions .button { flex: 1; }

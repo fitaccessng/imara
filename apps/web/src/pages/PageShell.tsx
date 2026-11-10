@@ -12,6 +12,7 @@ type PageShellProps = {
 
 const publicLinks = [
   { href: "/features", label: "Features" },
+  { href: "/docs", label: "Docs" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/pricing", label: "Pricing" },
   { href: "/help", label: "Help" },
@@ -64,7 +65,7 @@ export function PageShell({ title, description, eyebrow = "IMARA", children }: P
         <footer className="public-footer">
           <span>© {new Date().getFullYear()} IMARA</span>
           <span>Organise work files and collect event photos and videos in shared galleries.</span>
-          <div><Link to="/about">About</Link><Link to="/security">Security</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/contact">Contact</Link><Link to="/admin/login">Admin sign in</Link></div>
+          <div><Link to="/docs">Docs</Link><Link to="/about">About</Link><Link to="/security">Security</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/contact">Contact</Link><Link to="/admin/login">Admin sign in</Link></div>
         </footer>
       )}
     </div>

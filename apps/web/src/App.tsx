@@ -4,6 +4,7 @@ import { useAuth } from "./auth/AuthProvider";
 import { AuthPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./pages/AuthPages";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
+import { DocsPage } from "./pages/public/DocsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { SupportPage } from "./pages/SupportPage";
 import { FilesPage } from "./pages/FilesPage";
@@ -138,6 +139,7 @@ export function App() {
         <Route path="/home" element={<HomePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/docs" element={<DocsPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/contact" element={<ContactPage />} />

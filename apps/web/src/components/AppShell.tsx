@@ -3,21 +3,22 @@ import {
   ArrowUpRight,
   Activity,
   Bell,
+  BellRing,
+  Building2,
   BriefcaseBusiness,
   CalendarDays,
-  CalendarClock,
+  ClipboardCheck,
   CreditCard,
-  CircleCheck,
   Files,
   LayoutDashboard,
   LogOut,
   LifeBuoy,
+  Library,
   MailPlus,
   MessageCircle,
   Menu,
-  Settings2,
   Search,
-  ScanSearch,
+  Settings,
   ShieldCheck,
   FileSignature,
   Star,
@@ -102,7 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? `${nameParts[0][0]}${nameParts[nameParts.length - 1]?.[0]}`
     : nameParts[0]?.slice(0, 2) ?? "").toUpperCase();
   const isBusinessPage = pathname.startsWith("/workspace");
-  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname === "/smart-files" ? "Smart file library" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Electronic signatures" : pathname.startsWith("/workspace/approvals") ? "Approval workflows" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : isBusinessPage ? "Shared files" : "Overview";
+  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname === "/smart-files" ? "Smart library" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Signatures" : pathname.startsWith("/workspace/approvals") ? "Approvals" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : pathname === "/workspace" && !businessWorkspace ? "Set up workspace" : isBusinessPage ? "Shared files" : "Overview";
   const workspaceName = isBusinessPage ? businessWorkspace?.name ?? "Business space" : "Personal space";
 
   return (
@@ -124,7 +125,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className={`workspace-avatar ${isBusinessPage ? "workspace-avatar-business" : ""}`}>{isBusinessPage ? <BriefcaseBusiness size={15} /> : "P"}</div>
           <div className="workspace-copy"><strong>{isBusinessPage ? workspaceName : "Personal space"}</strong><span>{isBusinessPage ? businessWorkspace ? businessWorkspace.role.toLowerCase() : "Business workspace" : "My workspace"}</span></div>
         </div>
-        <div className="nav-section-label">Workspace</div>
+        <div className="nav-section-label">Personal</div>
         <nav className="side-nav" aria-label="Main navigation">
           <NavLink to="/dashboard" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <LayoutDashboard size={17} strokeWidth={1.8} /><span>Overview</span>
@@ -133,25 +134,25 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Files size={17} strokeWidth={1.8} /><span>Your files</span>
           </NavLink>
           <NavLink to="/smart-files" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <ScanSearch size={17} strokeWidth={1.8} /><span>Smart library</span>
+            <Library size={17} strokeWidth={1.8} /><span>Smart library</span>
           </NavLink>
           <NavLink to="/favorites" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Star size={17} strokeWidth={1.8} /><span>Favourites</span>
           </NavLink>
-          <NavLink to="/trash" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <Trash2 size={17} strokeWidth={1.8} /><span>Recycle Bin</span>
-          </NavLink>
           <NavLink to="/events" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CalendarDays size={17} strokeWidth={1.8} /><span>Events</span>
           </NavLink>
-          <NavLink to="/settings/profile" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <Settings2 size={17} strokeWidth={1.8} /><span>Account settings</span>
+          <NavLink to="/notifications" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <Bell size={17} strokeWidth={1.8} /><span>Announcements</span>{unreadAnnouncementCount > 0 && <small className="announcement-nav-count">{unreadAnnouncementCount}</small>}
           </NavLink>
           <NavLink to="/billing/plans" end className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CreditCard size={17} strokeWidth={1.8} /><span>Pricing</span>
           </NavLink>
-          <NavLink to="/notifications" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <Bell size={17} strokeWidth={1.8} /><span>Announcements</span>{unreadAnnouncementCount > 0 && <small className="announcement-nav-count">{unreadAnnouncementCount}</small>}
+          <NavLink to="/settings/profile" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <Settings size={17} strokeWidth={1.8} /><span>Account settings</span>
+          </NavLink>
+          <NavLink to="/trash" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <Trash2 size={17} strokeWidth={1.8} /><span>Recycle Bin</span>
           </NavLink>
           <NavLink to="/support" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <LifeBuoy size={17} strokeWidth={1.8} /><span>Help & support</span>
@@ -159,22 +160,35 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="nav-section-label business-nav-label">Business</div>
         <nav className="side-nav" aria-label="Business workspace navigation">
-          <NavLink to={businessHref("/workspace/signatures")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <FileSignature size={17} strokeWidth={1.8} /><span>Signatures</span>
-          </NavLink>
-          <NavLink to={businessHref("/workspace/approvals")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <CircleCheck size={17} strokeWidth={1.8} /><span>Approvals</span>
-          </NavLink>
-          <NavLink to={businessHref("/workspace/reminders")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <CalendarClock size={17} strokeWidth={1.8} /><span>Reminders</span>
-          </NavLink>
-          <NavLink to={businessHref("/workspace/chat")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <MessageCircle size={17} strokeWidth={1.8} /><span>Team chat</span>
-          </NavLink>
-          <NavLink to={businessHref("/workspace")} end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <BriefcaseBusiness size={17} strokeWidth={1.8} /><span>{businessWorkspace ? "Shared folders" : "Set up workspace"}</span>
-          </NavLink>
-          {businessWorkspace && (businessWorkspace.role === "OWNER" || businessWorkspace.role === "ADMIN") && <>
+          {workspacesQuery.isError ? (
+            <NavLink to="/workspace" end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <Building2 size={17} strokeWidth={1.8} /><span>Workspace unavailable</span>
+            </NavLink>
+          ) : !businessWorkspace ? (
+            <NavLink to="/workspace" end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <Building2 size={17} strokeWidth={1.8} /><span>Set up workspace</span>
+            </NavLink>
+          ) : <>
+            <NavLink to={businessHref("/workspace/signatures")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <FileSignature size={17} strokeWidth={1.8} /><span>Signatures</span>
+            </NavLink>
+            <NavLink to={businessHref("/workspace/approvals")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <ClipboardCheck size={17} strokeWidth={1.8} /><span>Approvals</span>
+            </NavLink>
+            <NavLink to={businessHref("/workspace/reminders")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <BellRing size={17} strokeWidth={1.8} /><span>Reminders</span>
+            </NavLink>
+            <NavLink to={businessHref("/workspace/chat")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <MessageCircle size={17} strokeWidth={1.8} /><span>Team chat</span>
+            </NavLink>
+            <NavLink to={businessHref("/workspace")} end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <Building2 size={17} strokeWidth={1.8} /><span>Set up workspace</span>
+            </NavLink>
+          </>}
+        </nav>
+        {businessWorkspace && (businessWorkspace.role === "OWNER" || businessWorkspace.role === "ADMIN") && <>
+          <div className="nav-section-label">Manage</div>
+          <nav className="side-nav" aria-label="Workspace management">
             <NavLink to={businessHref("/workspace/team")} className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
               <Users size={17} strokeWidth={1.8} /><span>Team & access</span>
             </NavLink>
@@ -187,8 +201,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <NavLink to={businessHref("/workspace/roles")} className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
               <ShieldCheck size={17} strokeWidth={1.8} /><span>Workspace roles</span>
             </NavLink>
-          </>}
-        </nav>
+          </nav>
+        </>}
         <div className="sidebar-bottom">
           <div className="sidebar-note">
             <div className="note-icon"><ShieldCheck size={17} /></div>

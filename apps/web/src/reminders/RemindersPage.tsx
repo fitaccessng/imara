@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, BellRing, CalendarDays, Check, Clock3, Plus, Rep
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
 import type { WorkspaceMember } from "../workspaces/types";
 import { apiRequest } from "../lib/api";
+import { WorkspaceSetupPrompt } from "../workspaces/WorkspaceSetupPrompt";
 import "./reminders.css";
 
 type Recurrence = "ONCE" | "DAILY" | "WEEKLY" | "MONTHLY";
@@ -68,6 +69,9 @@ export function RemindersPage() {
   const members = (membersQuery.data ?? []).filter((member) => member.status === "ACTIVE");
   const reminders = remindersQuery.data ?? [];
   const activeReminders = reminders.filter((reminder) => !reminder.completedAt && !reminder.cancelledAt);
+  const todayKey = dayKey(new Date());
+  const dueTodayCount = activeReminders.filter((reminder) => dayKey(new Date(reminder.nextDueAt ?? reminder.dueAt)) === todayKey).length;
+  const recurringCount = activeReminders.filter((reminder) => reminder.recurrence !== "ONCE").length;
   const monthDays = useMemo(() => {
     const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
     const startOffset = (firstDay.getDay() + 6) % 7;
@@ -131,14 +135,10 @@ export function RemindersPage() {
 
   if (workspacesQuery.isLoading) return <div className="reminder-loading">Loading business workspaces…</div>;
   if (workspacesQuery.isError) return <div className="reminder-error" role="alert">Workspaces couldn’t load. {workspacesQuery.error.message}</div>;
-  if (!workspace) return (
-    <section className="reminder-empty-workspace">
-      <span className="reminder-orbit"><CalendarDays size={25} /></span>
-      <p className="reminder-kicker">A calmer way to stay on schedule</p>
-      <h2>Reminders are part of your business workspace.</h2>
-      <p>Create or join a workspace to assign dates, keep a shared calendar and nudge teammates at the right moment.</p>
-    </section>
-  );
+  if (!workspace) return <WorkspaceSetupPrompt
+    title="Make room for work that matters."
+    description="Create a business workspace to assign reminders, plan with your team and keep the next important step in view."
+  />;
 
   return (
     <main className="reminders-page">
@@ -152,6 +152,12 @@ export function RemindersPage() {
           <Plus size={17} /> New reminder
         </button>
       </header>
+
+      <section className="reminder-overview" aria-label="Reminder overview">
+        <div><span className="reminder-overview-mark"><BellRing size={16} /></span><span className="reminder-overview-label">ACTIVE REMINDERS</span><strong>{activeReminders.length}</strong><small>Still in motion</small></div>
+        <div><span className="reminder-overview-mark"><CalendarDays size={16} /></span><span className="reminder-overview-label">DUE TODAY</span><strong>{dueTodayCount}</strong><small>On today’s agenda</small></div>
+        <div><span className="reminder-overview-mark"><Repeat2 size={16} /></span><span className="reminder-overview-label">REPEATING</span><strong>{recurringCount}</strong><small>Keep the rhythm going</small></div>
+      </section>
 
       {error && <div className="reminder-error" role="alert">{error}</div>}
       {remindersQuery.isError && <div className="reminder-error" role="alert">Reminders couldn’t load. {remindersQuery.error.message}</div>}

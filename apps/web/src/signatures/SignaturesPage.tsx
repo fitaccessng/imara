@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, FileSignature, PenLine, ShieldCheck, X } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, Clock3, Download, FileSignature, PenLine, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { apiBlob, apiRequest, downloadFile } from "../lib/api";
+import { WorkspaceSetupPrompt } from "../workspaces/WorkspaceSetupPrompt";
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
+import "./signatures.css";
 
 type SignatureSource = { id: string; name: string; sizeBytes: string; folderId: string | null };
 type SignatureMember = { id: string; name: string; email: string; emailVerified: boolean; role: string };
@@ -207,10 +209,16 @@ export function SignaturesPage() {
     setSignerIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   }
 
-  if (workspacesQuery.isLoading) return <main className="page-content"><p>Loading workspace…</p></main>;
-  if (!workspace) return <main className="page-content"><section className="panel"><h1>Electronic signatures</h1><p>Create a workspace to request document signatures.</p></section></main>;
+  if (workspacesQuery.isLoading) return <main className="page-content"><div className="page-loading"><span className="loader" />Loading workspace…</div></main>;
+  if (workspacesQuery.isError) return <main className="page-content"><div className="inline-error" role="alert"><div><strong>Workspace couldn’t load.</strong><p>{workspacesQuery.error.message}</p></div><button className="button button-outline button-small" onClick={() => void workspacesQuery.refetch()}>Try again</button></div></main>;
+  if (!workspace) return <main className="page-content"><WorkspaceSetupPrompt title="Signatures, with a clear record." description="Create a business workspace to send documents for signature, track every response and keep completed copies together." /></main>;
 
   const request = activeRequest;
+  const signatureRequests = requests.data ?? [];
+  const signatureStatsUnavailable = requests.isLoading || requests.isError;
+  const pendingCount = signatureRequests.filter((item) => item.status === "PENDING" || item.status === "FINALIZING").length;
+  const completedCount = signatureRequests.filter((item) => item.status === "COMPLETED").length;
+  const signerCount = signatureRequests.reduce((total, item) => total + item.signers.length, 0);
   const currentUserSigner = request?.signers.find((signer) => signer.userId === user?.id);
   const nextSigner = request?.signers.find((signer) => signer.status === "PENDING");
   const canSign = Boolean(request && request.status === "PENDING" && currentUserSigner?.status === "PENDING"
@@ -219,29 +227,50 @@ export function SignaturesPage() {
     && (request.createdById === user?.id || workspace.role === "OWNER" || workspace.role === "ADMIN"));
 
   return (
-    <main className="page-content">
-      <div className="page-heading">
-        <div><span className="eyebrow">Workspace workflow</span><h1>Electronic signatures</h1>
-          <p>Request and apply consent-based signatures to preserved PDF copies.</p></div>
-      </div>
-      <div className="grid gap-5 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]">
-        <section className="panel">
-          <h2 className="flex items-center gap-2"><FileSignature size={19} /> New signature request</h2>
-          <p>Select a PDF from workspace storage and active participants to sign.</p>
-          <form onSubmit={(event) => void submitCreate(event)} className="space-y-4">
+    <main className="page-content signatures-page">
+      <header className="signature-hero">
+        <div className="signature-hero-copy">
+          <span className="eyebrow">{workspace.name.toUpperCase()} · SIGNATURE DESK</span>
+          <h1>Sign with <em>confidence.</em></h1>
+          <p>Send documents for consent-based signatures, follow each signer and preserve the finished record.</p>
+        </div>
+        <div className="signature-hero-art" aria-hidden="true">
+          <span className="signature-orbit signature-orbit-one" />
+          <span className="signature-orbit signature-orbit-two" />
+          <div className="signature-document-mark"><FileSignature size={34} strokeWidth={1.2} /><i /></div>
+          <span className="signature-art-caption">REVIEW · SIGN · RECORD</span>
+        </div>
+        <div className="signature-stats" aria-label="Signature request summary">
+          <div><span>OPEN REQUESTS</span><strong>{signatureStatsUnavailable ? "—" : pendingCount}</strong><small><Clock3 size={12} /> Awaiting completion</small></div>
+          <div><span>COMPLETED</span><strong>{signatureStatsUnavailable ? "—" : completedCount}</strong><small><CheckCircle2 size={12} /> Signed records</small></div>
+          <div><span>PARTICIPANTS</span><strong>{signatureStatsUnavailable ? "—" : signerCount}</strong><small><FileSignature size={12} /> Across all requests</small></div>
+        </div>
+      </header>
+      <div className="signature-workbench">
+        <section className="signature-panel signature-create-panel">
+          <div className="signature-panel-heading">
+            <span className="signature-panel-icon"><FileSignature size={18} /></span>
+            <div><span className="eyebrow">START A WORKFLOW</span><h2>New signature request</h2></div>
+          </div>
+          <p className="signature-panel-intro">Choose a workspace PDF and the people who need to sign.</p>
+          <form onSubmit={(event) => void submitCreate(event)} className="signature-form">
+            {sources.isError && <p role="alert" className="signature-inline-error">Workspace PDFs couldn’t load. {sources.error.message} <button type="button" className="text-button" onClick={() => void sources.refetch()}>Try again</button></p>}
             <label className="form-field"><span>Workspace PDF</span>
-              <select value={sourceFileId} onChange={(event) => setSourceFileId(event.target.value)} required>
-                <option value="">Choose an accessible PDF</option>
+              <select value={sourceFileId} onChange={(event) => setSourceFileId(event.target.value)} required disabled={sources.isLoading || sources.isError}>
+                <option value="">{sources.isLoading ? "Loading available PDFs…" : "Choose an accessible PDF"}</option>
                 {(sources.data ?? []).map((file) => <option key={file.id} value={file.id}>{file.name}</option>)}
               </select>
             </label>
-            <fieldset className="space-y-2">
-              <legend>Active signers</legend>
+            {!sources.isLoading && !sources.isError && !sources.data?.length && <p className="signature-muted">No accessible PDFs yet. Add a PDF to workspace storage to begin.</p>}
+            <fieldset className="signature-signer-fieldset">
+              <legend>Active signers <small>Choose one or more</small></legend>
+              {members.isError && <p role="alert" className="signature-inline-error">Workspace members couldn’t load. {members.error.message} <button type="button" className="text-button" onClick={() => void members.refetch()}>Try again</button></p>}
               {(members.data ?? []).map((member) => <label key={member.id} className="flex items-center gap-2">
                 <input type="checkbox" checked={signerIds.includes(member.id)} disabled={!member.emailVerified} onChange={() => toggleMember(member.id)} />
                 <span>{member.name} <small>{member.email}{member.emailVerified ? "" : " · verify email before signing"}</small></span>
               </label>)}
-              {!members.data?.length && <p>No active participants were found.</p>}
+              {members.isLoading && <p className="signature-muted">Loading active workspace members…</p>}
+              {!members.isLoading && !members.isError && !members.data?.length && <p className="signature-muted">No active participants were found.</p>}
             </fieldset>
             <label className="form-field"><span>Signing order</span>
               <select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)}>
@@ -253,32 +282,38 @@ export function SignaturesPage() {
               <input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
             </label>
             {error && <p role="alert" className="text-red-700">{error}</p>}
-            <button className="button button-green" disabled={!sourceFileId || signerIds.length === 0 || createRequest.isPending}>
-              {createRequest.isPending ? "Creating…" : "Create request"}
+            <button className="button button-green signature-submit" disabled={!sourceFileId || signerIds.length === 0 || createRequest.isPending}>
+              {createRequest.isPending ? "Creating…" : "Create request"} <ArrowRight size={15} />
             </button>
           </form>
         </section>
 
-        <section className="panel">
-          <h2>Inbox & request history</h2>
-          {requests.isLoading && <p>Loading signature requests…</p>}
-          {requests.error && <p role="alert">{requests.error.message}</p>}
-          {!requests.isLoading && !requests.data?.length && <p>No signature requests in this workspace yet.</p>}
-          <div className="space-y-2">
-            {(requests.data ?? []).map((item) => (
+        <section className="signature-panel signature-inbox-panel">
+          <div className="signature-panel-heading">
+            <span className="signature-panel-icon"><Clock3 size={18} /></span>
+            <div><span className="eyebrow">TRACK THE JOURNEY</span><h2>Inbox & history</h2></div>
+            <span className="signature-inbox-count">{signatureRequests.length} total</span>
+          </div>
+          {requests.isLoading && <p className="signature-muted">Loading signature requests…</p>}
+          {requests.error && <p role="alert" className="signature-inline-error">{requests.error.message}</p>}
+          {!requests.isLoading && !signatureRequests.length && <div className="signature-list-empty"><FileSignature size={21} /><strong>Your signature desk is clear.</strong><span>New requests and records will appear here.</span></div>}
+          <div className="signature-request-list">
+            {signatureRequests.map((item) => (
               <button type="button" key={item.id} onClick={() => { setSelectedId(item.id); setError(""); }}
-                className={`w-full rounded-lg border p-3 text-left ${selectedId === item.id ? "border-emerald-700 bg-emerald-50" : "border-slate-200 bg-white"}`}>
-                <span className="flex items-center justify-between gap-2"><strong>{item.sourceName}</strong><small>{item.status.toLowerCase()}</small></span>
+                className={`signature-request-row ${selectedId === item.id ? "is-selected" : ""}`}>
+                <span className="signature-request-file"><FileSignature size={16} /><strong>{item.sourceName}</strong></span>
+                <span className={`signature-status signature-status-${item.status.toLowerCase()}`}>{item.status.toLowerCase()}</span>
                 <small>{item.mode.toLowerCase()} · {item.signers.filter((signer) => signer.status === "SIGNED").length}/{item.signers.length} signed{item.dueAt ? ` · due ${new Date(item.dueAt).toLocaleDateString()}` : ""}</small>
+                <ArrowRight className="signature-request-arrow" size={14} />
               </button>
             ))}
           </div>
         </section>
       </div>
 
-      {request && <section className="panel mt-5">
+      {request && <section className="signature-panel signature-detail-panel">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><span className="eyebrow">Signature request</span><h2>{request.sourceName}</h2>
+          <div><span className="eyebrow">SIGNATURE RECORD</span><h2>{request.sourceName}</h2>
             <p>{request.mode === "SEQUENTIAL" ? "Sequential" : "Parallel"} signing · {request.status.toLowerCase()}</p></div>
           <div className="flex flex-wrap gap-2">
             <button className="button button-light" onClick={() => void perform(() => downloadFile(

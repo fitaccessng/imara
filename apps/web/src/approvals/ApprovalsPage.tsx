@@ -18,6 +18,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { roleLabel } from "../workspaces/types";
 import type { WorkspaceFolder, WorkspaceMember, WorkspaceFile } from "../workspaces/types";
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
+import { WorkspaceSetupPrompt } from "../workspaces/WorkspaceSetupPrompt";
 import "./approvals.css";
 
 type ReviewMode = "SEQUENTIAL" | "PARALLEL";
@@ -123,14 +124,10 @@ function WorkspacePlaceholder({ loading, error, retry }: { loading: boolean; err
       <button className="button button-outline button-small" onClick={retry}>Try again</button>
     </div>
   );
-  return (
-    <section className="approval-welcome">
-      <span className="approval-welcome-mark"><ShieldCheck size={19} /></span>
-      <span className="eyebrow">BUSINESS GOVERNANCE</span>
-      <h2>Approvals live in your workspace.</h2>
-      <p>Create a business workspace first, then route requests to the right people with a clear decision record.</p>
-    </section>
-  );
+  return <WorkspaceSetupPrompt
+    title="Better decisions start together."
+    description="Create a business workspace to route approvals to the right people and keep every decision attached to a clear record."
+  />;
 }
 
 export function ApprovalsPage() {
@@ -335,6 +332,12 @@ export function ApprovalsPage() {
         </div>
         <div className="approval-hero-mark" aria-hidden="true"><span>IMARA</span><strong>01</strong><i>REVIEW<br />WITH INTENT</i></div>
       </header>
+
+      <section className="approval-overview-strip" aria-label="Approval workspace overview">
+        <div><span>ACTIVE TEAM</span><strong>{membersQuery.isLoading || membersQuery.isError ? "—" : activeMembers.length}</strong><small>Available to review</small></div>
+        <div><span>WORKFLOWS</span><strong>{templatesQuery.isLoading || templatesQuery.isError ? "—" : activeTemplates.length}</strong><small>Reusable review paths</small></div>
+        <div><span>{viewLabels[view].toUpperCase()}</span><strong>{requestsQuery.isLoading || requestsQuery.isError ? "—" : requests.length}</strong><small>Requests in this view</small></div>
+      </section>
 
       <div className="approval-toolbar">
         <div>
