@@ -96,7 +96,7 @@ const sections: DocSection[] = [
         title: "Favourites and Recycle Bin",
         icon: Star,
         points: [
-          "Mark a file as a favourite to find it again in Favourites; remove the mark whenever you like.",
+          "Mark a file or folder as a favourite to find it again in Favourites; remove the mark whenever you like.",
           "Deleted files move to the Recycle Bin, where you can restore them or permanently delete them.",
           "A permanent deletion cannot be undone. Review the selected file before confirming that action.",
         ],
@@ -144,7 +144,9 @@ const sections: DocSection[] = [
         icon: Users,
         points: [
           "Create a workspace with a name, or accept an invitation to join an existing one.",
+          "Open Shared files and create a shared folder before uploading team documents. Create nested folders inside an existing folder when you need more structure.",
           "Owners and administrators can invite people by email, assign a workspace role, and update or remove membership.",
+          "When inviting a manager or staff member, select the folders they can access and choose whether access applies to subfolders. You can also adjust folder permissions later.",
           "Staff capacity depends on the subscription. Invited teammates need to join the workspace before they can use its shared resources.",
         ],
       },
@@ -526,8 +528,11 @@ export function DocsPage() {
                           </div>
 
                           <ul>
-                            {group.points.map((point) => (
-                              <li key={point}>{point}</li>
+                            {group.points.map((point, index) => (
+                              <li key={point}>
+                                <span className="docs-point-number" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                                <span>{point}</span>
+                              </li>
                             ))}
                           </ul>
                         </article>

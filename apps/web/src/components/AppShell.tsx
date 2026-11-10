@@ -165,6 +165,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Building2 size={17} strokeWidth={1.8} /><span>Set up workspace</span>
             </NavLink>
           ) : <>
+            <NavLink to={businessHref("/workspace")} end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+              <Files size={17} strokeWidth={1.8} /><span>Shared files</span>
+            </NavLink>
             <NavLink to={businessHref("/workspace/signatures")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
               <FileSignature size={17} strokeWidth={1.8} /><span>Signatures</span>
             </NavLink>
@@ -176,9 +179,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </NavLink>
             <NavLink to={businessHref("/workspace/chat")} className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
               <MessageCircle size={17} strokeWidth={1.8} /><span>Team chat</span>
-            </NavLink>
-            <NavLink to={businessHref("/workspace")} end className={({ isActive }) => `nav-link ${isActive && isBusinessPage ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-              <Building2 size={17} strokeWidth={1.8} /><span>Set up workspace</span>
             </NavLink>
           </>}
         </nav>

@@ -7,6 +7,7 @@ import {
   CircleAlert,
   Clock3,
   Folder,
+  FolderPlus,
   LockKeyhole,
   MailPlus,
   MoreHorizontal,
@@ -420,7 +421,15 @@ export function WorkspaceInvitePage() {
                       {folder.parentFolderId && <small>Subfolder</small>}
                     </label>
                   ))}
-                  {!folderOptions.length && <div className="workspace-inline-empty"><Folder size={17} /><span>No folders yet. Create folders first, then add access here.</span></div>}
+                  {!folderOptions.length && (
+                    <div className="workspace-inline-empty workspace-folder-empty">
+                      <Folder size={17} />
+                      <span>No shared folders yet. Create a folder in your workspace, then return here to assign access.</span>
+                      <Link className="button button-outline button-small" to={workspaceHref("/workspace", workspace.id)}>
+                        <FolderPlus size={14} /> Create shared folder
+                      </Link>
+                    </div>
+                  )}
                 </div>
                 {folderIds.length > 0 && (
                   <div className="workspace-permission-controls">
