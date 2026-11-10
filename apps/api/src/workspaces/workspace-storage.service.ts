@@ -242,7 +242,7 @@ export class WorkspaceStorageService {
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
     if (folderId && !systemGenerated) await this.allowedFolder(workspaceId, userId, folderId, 'uploadFiles');
     else if (!systemGenerated && member.role !== WorkspaceRole.OWNER && member.role !== WorkspaceRole.ADMIN) throw new NotFoundException('Folder not found');
-    this.objects.assertConfigured();
+    await this.objects.assertConfigured();
     const ownerId = member.workspace.ownerUserId;
     const size = BigInt(file.size);
     await this.cleanExpiredReservations(workspaceId);
@@ -338,7 +338,7 @@ export class WorkspaceStorageService {
     if (!subscription) throw new NotFoundException('Subscription not found');
     const plan = await this.plans.currentPlan(subscription);
     await this.plans.requireFeature(plan, 'canEditDocuments');
-    this.objects.assertConfigured();
+    await this.objects.assertConfigured();
 
     const nextKey = `${member.workspace.ownerUserId}/workspaces/${workspaceId}/${randomUUID()}`;
     const nextSize = BigInt(replacement.size);

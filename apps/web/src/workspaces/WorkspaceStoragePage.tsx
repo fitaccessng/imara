@@ -111,17 +111,35 @@ export function WorkspaceStoragePage() {
   }
 
   async function deleteFolder(folder: WorkspaceFolder) {
-    setActionModal({
-      title: "Delete folder",
-      description: `Delete “${folder.name}”? It must be empty before it can be deleted.`,
-      confirmLabel: "Delete folder",
-      danger: true,
-      onConfirm: async () => {
-        await apiRequest<void>(`/workspaces/${workspaceId}/folders/${folder.id}`, { method: "DELETE" });
-        setActionModal(null);
-        await refreshLibrary();
-      },
-    });
+    setActionError("");
+    try {
+      const contents = await apiRequest<WorkspaceFolderContents>(
+        `/workspaces/${workspaceId}/storage?folderId=${encodeURIComponent(folder.id)}`,
+      );
+      if (contents.folders.length || contents.files.length) {
+        setActionModal({
+          title: "Folder isn’t empty",
+          description: `“${folder.name}” still contains items. Move or delete its contents before deleting the folder.`,
+          confirmLabel: "Close",
+          onConfirm: async () => setActionModal(null),
+        });
+        return;
+      }
+
+      setActionModal({
+        title: "Delete empty folder",
+        description: `“${folder.name}” is empty. Are you sure you want to delete it?`,
+        confirmLabel: "Delete folder",
+        danger: true,
+        onConfirm: async () => {
+          await apiRequest<void>(`/workspaces/${workspaceId}/folders/${folder.id}`, { method: "DELETE" });
+          setActionModal(null);
+          await refreshLibrary();
+        },
+      });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to check this folder's contents.");
+    }
   }
 
   async function download(file: WorkspaceFile) {

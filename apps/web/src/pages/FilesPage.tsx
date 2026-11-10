@@ -168,6 +168,39 @@ export function FilesPage() {
     });
   }
 
+  async function handleDeleteFolder(folder: UserFolder) {
+    setActionError("");
+    try {
+      const contents = await apiRequest<FolderContents>(`/files?folderId=${encodeURIComponent(folder.id)}`);
+      if (contents.folders.length || contents.files.length) {
+        const contentSummary = [
+          contents.folders.length ? `${contents.folders.length} subfolder${contents.folders.length === 1 ? "" : "s"}` : "",
+          contents.files.length ? `${contents.files.length} file${contents.files.length === 1 ? "" : "s"}` : "",
+        ].filter(Boolean).join(" and ");
+        setActionModal({
+          title: "Folder isn’t empty",
+          description: `“${folder.name}” still contains ${contentSummary}. Move or delete its contents before deleting the folder. Files deleted from your library remain in the Recycle Bin.`,
+          confirmLabel: "Close",
+          onConfirm: async () => setActionModal(null),
+        });
+        return;
+      }
+
+      setActionModal({
+        title: "Delete empty folder",
+        description: `“${folder.name}” is empty. Are you sure you want to delete it?`,
+        confirmLabel: "Delete folder",
+        danger: true,
+        onConfirm: async () => {
+          await deleteFolder.mutateAsync(folder.id);
+          setActionModal(null);
+        },
+      });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to check this folder's contents.");
+    }
+  }
+
   async function handleDownload(file: StoredFile) {
     setDownloadError("");
     try {
@@ -278,16 +311,7 @@ export function FilesPage() {
                   setMovingFolder(folder);
                 }}><Move size={15} /></button>
                 <button aria-label={`Rename ${folder.name}`} title="Rename folder" onClick={() => void handleRename(folder)}><Pencil size={15} /></button>
-                <button aria-label={`Delete ${folder.name}`} title="Delete folder" onClick={() => setActionModal({
-                  title: "Delete folder",
-                  description: `Delete “${folder.name}”? Folders must be empty before they can be deleted.`,
-                  confirmLabel: "Delete folder",
-                  danger: true,
-                  onConfirm: async () => {
-                    await deleteFolder.mutateAsync(folder.id);
-                    setActionModal(null);
-                  },
-                })}><Trash2 size={15} /></button>
+                <button aria-label={`Delete ${folder.name}`} title="Delete folder" onClick={() => void handleDeleteFolder(folder)}><Trash2 size={15} /></button>
               </span>
             </div>
           ))}

@@ -13,7 +13,8 @@
 - Responsive public pages, account settings, login/register/recovery/verification
   routes, protected dashboard, and backend-connected session management
 - Setup instructions and API contract documentation
-- Phase 2 private file library backed by S3-compatible DockHive Hive Buckets configuration:
+- Phase 2 private file library backed by the persistent HivePod filesystem by default,
+  with an optional S3-compatible DockHive Hive Buckets driver:
   authenticated upload/download/delete, persisted metadata, and folder create/rename/delete
 - Atomic PostgreSQL quota reservations and accounting for used, in-flight, and available
   storage; dashboard counts now reflect saved files
@@ -32,10 +33,9 @@
 - SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`) for
   registration, verification, resend, and password recovery
 - PostgreSQL (`DATABASE_URL`) for persisted API operation
-- DockHive Hive Buckets (`DOCKHIVE_S3_ENDPOINT`, `DOCKHIVE_BUCKET`,
-  `DOCKHIVE_ACCESS_KEY_ID`, `DOCKHIVE_SECRET_ACCESS_KEY`) for file operations; provider
-  endpoint and credentials must be copied from the account configuration and are not
-  guessed or checked in
+- Persistent HivePod storage (`OBJECT_STORAGE_DRIVER=hivepod`,
+  `HIVEPOD_STORAGE_DIR=/data/imara`) for production file operations; the storage path
+  must be mounted as persistent, readable, and writable pod storage
 
 ## Validation
 
@@ -45,8 +45,8 @@
 - Backend tests: 5 suites, 10 tests passed
 - Root workspace production build and TypeScript checks: passed after Phase 2
 - Prisma client generation and schema validation: passed
-- Live PostgreSQL migration, DockHive bucket connectivity, and upload/download flow:
-  not tested because database and provider credentials were not configured
+- Live PostgreSQL migration, HivePod mount connectivity, and upload/download flow:
+  not tested because the deployment mount was not available in this environment
 - No live registration/login browser flow or end-to-end test was run because the API's
   PostgreSQL and SMTP services were not available.
 - Live PostgreSQL migration and SMTP delivery: not tested. The Docker daemon was

@@ -1,6 +1,7 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 
@@ -9,21 +10,38 @@ export class ObjectStorageService {
   private client?: S3Client;
   private readonly bucket = process.env.DOCKHIVE_BUCKET;
 
-  assertConfigured(): void {
-    if (this.localDirectory()) return;
+  async assertConfigured(): Promise<void> {
+    const directory = this.localDirectory();
+    if (directory) {
+      await this.assertDirectoryAvailable(directory);
+      return;
+    }
     this.getClient();
   }
 
   private localDirectory(): string | null {
-    const driver = process.env.OBJECT_STORAGE_DRIVER ?? 's3';
+    const driver = process.env.OBJECT_STORAGE_DRIVER ?? 'hivepod';
     if (driver === 's3') return null;
-    if (driver !== 'local') {
-      throw new ServiceUnavailableException('OBJECT_STORAGE_DRIVER must be either "s3" or "local".');
+    if (driver !== 'local' && driver !== 'hivepod') {
+      throw new ServiceUnavailableException('OBJECT_STORAGE_DRIVER must be either "s3", "local", or "hivepod".');
     }
-    if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
+    if (driver === 'local' && process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
       throw new ServiceUnavailableException('Local file storage is available only in development or test.');
     }
-    return path.resolve(process.env.OBJECT_STORAGE_LOCAL_DIR ?? path.join(process.cwd(), '.local-object-storage'));
+    const directory = driver === 'hivepod'
+      ? process.env.HIVEPOD_STORAGE_DIR ?? '/data/imara'
+      : process.env.OBJECT_STORAGE_LOCAL_DIR ?? path.join(process.cwd(), '.local-object-storage');
+    return path.resolve(directory);
+  }
+
+  private async assertDirectoryAvailable(directory: string): Promise<void> {
+    try {
+      await access(directory, constants.R_OK | constants.W_OK);
+      const info = await stat(directory);
+      if (!info.isDirectory()) throw new Error('Configured storage path is not a directory');
+    } catch {
+      throw new ServiceUnavailableException('The configured file-storage directory is not available.');
+    }
   }
 
   private localPath(key: string): string {
@@ -68,7 +86,9 @@ export class ObjectStorageService {
   }
 
   async put(key: string, body: Buffer, contentType: string): Promise<void> {
-    if (this.localDirectory()) {
+    const directory = this.localDirectory();
+    if (directory) {
+      await this.assertDirectoryAvailable(directory);
       const filePath = this.localPath(key);
       await mkdir(path.dirname(filePath), { recursive: true });
       await writeFile(filePath, body);
@@ -84,7 +104,9 @@ export class ObjectStorageService {
   }
 
   async get(key: string): Promise<{ body: Readable; contentType?: string }> {
-    if (this.localDirectory()) {
+    const directory = this.localDirectory();
+    if (directory) {
+      await this.assertDirectoryAvailable(directory);
       const filePath = this.localPath(key);
       const contents = await readFile(filePath);
       return { body: Readable.from(contents), contentType: undefined };
@@ -95,7 +117,9 @@ export class ObjectStorageService {
   }
 
   async delete(key: string): Promise<void> {
-    if (this.localDirectory()) {
+    const directory = this.localDirectory();
+    if (directory) {
+      await this.assertDirectoryAvailable(directory);
       await rm(this.localPath(key), { force: true });
       return;
     }
@@ -107,12 +131,14 @@ export class ObjectStorageService {
     driver: string;
     errorCode?: string;
   }> {
-    const driver = process.env.OBJECT_STORAGE_DRIVER ?? 's3';
+    const driver = process.env.OBJECT_STORAGE_DRIVER ?? 'hivepod';
     try {
       const local = this.localDirectory();
       if (local) {
-        await access(local);
-        return { status: 'healthy', driver: 'local' };
+        await access(local, constants.R_OK | constants.W_OK);
+        const info = await stat(local);
+        if (!info.isDirectory()) throw new Error('Configured storage path is not a directory');
+        return { status: 'healthy', driver };
       }
       await this.getClient().send(new HeadBucketCommand({ Bucket: this.bucket }));
       return { status: 'healthy', driver: 's3-compatible' };
@@ -120,10 +146,13 @@ export class ObjectStorageService {
       if (error instanceof ServiceUnavailableException) {
         return { status: 'not-configured', driver };
       }
-      const errorCode = typeof error === 'object' && error !== null && 'name' in error
-        && typeof error.name === 'string' && /^[A-Za-z0-9._-]{1,60}$/.test(error.name)
-        ? error.name
-        : 'OBJECT_STORAGE_UNAVAILABLE';
+      const errorCode = typeof error === 'object' && error !== null && 'code' in error
+        && typeof error.code === 'string' && /^[A-Za-z0-9._-]{1,60}$/.test(error.code)
+        ? error.code
+        : typeof error === 'object' && error !== null && 'name' in error
+          && typeof error.name === 'string' && /^[A-Za-z0-9._-]{1,60}$/.test(error.name)
+          ? error.name
+          : 'OBJECT_STORAGE_UNAVAILABLE';
       return { status: 'unavailable', driver, errorCode };
     }
   }

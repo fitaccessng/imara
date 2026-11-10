@@ -10,7 +10,7 @@ jest.mock('@nestjs/common', () => ({
 import { ServiceUnavailableException } from '@nestjs/common';
 import { ObjectStorageService } from './object-storage.service';
 
-describe('ObjectStorageService local driver', () => {
+describe('ObjectStorageService filesystem drivers', () => {
   const originalEnvironment = { ...process.env };
   let directory: string;
   let storage: ObjectStorageService;
@@ -33,7 +33,7 @@ describe('ObjectStorageService local driver', () => {
 
   it('writes and reads bytes under the configured local directory, then deletes them', async () => {
     const bytes = Buffer.from('local test media');
-    storage.assertConfigured();
+    await storage.assertConfigured();
     await storage.put('user-id/event-id/media.bin', bytes, 'application/octet-stream');
     const object = await storage.get('user-id/event-id/media.bin');
     const chunks: Buffer[] = [];
@@ -52,16 +52,49 @@ describe('ObjectStorageService local driver', () => {
       .rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
-  it('does not allow local storage in production', () => {
+  it('does not allow local storage in production', async () => {
     process.env.NODE_ENV = 'production';
 
-    expect(() => storage.assertConfigured()).toThrow(ServiceUnavailableException);
+    await expect(storage.assertConfigured()).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
   it('reports local storage health', async () => {
     await expect(storage.healthCheck()).resolves.toEqual({
       status: 'healthy',
       driver: 'local',
+    });
+  });
+
+  it('uses the mounted HivePod directory in production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.OBJECT_STORAGE_DRIVER = 'hivepod';
+    process.env.HIVEPOD_STORAGE_DIR = directory;
+
+    await storage.assertConfigured();
+    await storage.put('user-id/file.bin', Buffer.from('persistent'), 'application/octet-stream');
+    const stored = await storage.get('user-id/file.bin');
+    const chunks: Buffer[] = [];
+    for await (const chunk of stored.body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    expect(Buffer.concat(chunks).toString()).toBe('persistent');
+    await expect(storage.healthCheck()).resolves.toEqual({
+      status: 'healthy',
+      driver: 'hivepod',
+    });
+  });
+
+  it('does not create an unmounted HivePod directory', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.OBJECT_STORAGE_DRIVER = 'hivepod';
+    process.env.HIVEPOD_STORAGE_DIR = path.join(directory, 'missing-mount');
+
+    await expect(storage.assertConfigured()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(storage.healthCheck()).resolves.toEqual({
+      status: 'unavailable',
+      driver: 'hivepod',
+      errorCode: 'ENOENT',
     });
   });
 

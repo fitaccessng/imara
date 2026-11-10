@@ -468,7 +468,7 @@ export class StorageService {
         if (!folder) throw new NotFoundException('Folder not found');
         const [children, files] = await Promise.all([
           tx.folder.count({ where: { parentFolderId: folderId, workspaceId: null } }),
-          tx.storedFile.count({ where: { folderId, workspaceId: null } }),
+          tx.storedFile.count({ where: { folderId, workspaceId: null, deletedAt: null } }),
         ]);
         if (children || files) throw new ConflictException('Move or remove the folder contents before deleting this folder');
         await tx.folder.delete({ where: { id: folderId } });
@@ -564,7 +564,7 @@ export class StorageService {
 
     if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
     if (file.size > getMaxUploadBytes()) throw new PayloadTooLargeException('File exceeds the upload size limit');
-    this.objects.assertConfigured();
+    await this.objects.assertConfigured();
     const sizeBytes = BigInt(file.size);
     const reserved = await this.reserve(userId, sizeBytes, folderId, requiredFeature);
     const name = this.safeName(file.originalname);
@@ -641,7 +641,7 @@ export class StorageService {
     const plan = await this.plans.currentPlan(subscription);
     await this.plans.requireFeature(plan, 'canEditDocuments');
     assertSameFileExtension(current.originalName, replacement.originalname);
-    this.objects.assertConfigured();
+    await this.objects.assertConfigured();
 
     const nextKey = `${userId}/${randomUUID()}`;
     const nextSize = BigInt(replacement.size);
@@ -797,7 +797,7 @@ export class StorageService {
     }
     if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
     if (file.size > getMaxUploadBytes()) throw new PayloadTooLargeException('File exceeds the upload size limit');
-    this.objects.assertConfigured();
+    await this.objects.assertConfigured();
     const sizeBytes = BigInt(file.size);
     const reserved = await this.reserveEventUpload(eventId, sizeBytes);
     const name = this.safeName(file.originalname);

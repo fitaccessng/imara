@@ -63,6 +63,8 @@ describe('StorageService quota-safe uploads', () => {
     },
     folder: {
       findFirst: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      delete: jest.fn().mockResolvedValue({}),
       update: jest.fn().mockResolvedValue({
         id: 'folder-id',
         name: 'Reports',
@@ -96,6 +98,7 @@ describe('StorageService quota-safe uploads', () => {
       }),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       delete: jest.fn().mockResolvedValue(fileRow),
+      count: jest.fn().mockResolvedValue(0),
     },
   };
   const folderFindMany = jest.fn().mockResolvedValue([]);
@@ -502,5 +505,30 @@ describe('StorageService quota-safe uploads', () => {
       data: { deletedAt: null },
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('deletes an empty folder while leaving trashed files in the recycle bin', async () => {
+    transactionClient.folder.findFirst.mockResolvedValue({ id: 'folder-id' });
+    transactionClient.folder.count.mockResolvedValue(0);
+    transactionClient.storedFile.count.mockResolvedValue(0);
+
+    await expect(service.deleteFolder('owner-id', 'folder-id')).resolves.toBeUndefined();
+
+    expect(transactionClient.storedFile.count).toHaveBeenCalledWith({
+      where: { folderId: 'folder-id', workspaceId: null, deletedAt: null },
+    });
+    expect(transactionClient.folder.delete).toHaveBeenCalledWith({ where: { id: 'folder-id' } });
+  });
+
+  it('requires active files and subfolders to be removed before deleting a folder', async () => {
+    transactionClient.folder.findFirst.mockResolvedValue({ id: 'folder-id' });
+    transactionClient.folder.count.mockResolvedValue(1);
+    transactionClient.storedFile.count.mockResolvedValue(0);
+
+    await expect(service.deleteFolder('owner-id', 'folder-id')).rejects.toThrow(
+      'Move or remove the folder contents before deleting this folder',
+    );
+
+    expect(transactionClient.folder.delete).not.toHaveBeenCalled();
   });
 });

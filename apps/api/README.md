@@ -114,7 +114,7 @@ decimal strings.
 | GET | `/api/v1/admin/payments` | Paginated payment attempts and server-verified successful receipts, summarized by currency |
 | GET | `/api/v1/admin/storage-inventory` | Ready-file count/bytes, largest uploader accounts/workspaces, and MIME-type aggregates; no filenames |
 | GET | `/api/v1/admin/upload-monitoring` | Persisted upload/deletion states, stale operation count, source counts (including scan uploads), and MIME-type aggregates |
-| GET | `/api/v1/admin/system-health` | Live database, S3-compatible/local storage and SMTP checks; reports backup/OCR/malware scanning as not integrated |
+| GET | `/api/v1/admin/system-health` | Live database, configured object-storage driver and SMTP checks; reports backup/OCR/malware scanning as not integrated |
 | GET | `/api/v1/admin/announcements` | Paginated announcement history with audience, recipients, and email delivery counts |
 | POST | `/api/v1/admin/announcements` | Creates audited in-app deliveries for active customers and optionally queues SMTP emails by plan audience |
 | POST | `/api/v1/admin/announcements/:id/retry-email` | Re-queues failed SMTP deliveries for an announcement and writes an audit record |
@@ -197,15 +197,25 @@ delivery status.
 
 ## Object storage configuration
 
-Uploads use DockHive Hive Buckets through its S3-compatible API. Set
-`DOCKHIVE_S3_ENDPOINT`, `DOCKHIVE_BUCKET`, `DOCKHIVE_ACCESS_KEY_ID`, and
-`DOCKHIVE_SECRET_ACCESS_KEY` using values from your DockHive account. `DOCKHIVE_S3_REGION`
-defaults to `auto`; `DOCKHIVE_S3_FORCE_PATH_STYLE` defaults to `true`. For a US Hive
-Bucket, DockHive's S3 endpoint is `https://s3-us.dockhive.io` (the global endpoint is
-`https://s3.dockhive.io`). Use the bucket-specific access key, keep credentials in
-untracked environment files or the hosting provider's secret manager, and scope keys
-to only the buckets and operations the app needs. Production requires an HTTPS endpoint.
-Upload/download/delete return 503 when storage is not configured or unavailable.
+The production HivePod storage driver writes file objects to a mounted persistent
+directory. Set `OBJECT_STORAGE_DRIVER=hivepod` and
+`HIVEPOD_STORAGE_DIR=/data/imara`, and attach a persistent, readable and writable
+mount at that path. The API checks that the mount exists before accepting uploads
+and does not create a missing mount root, so a misconfigured pod cannot silently
+store files on ephemeral disk. Health checks report the active driver and whether
+its storage is available.
+
+The optional `OBJECT_STORAGE_DRIVER=s3` uses DockHive Hive Buckets through the
+S3-compatible API. Configure `DOCKHIVE_S3_ENDPOINT`, `DOCKHIVE_BUCKET`,
+`DOCKHIVE_ACCESS_KEY_ID`, and `DOCKHIVE_SECRET_ACCESS_KEY` from your DockHive
+account. `DOCKHIVE_S3_REGION` defaults to `auto` and
+`DOCKHIVE_S3_FORCE_PATH_STYLE` defaults to `true`. Production requires an HTTPS
+endpoint. Keep provider credentials in untracked environment files or the
+hosting provider's secret manager.
+
+For development and tests, `OBJECT_STORAGE_DRIVER=local` stores files beneath
+`OBJECT_STORAGE_LOCAL_DIR` and is rejected in production. Upload/download/delete
+return 503 when the selected storage is not configured or available.
 
 Uploads are proxied through the API and buffered in memory, capped at 25 MiB per file
 (`MAX_UPLOAD_BYTES`, with a hard 25 MiB maximum); the upload route is additionally
