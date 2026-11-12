@@ -14,6 +14,7 @@ import {
   UserAccountStatus,
 } from '@prisma/client';
 import {
+  AdminAnnouncementsQueryDto,
   AdminAnnouncementCreateDto,
   AdminAnalyticsQueryDto,
   AdminEventsQueryDto,
@@ -29,6 +30,18 @@ import {
 } from './admin.dto';
 
 describe('admin directory query validation', () => {
+  it('validates the archived announcement filter', async () => {
+    const active = plainToInstance(AdminAnnouncementsQueryDto, { archived: 'false' });
+    const archived = plainToInstance(AdminAnnouncementsQueryDto, { archived: 'true' });
+    const invalid = plainToInstance(AdminAnnouncementsQueryDto, { archived: 'yes' });
+
+    expect(active.archived).toBe(false);
+    expect(archived.archived).toBe(true);
+    await expect(validate(active)).resolves.toHaveLength(0);
+    await expect(validate(archived)).resolves.toHaveLength(0);
+    expect((await validate(invalid)).length).toBeGreaterThan(0);
+  });
+
   it('transforms valid pagination defaults and trims bounded search text', async () => {
     const query = plainToInstance(AdminPageQueryDto, {
       page: '2',

@@ -55,6 +55,15 @@ export class AdminPageQueryDto {
   q?: string;
 }
 
+export class AdminAnnouncementsQueryDto extends AdminPageQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (
+    value === 'true' ? true : value === 'false' ? false : value
+  ))
+  @IsBoolean()
+  archived = false;
+}
+
 export class AdminSubscriptionsQueryDto extends AdminPageQueryDto {
   @IsOptional()
   @IsEnum(Plan)

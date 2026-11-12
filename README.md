@@ -122,9 +122,11 @@ For the `www.useimara.space` web deployment, set `VITE_PUBLIC_APP_URL` to
 `https://www.useimara.space` in the web build environment. Set `FRONTEND_URL` to the
 same URL in the API environment so email links point to the deployed app, and set
 `CORS_ORIGINS=https://www.useimara.space,https://useimara.space` if both hostnames
-serve the app. Keep `VITE_API_URL=/api/v1` when the web host proxies `/api/v1` to the
-API; if the API is hosted separately, set it to that API's full `/api/v1` URL and
-allow the web origins above in `CORS_ORIGINS`.
+serve the app. Production builds default to
+`https://spidey-sango-3at3.dockhive.app/api/v1`. The API must allow the web origins
+above in `CORS_ORIGINS` and use `COOKIE_SECURE=true` with
+`COOKIE_SAME_SITE=none` for credentialed cross-site requests. Set `VITE_API_URL`
+only when the API is deployed at a different address.
 
 For email, set `EMAIL_DELIVERY=smtp`, `SMTP_HOST=smtp-relay.brevo.com`,
 `SMTP_PORT=587`, `SMTP_SECURE=false`, and `SMTP_USER` to the SMTP login provided by

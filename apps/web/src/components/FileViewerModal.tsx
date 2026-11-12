@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, FileText, LoaderCircle, Save, Upload, X } from "lucide-react";
+import { Download, FileText, LoaderCircle, Printer, Save, Upload, X } from "lucide-react";
 import { apiBlob, apiRequest } from "../lib/api";
 import { OfficePreviewEditor } from "./OfficePreviewEditor";
 
@@ -160,6 +160,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
               <label className="button button-outline" htmlFor={`replace-${file.id}`}><Upload size={15} />Upload edited version</label>
             </>}
             {canDownload && <button className="button button-outline" onClick={onDownload}><Download size={15} /> Download</button>}
+            {canDownload && blob && <button className="button button-outline" type="button" onClick={() => window.print()}><Printer size={15} /> Print</button>}
             <button className="icon-button" aria-label="Close file preview" onClick={requestClose} disabled={saving}><X size={18} /></button>
           </div>
         </header>

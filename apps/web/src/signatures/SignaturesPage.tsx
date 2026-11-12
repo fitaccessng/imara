@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Check, CheckCircle2, Clock3, Download, FileSignature, PenLine, ShieldCheck, X } from "lucide-react";
+import { ArrowRight, Check, Clock3, Download, FileSignature, PenLine, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { apiBlob, apiRequest, downloadFile } from "../lib/api";
@@ -215,10 +215,6 @@ export function SignaturesPage() {
 
   const request = activeRequest;
   const signatureRequests = requests.data ?? [];
-  const signatureStatsUnavailable = requests.isLoading || requests.isError;
-  const pendingCount = signatureRequests.filter((item) => item.status === "PENDING" || item.status === "FINALIZING").length;
-  const completedCount = signatureRequests.filter((item) => item.status === "COMPLETED").length;
-  const signerCount = signatureRequests.reduce((total, item) => total + item.signers.length, 0);
   const currentUserSigner = request?.signers.find((signer) => signer.userId === user?.id);
   const nextSigner = request?.signers.find((signer) => signer.status === "PENDING");
   const canSign = Boolean(request && request.status === "PENDING" && currentUserSigner?.status === "PENDING"
@@ -228,24 +224,7 @@ export function SignaturesPage() {
 
   return (
     <main className="page-content signatures-page">
-      <header className="signature-hero">
-        <div className="signature-hero-copy">
-          <span className="eyebrow">{workspace.name.toUpperCase()} · SIGNATURE DESK</span>
-          <h1>Sign with <em>confidence.</em></h1>
-          <p>Send documents for consent-based signatures, follow each signer and preserve the finished record.</p>
-        </div>
-        <div className="signature-hero-art" aria-hidden="true">
-          <span className="signature-orbit signature-orbit-one" />
-          <span className="signature-orbit signature-orbit-two" />
-          <div className="signature-document-mark"><FileSignature size={34} strokeWidth={1.2} /><i /></div>
-          <span className="signature-art-caption">REVIEW · SIGN · RECORD</span>
-        </div>
-        <div className="signature-stats" aria-label="Signature request summary">
-          <div><span>OPEN REQUESTS</span><strong>{signatureStatsUnavailable ? "—" : pendingCount}</strong><small><Clock3 size={12} /> Awaiting completion</small></div>
-          <div><span>COMPLETED</span><strong>{signatureStatsUnavailable ? "—" : completedCount}</strong><small><CheckCircle2 size={12} /> Signed records</small></div>
-          <div><span>PARTICIPANTS</span><strong>{signatureStatsUnavailable ? "—" : signerCount}</strong><small><FileSignature size={12} /> Across all requests</small></div>
-        </div>
-      </header>
+
       <div className="signature-workbench">
         <section className="signature-panel signature-create-panel">
           <div className="signature-panel-heading">

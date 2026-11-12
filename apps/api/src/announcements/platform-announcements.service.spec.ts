@@ -32,7 +32,7 @@ describe('PlatformAnnouncementsService', () => {
       createdAt: delivery.createdAt,
     }]);
     expect(prisma.platformAnnouncementDelivery.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { userId: 'user-id' },
+      where: { userId: 'user-id', announcement: { is: { archivedAt: null } } },
     }));
 
     await expect(service.markRead('announcement-id', 'user-id')).resolves.toMatchObject({

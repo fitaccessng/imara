@@ -789,15 +789,15 @@ export function WorkspacePermissionsPage() {
                   const depth = folderDepth(folder, new Map(folders.map((item) => [item.id, item])));
                   return (
                     <article className="permission-folder-row" key={folder.id} style={{ "--folder-depth": depth } as React.CSSProperties}>
-                      <div className="permission-folder-heading"><Folder size={16} /><strong>{folder.name}</strong>{draft.effect === "RESTRICT" && <span className="restricted-tag"><LockKeyhole size={11} /> Restricted</span>}</div>
+                      <div className="permission-folder-heading"><Folder size={16} /><strong>{folder.name}</strong>{draft.effect === "RESTRICT" && <span className="restricted-tag"><LockKeyhole size={11} /> Access revoked</span>}</div>
                       <div className="permission-folder-controls">
-                        <label className="field"><span>Direct rule</span><select value={draft.effect === "RESTRICT" ? "Restricted" : draft.effect === "GRANT" ? "Custom grant" : "No direct rule"} onChange={(event) => {
+                        <label className="field"><span>Direct rule</span><select aria-label={`Direct access rule for ${folder.name}`} value={draft.effect === "RESTRICT" ? "Revoke access" : draft.effect === "GRANT" ? "Custom grant" : "No direct rule"} onChange={(event) => {
                           const choice = event.target.value;
                           if (choice === "No direct rule") selectPreset(folder.id, choice);
-                          else if (choice === "Restricted") selectPreset(folder.id, choice);
+                          else if (choice === "Revoke access") selectPreset(folder.id, "Restricted");
                           else updateDraft(folder.id, { effect: "GRANT", permissionKeys: draft.permissionKeys.length ? draft.permissionKeys : PERMISSION_PRESETS.Editor });
                         }}>
-                          <option>No direct rule</option><option>Custom grant</option><option>Restricted</option>
+                          <option>No direct rule</option><option>Custom grant</option><option>Revoke access</option>
                         </select></label>
                         <label className="field"><span>Preset</span><select disabled={draft.effect === "RESTRICT"} value={Object.entries(PERMISSION_PRESETS).find(([, keys]) => keys.length === draft.permissionKeys.length && keys.every((key) => draft.permissionKeys.includes(key)))?.[0] ?? "Custom"} onChange={(event) => {
                           if (event.target.value !== "Custom") selectPreset(folder.id, event.target.value);

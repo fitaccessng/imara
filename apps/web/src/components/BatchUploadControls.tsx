@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FolderUp, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, FolderUp, LoaderCircle, Upload, X } from "lucide-react";
 
 interface FolderReference {
   id: string;
@@ -18,6 +18,7 @@ interface BatchUploadControlsProps {
 }
 
 const MAX_BATCH_FILES = 250;
+const UPLOAD_CONCURRENCY = 4;
 
 function directorySegments(file: File) {
   const path = file.webkitRelativePath;
@@ -43,7 +44,23 @@ export function BatchUploadControls({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [uploaded, setUploaded] = useState(0);
+  const [processed, setProcessed] = useState(0);
+  const [batchSize, setBatchSize] = useState(0);
   const [failures, setFailures] = useState<string[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  async function uploadWithReservationRetry(file: File, folderId?: string) {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await uploadFile(file, folderId);
+        return;
+      } catch (error) {
+        const reservationBusy = error instanceof Error && error.message === "Storage is busy. Please retry the upload.";
+        if (!reservationBusy || attempt >= 3) throw error;
+        await new Promise((resolve) => window.setTimeout(resolve, 80 * (attempt + 1) + Math.random() * 60));
+      }
+    }
+  }
 
   useEffect(() => {
     directoryInput.current?.setAttribute("webkitdirectory", "");
@@ -53,8 +70,11 @@ export function BatchUploadControls({
   async function processFiles(fileList: FileList | null) {
     const files = Array.from(fileList ?? []);
     if (!files.length) return;
+    setBatchSize(files.length);
     if (files.length > MAX_BATCH_FILES) {
       setFailures([`Choose no more than ${MAX_BATCH_FILES} files at a time.`]);
+      setProgress("");
+      setDialogOpen(true);
       return;
     }
 
@@ -62,43 +82,74 @@ export function BatchUploadControls({
     onBusyChange?.(true);
     setProgress("");
     setUploaded(0);
+    setProcessed(0);
     setFailures([]);
+    setDialogOpen(true);
     let completed = 0;
+    let finished = 0;
+    let nextIndex = 0;
     const errors: string[] = [];
     const childrenByParent = new Map<string, Map<string, string>>();
+    const folderLoads = new Map<string, Promise<Map<string, string>>>();
+    const folderCreations = new Map<string, Promise<string>>();
 
     async function ensureFolder(name: string, parentFolderId?: string) {
       const cacheKey = parentFolderId ?? "root";
       let children = childrenByParent.get(cacheKey);
       if (!children) {
-        const folders = await getFolders(parentFolderId);
-        children = new Map(folders.map((folder) => [folder.name.toLocaleLowerCase(), folder.id]));
+        let folderLoad = folderLoads.get(cacheKey);
+        if (!folderLoad) {
+          folderLoad = getFolders(parentFolderId).then((folders) =>
+            new Map(folders.map((folder) => [folder.name.toLocaleLowerCase(), folder.id])),
+          );
+          folderLoads.set(cacheKey, folderLoad);
+        }
+        children = await folderLoad;
         childrenByParent.set(cacheKey, children);
       }
-      const existingId = children.get(name.toLocaleLowerCase());
+      const normalizedName = name.toLocaleLowerCase();
+      const existingId = children.get(normalizedName);
       if (existingId) return existingId;
-      const created = await createFolder(name, parentFolderId);
-      children.set(name.toLocaleLowerCase(), created.id);
-      return created.id;
+      const creationKey = `${cacheKey}\u0000${normalizedName}`;
+      let folderCreation = folderCreations.get(creationKey);
+      if (!folderCreation) {
+        folderCreation = createFolder(name, parentFolderId).then((created) => {
+          children?.set(normalizedName, created.id);
+          return created.id;
+        }).finally(() => folderCreations.delete(creationKey));
+        folderCreations.set(creationKey, folderCreation);
+      }
+      return folderCreation;
     }
 
     try {
-      for (const [index, file] of files.entries()) {
-        setProgress(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
-        try {
-          let destinationFolderId = rootFolderId;
-          for (const segment of directorySegments(file)) {
-            destinationFolderId = await ensureFolder(segment, destinationFolderId);
+      setProgress(`Uploading ${files.length} files…`);
+      async function uploadNextFile() {
+        while (nextIndex < files.length) {
+          const index = nextIndex;
+          nextIndex += 1;
+          const file = files[index];
+          try {
+            let destinationFolderId = rootFolderId;
+            for (const segment of directorySegments(file)) {
+              destinationFolderId = await ensureFolder(segment, destinationFolderId);
+            }
+            await uploadWithReservationRetry(file, destinationFolderId);
+            completed += 1;
+            setUploaded(completed);
+          } catch (reason) {
+            const message = reason instanceof Error ? reason.message : "Upload failed.";
+            errors.push(`${file.name}: ${message}`);
+            setFailures([...errors]);
+          } finally {
+            finished += 1;
+            setProcessed(finished);
           }
-          await uploadFile(file, destinationFolderId);
-          completed += 1;
-          setUploaded(completed);
-        } catch (reason) {
-          const message = reason instanceof Error ? reason.message : "Upload failed.";
-          errors.push(`${file.name}: ${message}`);
-          setFailures([...errors]);
         }
       }
+      await Promise.all(
+        Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, () => uploadNextFile()),
+      );
       if (completed) {
         try {
           await onComplete();
@@ -131,9 +182,28 @@ export function BatchUploadControls({
         event.currentTarget.value = "";
       }} />
     </label>
-    {(progress || failures.length > 0) && <div className="batch-upload-status" role={failures.length ? "alert" : "status"} aria-live="polite">
-      {progress && <p>{progress}{busy && uploaded ? ` · ${uploaded} complete` : ""}</p>}
-      {failures.length > 0 && <ul>{failures.map((failure) => <li key={failure}>{failure}</li>)}</ul>}
+    {progress && !dialogOpen && <p className="batch-upload-inline-status" role={failures.length ? "alert" : "status"}>{progress}</p>}
+    {dialogOpen && <div className="upload-progress-backdrop">
+      <section className="upload-progress-dialog" role="dialog" aria-modal="true" aria-labelledby="upload-progress-title" aria-describedby="upload-progress-description">
+        <button className="upload-progress-close" type="button" aria-label="Close upload details" onClick={() => setDialogOpen(false)} disabled={busy}><X size={18} /></button>
+        <div className={`upload-progress-icon ${busy ? "is-uploading" : failures.length ? "has-errors" : "is-complete"}`}>
+          {busy ? <LoaderCircle size={25} aria-hidden="true" /> : failures.length ? <AlertCircle size={24} aria-hidden="true" /> : <CheckCircle2 size={24} aria-hidden="true" />}
+        </div>
+        <span className="eyebrow">{busy ? "FILE TRANSFER" : failures.length ? "UPLOAD ATTENTION" : "UPLOAD COMPLETE"}</span>
+        <h2 id="upload-progress-title">{busy ? "Uploading your files" : failures.length ? "Some files need attention" : "Your files are ready"}</h2>
+        <p id="upload-progress-description" className="upload-progress-description">
+          {busy ? `Working through ${batchSize} selected file${batchSize === 1 ? "" : "s"}. You can keep this window open while they transfer.` : progress}
+        </p>
+        <div className="upload-progress-meter" role="progressbar" aria-label="Files processed" aria-valuemin={0} aria-valuemax={batchSize} aria-valuenow={processed}>
+          <span style={{ width: `${batchSize ? (processed / batchSize) * 100 : 0}%` }} />
+        </div>
+        <div className="upload-progress-count"><strong>{busy ? processed : uploaded} of {batchSize}</strong><span>{busy ? "files processed" : "files uploaded"}</span></div>
+        {failures.length > 0 && <div className="upload-progress-errors" role="alert" aria-label="Upload errors">
+          <strong>{failures.length} {failures.length === 1 ? "file could" : "files could"} not be uploaded</strong>
+          <ul>{failures.map((failure, index) => <li key={`${failure}-${index}`}>{failure}</li>)}</ul>
+        </div>}
+        {!busy && <button className="button button-dark upload-progress-done" type="button" onClick={() => setDialogOpen(false)}>Done</button>}
+      </section>
     </div>}
   </div>;
 }

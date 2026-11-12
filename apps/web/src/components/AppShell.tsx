@@ -105,7 +105,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isBusinessPage = pathname.startsWith("/workspace");
   const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname === "/calendar" ? "Calendar" : pathname === "/workspace/calendar" ? "Shared calendar" : pathname === "/workspace/file-deliveries" ? "Private files" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Signatures" : pathname.startsWith("/workspace/approvals") ? "Approvals" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : pathname === "/workspace" && !businessWorkspace ? "Set up workspace" : isBusinessPage ? "Shared files" : "Overview";
   const workspaceName = isBusinessPage ? businessWorkspace?.name ?? "Business space" : "Personal space";
-
   return (
     <div className="app-frame min-h-screen bg-imara-paper">
       <header className="mobile-topbar">

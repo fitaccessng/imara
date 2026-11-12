@@ -162,6 +162,13 @@
   .signature-panel { padding: 16px; }
 }
 
+@media (max-width: 420px) {
+  .signature-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
+  .signature-stats > div { padding: 0 8px; }
+  .signature-stats > div:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .signature-stats > div:last-child { grid-column: 1 / -1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .signature-request-row { transition: none; }
 }

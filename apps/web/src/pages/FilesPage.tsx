@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, Move, Pencil, Share2, Star, Trash2, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, MoreHorizontal, Move, Pencil, Share2, Star, Trash2, X } from "lucide-react";
+import { useState, type FormEvent, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile, type StoredFile, type UserFolder } from "../lib/api";
 import { FileViewerModal } from "../components/FileViewerModal";
@@ -18,6 +18,11 @@ function formatBytes(bytes: number) {
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const amount = bytes / 1024 ** index;
   return `${amount >= 10 || index === 0 ? Math.round(amount) : amount.toFixed(1)} ${units[index]}`;
+}
+
+function closeActionMenu(event: MouseEvent<HTMLButtonElement>) {
+  const menu = event.currentTarget.closest("details");
+  if (menu) menu.open = false;
 }
 
 interface FolderContents {
@@ -318,16 +323,31 @@ export function FilesPage() {
               <span className="file-secondary">Folder</span>
               <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
               <span className="file-row-actions">
-                <button aria-label={`${folder.isFavorite ? "Remove" : "Add"} ${folder.name} ${folder.isFavorite ? "from" : "to"} favourites`} aria-pressed={folder.isFavorite} title={folder.isFavorite ? "Remove from favourites" : "Add to favourites"} disabled={setFolderFavorite.isPending} onClick={() => setFolderFavorite.mutate({ id: folder.id, isFavorite: !folder.isFavorite })}>
-                  <Star size={15} fill={folder.isFavorite ? "currentColor" : "none"} />
-                </button>
-                <button aria-label={`Move ${folder.name}`} title="Move folder" onClick={() => {
-                  setActionError("");
-                  setDestinationFolderId("");
-                  setMovingFolder(folder);
-                }}><Move size={15} /></button>
-                <button aria-label={`Rename ${folder.name}`} title="Rename folder" onClick={() => void handleRename(folder)}><Pencil size={15} /></button>
-                <button aria-label={`Delete ${folder.name}`} title="Delete folder" onClick={() => void handleDeleteFolder(folder)}><Trash2 size={15} /></button>
+                <details className="file-action-menu">
+                  <summary aria-label={`More actions for ${folder.name}`} title="More actions"><MoreHorizontal size={18} /></summary>
+                  <div className="file-action-popover">
+                    <button className="file-action-item" aria-pressed={folder.isFavorite} disabled={setFolderFavorite.isPending} onClick={(event) => {
+                      closeActionMenu(event);
+                      setFolderFavorite.mutate({ id: folder.id, isFavorite: !folder.isFavorite });
+                    }}>
+                      <Star size={15} fill={folder.isFavorite ? "currentColor" : "none"} />{folder.isFavorite ? "Remove favourite" : "Add to favourites"}
+                    </button>
+                    <button className="file-action-item" onClick={(event) => {
+                      closeActionMenu(event);
+                      setActionError("");
+                      setDestinationFolderId("");
+                      setMovingFolder(folder);
+                    }}><Move size={15} />Move folder</button>
+                    <button className="file-action-item" onClick={(event) => {
+                      closeActionMenu(event);
+                      void handleRename(folder);
+                    }}><Pencil size={15} />Rename folder</button>
+                    <button className="file-action-item file-action-danger" onClick={(event) => {
+                      closeActionMenu(event);
+                      void handleDeleteFolder(folder);
+                    }}><Trash2 size={15} />Delete folder</button>
+                  </div>
+                </details>
               </span>
             </div>
           ))}
@@ -337,32 +357,52 @@ export function FilesPage() {
               <span className="file-secondary">{formatBytes(Number(file.sizeBytes))}</span>
               <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(file.createdAt))}</span>
               <div className="file-row-actions">
-                <FolderZipTools
-                  variant="file"
-                  file={file}
-                  folderId={folderId}
-                  folderName={currentFolderQuery.data?.name ?? "Your files"}
-                  canDownload
-                  canExtract
-                  canCreateFolders
-                  onComplete={refreshLibrary}
-                />
-                <button aria-label={`View ${file.name}`} title="View file" onClick={() => setViewingFile(file)}><Eye size={15} /></button>
-                <button aria-label={`Download ${file.name}`} title="Download file" onClick={() => void handleDownload(file)}><Download size={15} /></button>
-                <button aria-label={`Share ${file.name} externally`} title="Create public share link" onClick={() => setSharingFile(file)}><Share2 size={15} /></button>
-                <button aria-label={`${file.isFavorite ? "Remove" : "Add"} ${file.name} ${file.isFavorite ? "from" : "to"} favourites`} aria-pressed={Boolean(file.isFavorite)} title={file.isFavorite ? "Remove from favourites" : "Add to favourites"} disabled={setFavorite.isPending} onClick={() => setFavorite.mutate({ id: file.id, isFavorite: !file.isFavorite })}>
-                  <Star size={15} fill={file.isFavorite ? "currentColor" : "none"} />
-                </button>
-                <button aria-label={`Delete ${file.name}`} title="Delete file" onClick={() => setActionModal({
-                  title: "Delete file",
-                  description: `“${file.name}” will be moved to the Recycle Bin. You can restore it or permanently delete it later.`,
-                  confirmLabel: "Move to Recycle Bin",
-                  danger: true,
-                  onConfirm: async () => {
-                    await deleteFile.mutateAsync(file.id);
-                    setActionModal(null);
-                  },
-                })}><Trash2 size={15} /></button>
+                <details className="file-action-menu">
+                  <summary aria-label={`More actions for ${file.name}`} title="More actions"><MoreHorizontal size={18} /></summary>
+                  <div className="file-action-popover">
+                    <button className="file-action-item" onClick={(event) => {
+                      closeActionMenu(event);
+                      setViewingFile(file);
+                    }}><Eye size={15} />Preview and print</button>
+                    <button className="file-action-item" onClick={(event) => {
+                      closeActionMenu(event);
+                      void handleDownload(file);
+                    }}><Download size={15} />Download file</button>
+                    <button className="file-action-item" onClick={(event) => {
+                      closeActionMenu(event);
+                      setSharingFile(file);
+                    }}><Share2 size={15} />Create share link</button>
+                    <button className="file-action-item" aria-pressed={Boolean(file.isFavorite)} disabled={setFavorite.isPending} onClick={(event) => {
+                      closeActionMenu(event);
+                      setFavorite.mutate({ id: file.id, isFavorite: !file.isFavorite });
+                    }}>
+                      <Star size={15} fill={file.isFavorite ? "currentColor" : "none"} />{file.isFavorite ? "Remove favourite" : "Add to favourites"}
+                    </button>
+                    <FolderZipTools
+                      variant="file"
+                      file={file}
+                      folderId={folderId}
+                      folderName={currentFolderQuery.data?.name ?? "Your files"}
+                      canDownload
+                      canExtract
+                      canCreateFolders
+                      onComplete={refreshLibrary}
+                    />
+                    <button className="file-action-item file-action-danger" onClick={(event) => {
+                      closeActionMenu(event);
+                      setActionModal({
+                        title: "Delete file",
+                        description: `“${file.name}” will be moved to the Recycle Bin. You can restore it or permanently delete it later.`,
+                        confirmLabel: "Move to Recycle Bin",
+                        danger: true,
+                        onConfirm: async () => {
+                          await deleteFile.mutateAsync(file.id);
+                          setActionModal(null);
+                        },
+                      });
+                    }}><Trash2 size={15} />Move to Recycle Bin</button>
+                  </div>
+                </details>
               </div>
             </div>
           ))}

@@ -6,6 +6,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
 import { DocsPage } from "./pages/public/DocsPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { ActiveSessionsPage } from "./pages/settings/ActiveSessionsPage";
 import { SupportPage } from "./pages/SupportPage";
 import { FilesPage } from "./pages/FilesPage";
 import { ScannerHomePage } from "./pages/scanner/ScannerHomePage";
@@ -100,7 +101,7 @@ function ProtectedRoutes() {
         <Route path="/settings/profile" element={<ProfilePage />} />
         <Route path="/settings/account" element={<ProfilePage />} />
         <Route path="/settings/security" element={<ProfilePage />} />
-        <Route path="/settings/sessions" element={<ProfilePage />} />
+        <Route path="/settings/sessions" element={<ActiveSessionsPage />} />
         <Route path="/settings/subscription" element={<SubscriptionOverviewPage />} />
         <Route path="/billing/subscription" element={<SubscriptionOverviewPage />} />
         <Route path="/billing/checkout" element={<CheckoutPage />} />

@@ -118,4 +118,26 @@
 @keyframes reminder-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes reminder-arrive { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 900px) { .reminder-planner { grid-template-columns: 1fr; } .agenda-pane { border-top: 1px solid var(--reminder-line); border-left: 0; } }
-@media (max-width: 560px) { .reminders-page { padding: 20px 14px 28px; } .reminders-heading { align-items: flex-start; flex-direction: column; } .reminder-overview > div { min-height: 84px; grid-template-columns: 1fr; gap: 5px; padding: 10px; } .reminder-overview-mark { width: 27px; height: 27px; grid-row: auto; } .reminder-overview-label { font-size: 7px; letter-spacing: .06em; } .reminder-overview strong { font-size: 19px; } .reminder-overview small { font-size: 8px; } .calendar-pane { padding: 19px 13px; } .agenda-pane { padding: 22px 16px; } .calendar-grid { margin-top: 20px; } .calendar-day { height: 50px; } .reminder-form-row { grid-template-columns: 1fr; } .reminder-modal form { padding: 18px; } .reminder-modal > header { padding: 19px 18px 15px; } .reminder-bottom-strip { align-items: flex-start; } }
+@media (max-width: 560px) {
+  .reminders-page { padding: 20px 14px 28px; }
+  .reminders-heading { align-items: flex-start; flex-direction: column; }
+  .reminder-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reminder-overview > div { min-height: 84px; grid-template-columns: 27px minmax(0, 1fr); gap: 5px 8px; padding: 10px; }
+  .reminder-overview > div:last-child { grid-column: 1 / -1; }
+  .reminder-overview-mark { width: 27px; height: 27px; grid-row: span 3; }
+  .reminder-overview-label { font-size: 7px; letter-spacing: .06em; }
+  .reminder-overview strong { font-size: 19px; }
+  .reminder-overview small { font-size: 8px; }
+  .calendar-pane { padding: 19px 13px; }
+  .calendar-toolbar { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .calendar-toolbar h2 { font-size: 20px; }
+  .calendar-controls { flex: 0 0 auto; }
+  .calendar-controls .calendar-today { padding: 0 7px; }
+  .agenda-pane { padding: 22px 16px; }
+  .calendar-grid { margin-top: 20px; }
+  .calendar-day { height: 50px; }
+  .reminder-form-row { grid-template-columns: 1fr; }
+  .reminder-modal form { padding: 18px; }
+  .reminder-modal > header { padding: 19px 18px 15px; }
+  .reminder-bottom-strip { align-items: flex-start; }
+}

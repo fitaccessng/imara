@@ -30,6 +30,7 @@ import {
   AdminAnalyticsQueryDto,
   AdminAuditQueryDto,
   AdminAnnouncementCreateDto,
+  AdminAnnouncementsQueryDto,
   AdminAnnouncementRecipientsQueryDto,
   AdminEventsQueryDto,
   AdminPaymentsQueryDto,
@@ -173,7 +174,7 @@ export class AdminController {
 
   @Get('announcements')
   @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_READ)
-  announcements(@Query() query: AdminPageQueryDto, @Req() request: PlatformAdminRequest) {
+  announcements(@Query() query: AdminAnnouncementsQueryDto, @Req() request: PlatformAdminRequest) {
     return this.admin.announcements(query, request);
   }
 
@@ -199,6 +200,24 @@ export class AdminController {
     @Req() request: PlatformAdminRequest,
   ) {
     return this.admin.retryAnnouncementEmail(id, request);
+  }
+
+  @Patch('announcements/:id/archive')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_SEND)
+  archiveAnnouncement(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.archiveAnnouncement(id, request);
+  }
+
+  @Patch('announcements/:id/restore')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_SEND)
+  restoreAnnouncement(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.restoreAnnouncement(id, request);
   }
 
   @Get('users')

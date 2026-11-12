@@ -709,11 +709,13 @@ model PlatformAnnouncement {
   signupWindowMinutes Int?
   emailEnabled    Boolean                      @default(false)
   createdAt       DateTime                     @default(now())
+  archivedAt      DateTime?
   createdByUserId String                       @db.Uuid
   creator         User                         @relation("PlatformAnnouncementCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   deliveries      PlatformAnnouncementDelivery[]
 
   @@index([createdAt])
+  @@index([archivedAt, createdAt])
 }
 
 model PlatformAnnouncementDelivery {

@@ -131,7 +131,7 @@ function WorkspacePlaceholder({ loading, error, retry }: { loading: boolean; err
 }
 
 export function ApprovalsPage() {
-  const { workspacesQuery, workspaces, workspace, selectWorkspace } = useWorkspaceScope();
+  const { workspacesQuery, workspace } = useWorkspaceScope();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [view, setView] = useState<RequestView>("mine");
@@ -319,19 +319,6 @@ export function ApprovalsPage() {
 
   return (
     <div className="approvals-page">
-      <header className="approval-hero">
-        <div className="approval-hero-copy">
-          <span className="eyebrow">{workspace.name.toUpperCase()} · BUSINESS GOVERNANCE</span>
-          <h1>Decisions, <em>well made.</em></h1>
-          <p>Bring requests, people and evidence into one accountable approval trail.</p>
-          {workspaces.length > 1 && <label className="workspace-select-label"><span>Workspace</span><span className="workspace-select-wrap">
-            <select value={workspace.id} onChange={(event) => selectWorkspace(event.target.value)} aria-label="Select business workspace">
-              {workspaces.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
-            </select>
-          </span></label>}
-        </div>
-        <div className="approval-hero-mark" aria-hidden="true"><span>IMARA</span><strong>01</strong><i>REVIEW<br />WITH INTENT</i></div>
-      </header>
 
       <section className="approval-overview-strip" aria-label="Approval workspace overview">
         <div><span>ACTIVE TEAM</span><strong>{membersQuery.isLoading || membersQuery.isError ? "—" : activeMembers.length}</strong><small>Available to review</small></div>

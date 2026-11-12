@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  Archive,
   ArrowDownRight,
   ArrowRight,
   Ban,
@@ -231,6 +232,7 @@ interface AdminAnnouncement {
   signupWindowMinutes: number | null;
   emailEnabled: boolean;
   createdAt: string;
+  archivedAt: string | null;
   recipientCount: number;
   emailDelivery: Record<string, number>;
 }
@@ -1058,9 +1060,10 @@ function AdminSystemHealth() {
 
 function AdminAnnouncements() {
   const queryClient = useQueryClient();
+  const [showArchived, setShowArchived] = useState(false);
   const query = useQuery({
-    queryKey: ["admin-announcements"],
-    queryFn: () => apiRequest<PageResult<AdminAnnouncement>>("/admin/announcements?page=1&pageSize=50"),
+    queryKey: ["admin-announcements", showArchived],
+    queryFn: () => apiRequest<PageResult<AdminAnnouncement>>(`/admin/announcements?page=1&pageSize=50&archived=${showArchived}`),
   });
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -1143,6 +1146,30 @@ function AdminAnnouncements() {
     onError: (error) => {
       setNotice("");
       setActionError(error instanceof Error ? error.message : "Failed email deliveries could not be retried.");
+    },
+  });
+  const archiveAnnouncement = useMutation({
+    mutationFn: (id: string) => apiRequest<{ id: string; archivedAt: string | null }>(`/admin/announcements/${encodeURIComponent(id)}/archive`, { method: "PATCH" }),
+    onSuccess: async () => {
+      setNotice("Announcement archived. Its delivery and audit history is retained.");
+      setActionError("");
+      await queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });
+    },
+    onError: (error) => {
+      setNotice("");
+      setActionError(error instanceof Error ? error.message : "The announcement could not be archived.");
+    },
+  });
+  const restoreAnnouncement = useMutation({
+    mutationFn: (id: string) => apiRequest<{ id: string; archivedAt: string | null }>(`/admin/announcements/${encodeURIComponent(id)}/restore`, { method: "PATCH" }),
+    onSuccess: async () => {
+      setNotice("Announcement restored to the active list.");
+      setActionError("");
+      await queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });
+    },
+    onError: (error) => {
+      setNotice("");
+      setActionError(error instanceof Error ? error.message : "The announcement could not be restored.");
     },
   });
   if (query.isPending) return <PageLoading label="Loading announcement history…" />;
@@ -1255,16 +1282,28 @@ function AdminAnnouncements() {
       </div>}
     </section>
     <section className="admin-panel">
-      <div className="admin-panel-heading"><div><span className="admin-eyebrow">DELIVERY HISTORY</span><h2>Sent announcements</h2></div></div>
-      {!announcements.length ? <div className="admin-empty-state"><Megaphone size={20} /><strong>No announcements yet</strong><span>Confirmed announcements and their delivery status will appear here.</span></div> : (
+      <div className="admin-panel-heading admin-announcement-history-heading">
+        <div><span className="admin-eyebrow">{showArchived ? "HIDDEN FROM CUSTOMERS" : "DELIVERY HISTORY"}</span><h2>{showArchived ? "Archived announcements" : "Sent announcements"}</h2></div>
+        <button className="admin-button admin-button-secondary" type="button" onClick={() => setShowArchived((current) => !current)}>
+          {showArchived ? <Megaphone size={13} /> : <Archive size={13} />}
+          {showArchived ? "View active" : "View archived"}
+        </button>
+      </div>
+      {showArchived && <p className="admin-panel-note admin-archive-note">Archived announcements are hidden from customers; delivery records and audit history remain available.</p>}
+      {!announcements.length ? <div className="admin-empty-state"><Megaphone size={20} /><strong>{showArchived ? "No archived announcements" : "No announcements yet"}</strong><span>{showArchived ? "Archived announcements will appear here." : "Confirmed announcements and their delivery status will appear here."}</span></div> : (
         <div className="admin-table-wrap"><table className="admin-table">
-          <thead><tr><th>Announcement</th><th>Target</th><th>Recipients</th><th>Email delivery</th><th>Created</th><th /></tr></thead>
+          <thead><tr><th>Announcement</th><th>Target</th><th>Recipients</th><th>Email delivery</th><th>Created</th><th>Actions</th></tr></thead>
           <tbody>{announcements.map((item) => <tr key={item.id}>
-            <td><strong>{item.title}</strong><small>{item.body.slice(0, 100)}{item.body.length > 100 ? "…" : ""}</small></td>
+            <td><strong>{item.title}</strong><small>{item.body.slice(0, 100)}{item.body.length > 100 ? "…" : ""}</small>{item.archivedAt && <small className="admin-announcement-archived">Archived {formatDate(item.archivedAt)}</small>}</td>
             <td>{audienceLabel(item)}</td><td>{formatNumber(item.recipientCount)}</td>
             <td>{item.emailEnabled ? <span>{formatNumber(item.emailDelivery.SENT ?? 0)} sent · {formatNumber(item.emailDelivery.PENDING ?? 0)} pending · {formatNumber(failedEmailCount(item))} failed</span> : "Not requested"}</td>
             <td>{formatDate(item.createdAt)}</td>
-            <td>{item.emailEnabled && failedEmailCount(item) > 0 && <button className="admin-row-action" type="button" disabled={retryEmail.isPending} onClick={() => retryEmail.mutate(item.id)}>Retry failed <RotateCcw size={13} /></button>}</td>
+            <td><div className="admin-announcement-actions">
+              {showArchived
+                ? <button className="admin-row-action" type="button" disabled={restoreAnnouncement.isPending} onClick={() => restoreAnnouncement.mutate(item.id)}><RotateCcw size={13} /> Restore</button>
+                : <button className="admin-row-action admin-announcement-archive" type="button" disabled={archiveAnnouncement.isPending} onClick={() => archiveAnnouncement.mutate(item.id)}><Archive size={13} /> Archive</button>}
+              {item.emailEnabled && failedEmailCount(item) > 0 && <button className="admin-row-action" type="button" disabled={retryEmail.isPending} onClick={() => retryEmail.mutate(item.id)}>Retry failed <RotateCcw size={13} /></button>}
+            </div></td>
           </tr>)}</tbody>
         </table></div>
       )}

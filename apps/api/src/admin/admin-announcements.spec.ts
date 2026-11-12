@@ -23,6 +23,50 @@ function request(): PlatformAdminRequest {
 }
 
 describe('AdminService announcements', () => {
+  it.each([
+    {
+      method: 'archiveAnnouncement' as const,
+      previousArchivedAt: null,
+      action: 'admin.announcement.archive',
+    },
+    {
+      method: 'restoreAnnouncement' as const,
+      previousArchivedAt: new Date('2026-11-10T00:00:00Z'),
+      action: 'admin.announcement.restore',
+    },
+  ])('$method retains deliveries and records the lifecycle change', async ({ method, previousArchivedAt, action }) => {
+    const nextArchivedAt = method === 'archiveAnnouncement' ? new Date('2026-11-12T00:00:00Z') : null;
+    const tx = {
+      platformAnnouncement: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'announcement-id', archivedAt: previousArchivedAt }),
+        update: jest.fn().mockResolvedValue({ id: 'announcement-id', archivedAt: nextArchivedAt }),
+      },
+      platformAdminAuditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-id' }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx)),
+    };
+    const service = new AdminService(prisma as unknown as PrismaService);
+    const update = method === 'archiveAnnouncement'
+      ? service.archiveAnnouncement('announcement-id', request())
+      : service.restoreAnnouncement('announcement-id', request());
+
+    await expect(update).resolves.toMatchObject({
+      id: 'announcement-id',
+      archivedAt: nextArchivedAt,
+    });
+    expect(tx.platformAnnouncement.update).toHaveBeenCalledWith({
+      where: { id: 'announcement-id' },
+      data: { archivedAt: method === 'archiveAnnouncement' ? expect.any(Date) : null },
+      select: { id: true, archivedAt: true },
+    });
+    expect(tx.platformAdminAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action, resourceId: 'announcement-id' }),
+    }));
+  });
+
   it('creates in-app and queued email deliveries for active users in the selected plan', async () => {
     const tx = {
       platformAnnouncement: {

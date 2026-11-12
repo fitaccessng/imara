@@ -28,19 +28,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
+  const authRequestIdRef = useRef(0);
 
   const updateUser = useCallback((nextUser: User | null) => {
+    authRequestIdRef.current += 1;
     if (userIdRef.current && userIdRef.current !== nextUser?.id) queryClient.clear();
     userIdRef.current = nextUser?.id ?? null;
     setUser(nextUser);
+    setLoadError(null);
   }, [queryClient]);
 
   const refresh = useCallback(async () => {
+    const requestId = ++authRequestIdRef.current;
     setLoadError(null);
     try {
       const currentUser = await apiRequest<User>("/auth/me");
+      if (requestId !== authRequestIdRef.current) return;
       updateUser(currentUser);
     } catch (error) {
+      if (requestId !== authRequestIdRef.current) return;
       if (error instanceof ApiError && error.status === 401) {
         updateUser(null);
         return;

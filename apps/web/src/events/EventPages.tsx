@@ -21,7 +21,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { QRCodeCanvas } from "qrcode.react";
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
@@ -32,6 +32,13 @@ import { PlanLimitMessage } from "../components/PlanLimitMessage";
 
 type GallerySetting = "PRIVATE" | "LINK_PUBLIC" | "PASSCODE";
 const MAX_EVENT_CAPTURE_BYTES = 25 * 1024 * 1024;
+type EventQrTheme = "classic" | "sage" | "terracotta";
+
+const EVENT_QR_THEMES: Record<EventQrTheme, { label: string; background: string; accent: string; ink: string }> = {
+  classic: { label: "Classic", background: "#ffffff", accent: "#168d34", ink: "#102b46" },
+  sage: { label: "Sage", background: "#f0f5eb", accent: "#477452", ink: "#294735" },
+  terracotta: { label: "Terracotta", background: "#fbf1e7", accent: "#a75f3d", ink: "#593b2d" },
+};
 
 interface EventStorage {
   capBytes: string;
@@ -393,6 +400,7 @@ export function EventDetailPage() {
   const [feedback, setFeedback] = useState("");
   const [actionModal, setActionModal] = useState<ActionModalRequest | null>(null);
   const qrCanvas = useRef<HTMLCanvasElement>(null);
+  const [qrTheme, setQrTheme] = useState<EventQrTheme>("classic");
   const eventQuery = useQuery({
     queryKey: ["event", eventId],
     queryFn: () => apiRequest<ImaraEvent>(`/events/${eventId}`),
@@ -469,8 +477,63 @@ export function EventDetailPage() {
   }
 
   function downloadQr() {
-    const canvas = qrCanvas.current;
-    if (!canvas) return;
+    const qr = qrCanvas.current;
+    if (!qr) {
+      setFeedback("The event QR code is not ready to download.");
+      return;
+    }
+
+    const theme = EVENT_QR_THEMES[qrTheme];
+    const canvas = document.createElement("canvas");
+    canvas.width = 1200;
+    canvas.height = 1500;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setFeedback("Your browser could not prepare the event QR download.");
+      return;
+    }
+
+    context.fillStyle = theme.background;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = theme.accent;
+    context.fillRect(0, 0, canvas.width, 18);
+    context.strokeStyle = `${theme.accent}55`;
+    context.lineWidth = 2;
+    context.strokeRect(42, 42, canvas.width - 84, canvas.height - 84);
+
+    const titleFontSize = eventName.length > 54 ? 48 : eventName.length > 32 ? 58 : 70;
+    context.font = `700 ${titleFontSize}px Inter, Arial, sans-serif`;
+    context.fillStyle = theme.ink;
+    context.textAlign = "center";
+    context.textBaseline = "top";
+    const titleLines: string[] = [];
+    let titleLine = "";
+    for (const word of eventName.split(/\s+/)) {
+      const candidate = titleLine ? `${titleLine} ${word}` : word;
+      if (titleLine && context.measureText(candidate).width > 1020) {
+        titleLines.push(titleLine);
+        titleLine = word;
+      } else {
+        titleLine = candidate;
+      }
+    }
+    if (titleLine) titleLines.push(titleLine);
+    const lineHeight = titleFontSize * 1.15;
+    const titleTop = 168;
+    titleLines.forEach((line, index) => context.fillText(line, canvas.width / 2, titleTop + index * lineHeight, 1020));
+
+    const qrSize = 720;
+    const qrTop = Math.max(390, titleTop + titleLines.length * lineHeight + 76);
+    context.fillStyle = "#ffffff";
+    context.fillRect((canvas.width - qrSize - 48) / 2, qrTop - 24, qrSize + 48, qrSize + 48);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(qr, (canvas.width - qrSize) / 2, qrTop, qrSize, qrSize);
+    context.fillStyle = theme.accent;
+    context.font = "700 24px Inter, Arial, sans-serif";
+    context.textBaseline = "alphabetic";
+    context.letterSpacing = "3px";
+    context.fillText("SCAN TO SHARE YOUR PHOTOS", canvas.width / 2, qrTop + qrSize + 92);
+
     const link = document.createElement("a");
     link.download = `${eventName.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-event-qr.png`;
     link.href = canvas.toDataURL("image/png");
@@ -509,17 +572,46 @@ export function EventDetailPage() {
           <div className="event-panel-heading"><div><span className="eyebrow">GUEST UPLOADS</span><h2>Share your event QR</h2></div><span className="event-panel-icon"><Camera size={17} /></span></div>
           {tokens ? (
             <div className="event-qr-layout">
-              <div className="event-qr-canvas"><QRCodeCanvas ref={qrCanvas} value={captureUrl} size={220} level="M" includeMargin bgColor="#ffffff" fgColor="#102b46" /></div>
+              <div className={`event-qr-poster event-qr-poster-${qrTheme}`} data-theme={qrTheme}>
+                <strong className="event-qr-poster-title">{eventName}</strong>
+                <div className="event-qr-canvas" role="img" aria-label={`QR code for ${eventName}`}>
+                  <QRCodeSVG value={captureUrl} size={220} level="M" includeMargin bgColor="#ffffff" fgColor={EVENT_QR_THEMES[qrTheme].ink} />
+                </div>
+                <span className="event-qr-poster-caption">SCAN TO SHARE YOUR PHOTOS</span>
+                <div className="event-qr-download-source" aria-hidden="true">
+                  <QRCodeCanvas ref={qrCanvas} value={captureUrl} size={720} level="M" includeMargin bgColor="#ffffff" fgColor={EVENT_QR_THEMES[qrTheme].ink} />
+                </div>
+              </div>
               <div className="event-qr-details">
-                <h3>Ready to collect</h3>
+                <div className="event-qr-ready-heading">
+                  <span className="event-qr-ready-mark"><Check size={15} /></span>
+                  <div><span className="eyebrow">UPLOAD LINK ACTIVE</span><h3>Ready to collect</h3></div>
+                </div>
                 <p>Guests scan the code to open their camera, capture photos or videos, and add them to your collection.</p>
                 {!captureUrl.startsWith("https://") && <p className="event-https-warning" role="status">Phone camera access requires HTTPS. Set VITE_PUBLIC_APP_URL to your secure public app URL before sharing this QR code.</p>}
-                <div className="event-qr-url">{captureUrl}</div>
-                <div className="event-inline-actions">
-                  <button className="button button-green" onClick={downloadQr}><Download size={15} /> Download QR</button>
-                  <button className="button button-outline" onClick={() => window.print()}><Printer size={15} /> Print</button>
+                <div className="event-qr-url-block"><span>GUEST UPLOAD LINK</span><div className="event-qr-url">{captureUrl}</div></div>
+                <div className="event-qr-style-picker" role="group" aria-label="QR poster style">
+                  <span>Poster style</span>
+                  <div>
+                    {(Object.keys(EVENT_QR_THEMES) as EventQrTheme[]).map((theme) => (
+                      <button
+                        key={theme}
+                        type="button"
+                        className={`event-qr-style${qrTheme === theme ? " selected" : ""}`}
+                        aria-pressed={qrTheme === theme}
+                        onClick={() => setQrTheme(theme)}
+                      >
+                        <i className={`event-qr-style-swatch event-qr-style-swatch-${theme}`} />
+                        {EVENT_QR_THEMES[theme].label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <button className="event-text-action" onClick={() => void copyLink(captureUrl, "Capture link")}><Copy size={14} /> Copy upload link</button>
+                <div className="event-inline-actions">
+                  <button type="button" className="button button-green" onClick={downloadQr}><Download size={15} /> Download QR</button>
+                  <button type="button" className="button button-outline" onClick={() => window.print()}><Printer size={15} /> Print</button>
+                </div>
+                <button type="button" className="event-text-action" onClick={() => void copyLink(captureUrl, "Capture link")}><Copy size={14} /> Copy upload link</button>
               </div>
             </div>
           ) : (
@@ -1067,8 +1159,6 @@ export function EventGalleryPage() {
     }),
     enabled: Boolean(token),
     retry: false,
-    refetchInterval: 5_000,
-    refetchIntervalInBackground: false,
   });
 
   async function unlock(event: FormEvent<HTMLFormElement>) {
@@ -1117,7 +1207,15 @@ export function EventGalleryPage() {
   const { event, media } = galleryQuery.data;
   return (
     <main className="public-gallery-page">
-      <header className="public-gallery-header"><Link to="/" className="public-event-brand" aria-label="imara home"><BrandIdentity /></Link><span><LockKeyhole size={14} /> Shared privately</span></header>
+      <header className="public-gallery-header">
+        <Link to="/" className="public-event-brand" aria-label="imara home"><BrandIdentity /></Link>
+        <div className="public-gallery-header-actions">
+          <button type="button" onClick={() => void galleryQuery.refetch()} disabled={galleryQuery.isFetching} aria-label="Refresh gallery" title="Refresh gallery">
+            <RefreshCw size={14} className={galleryQuery.isFetching ? "gallery-refreshing" : ""} /> Refresh
+          </button>
+          <span><LockKeyhole size={14} /> Shared privately</span>
+        </div>
+      </header>
       <section className="public-gallery-intro">
         <span className="eyebrow">A SHARED COLLECTION</span>
         <h1>{event.name}</h1>

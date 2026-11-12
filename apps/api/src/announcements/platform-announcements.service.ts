@@ -7,7 +7,7 @@ export class PlatformAnnouncementsService {
 
   async listForUser(userId: string) {
     const deliveries = await this.prisma.platformAnnouncementDelivery.findMany({
-      where: { userId },
+      where: { userId, announcement: { is: { archivedAt: null } } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 100,
       select: {

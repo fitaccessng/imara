@@ -112,7 +112,7 @@ export class StorageController {
   }
 
   @Post('files')
-  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
   uploadFile(
     @Req() req: AuthenticatedRequest,

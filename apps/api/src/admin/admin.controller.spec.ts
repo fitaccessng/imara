@@ -86,6 +86,8 @@ describe('AdminController', () => {
       announcementRecipients: jest.fn().mockResolvedValue({ items: [], page: {} }),
       createAnnouncement: jest.fn().mockResolvedValue({ id: 'announcement-id' }),
       retryAnnouncementEmail: jest.fn().mockResolvedValue({ queuedRecipientCount: 0 }),
+      archiveAnnouncement: jest.fn().mockResolvedValue({ id: 'announcement-id', archivedAt: new Date() }),
+      restoreAnnouncement: jest.fn().mockResolvedValue({ id: 'announcement-id', archivedAt: null }),
     };
     const supportService = {
       adminList: jest.fn().mockResolvedValue({ items: [], page: {} }),
@@ -145,6 +147,10 @@ describe('AdminController', () => {
     await expect(controller.systemHealth(request)).resolves.toEqual({ status: 'healthy' });
     await expect(controller.announcements({ page: 1, pageSize: 10 } as never, request))
       .resolves.toEqual({ items: [], page: {} });
+    await expect(controller.archiveAnnouncement('announcement-id', request))
+      .resolves.toMatchObject({ id: 'announcement-id', archivedAt: expect.any(Date) });
+    await expect(controller.restoreAnnouncement('announcement-id', request))
+      .resolves.toEqual({ id: 'announcement-id', archivedAt: null });
     await expect(controller.announcementRecipients({ q: 'sample' } as never, request))
       .resolves.toEqual({ items: [], page: {} });
     await expect(controller.createAnnouncement({} as never, request)).resolves.toEqual({ id: 'announcement-id' });

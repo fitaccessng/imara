@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
+  BookOpen,
   CheckCircle2,
   Cloud,
+  Compass,
   FileText,
   FolderPlus,
   HardDrive,
@@ -12,9 +14,43 @@ import {
   ShieldCheck,
   Sparkles,
   Upload,
+  X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { apiRequest, type DashboardSummary } from "../lib/api";
+import { useEffect, useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
+import { ApiError, apiRequest, type DashboardSummary } from "../lib/api";
+
+const DASHBOARD_TOUR_STEPS = [
+  {
+    label: "01 · YOUR STORAGE",
+    title: "Know what space you have.",
+    description: "See how much storage is in use, what remains, and which plan is protecting your files.",
+    icon: HardDrive,
+    target: "storage",
+  },
+  {
+    label: "02 · GET ORGANIZED",
+    title: "Give every document a home.",
+    description: "Create folders, scan paper documents, or upload files straight into your private library.",
+    icon: FolderPlus,
+    target: "organize",
+  },
+  {
+    label: "03 · YOUR LIBRARY",
+    title: "Pick up right where you left off.",
+    description: "Your recent documents and saved files are one click away. Open the library to sort, share, and manage them.",
+    icon: BookOpen,
+    target: "library",
+  },
+  {
+    label: "04 · ACCOUNT CARE",
+    title: "Keep your space secure.",
+    description: "Review your profile and security settings whenever your details or sign-in needs change.",
+    icon: ShieldCheck,
+    target: "account",
+  },
+];
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 1) return "0 bytes";
@@ -92,9 +128,13 @@ function LoadingDashboard() {
 function ErrorState({
   message,
   onRetry,
+  onLogin,
+  authenticationRequired = false,
 }: {
   message: string;
   onRetry: () => void;
+  onLogin?: () => void;
+  authenticationRequired?: boolean;
 }) {
   return (
     <div className="mx-auto flex min-h-[55vh] w-full max-w-xl flex-col items-center justify-center px-5 text-center">
@@ -107,17 +147,31 @@ function ErrorState({
       </h2>
 
       <p className="mt-2 max-w-sm text-sm leading-6 text-[#718096]">
-        {message}
+        {authenticationRequired
+          ? "Your sign-in session has expired. Sign in again to continue to your dashboard."
+          : message}
       </p>
 
-      <button
-        type="button"
-        onClick={onRetry}
-        className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-6 text-sm font-semibold text-white transition hover:bg-[#189638]"
-      >
-        Try again
-        <ArrowRight size={16} />
-      </button>
+      {authenticationRequired ? (
+        <Link
+          to="/login"
+          state={{ from: "/dashboard" }}
+          onClick={onLogin}
+          className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-6 text-sm font-semibold text-white transition hover:bg-[#189638]"
+        >
+          Go to login
+          <ArrowRight size={16} />
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-6 text-sm font-semibold text-white transition hover:bg-[#189638]"
+        >
+          Try again
+          <ArrowRight size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -163,16 +217,43 @@ function EmptyLibrary({
 }
 
 export function DashboardPage() {
+  const { setUser } = useAuth();
+  const [tourStep, setTourStep] = useState<number | null>(null);
+  const [tourTarget, setTourTarget] = useState<DOMRect | null>(null);
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["dashboard-summary"],
     queryFn: () => apiRequest<DashboardSummary>("/dashboard/summary"),
   });
+
+  useEffect(() => {
+    if (tourStep === null) {
+      setTourTarget(null);
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(`[data-tour="${DASHBOARD_TOUR_STEPS[tourStep].target}"]`);
+    if (!target) {
+      setTourTarget(null);
+      return;
+    }
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    const updateTarget = () => setTourTarget(target.getBoundingClientRect());
+    const frame = window.requestAnimationFrame(updateTarget);
+    window.addEventListener("resize", updateTarget);
+    window.addEventListener("scroll", updateTarget, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updateTarget);
+      window.removeEventListener("scroll", updateTarget, true);
+    };
+  }, [tourStep]);
 
   if (isLoading) {
     return <LoadingDashboard />;
   }
 
   if (isError || !data) {
+    const authenticationRequired = (error instanceof ApiError && error.status === 401)
+      || (error instanceof Error && /authentication required/i.test(error.message));
     return (
       <ErrorState
         message={
@@ -181,6 +262,8 @@ export function DashboardPage() {
             : "Please check your internet connection and try again."
         }
         onRetry={() => void refetch()}
+        onLogin={() => setUser(null)}
+        authenticationRequired={authenticationRequired}
       />
     );
   }
@@ -217,10 +300,11 @@ export function DashboardPage() {
   }).format(new Date());
 
   return (
+    <>
     <main className="mx-auto w-full min-w-0 max-w-[1500px] space-y-6 overflow-x-clip pb-8 sm:space-y-8">
 
       {/* Page heading */}
-      <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <header data-tour="organize" className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#20AD43]" />
@@ -241,6 +325,14 @@ export function DashboardPage() {
         </div>
 
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setTourStep(0)}
+            className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
+          >
+            <Compass size={15} />
+            Take a tour
+          </button>
           <Link
             to="/files?createFolder=1"
             className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
@@ -263,7 +355,7 @@ export function DashboardPage() {
       <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
 
         {/* Storage card */}
-        <div className="relative min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-5 shadow-[0_2px_12px_rgba(16,43,70,0.025)] sm:p-6 xl:col-span-2">
+        <div data-tour="storage" className="relative min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-5 shadow-[0_2px_12px_rgba(16,43,70,0.025)] sm:p-6 xl:col-span-2">
           <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full border-[30px] border-[#20AD43]/[0.035]" />
 
           <div className="relative flex items-center justify-between gap-3">
@@ -359,7 +451,7 @@ export function DashboardPage() {
         </div>
 
         {/* Welcome card */}
-        <div className="relative flex min-h-[260px] min-w-0 flex-col justify-between overflow-hidden rounded-2xl bg-[#102B46] p-5 sm:min-h-[280px] sm:p-7 xl:col-span-3">
+        <div data-tour="get-started" className="relative flex min-h-[260px] min-w-0 flex-col justify-between overflow-hidden rounded-2xl bg-[#102B46] p-5 sm:min-h-[280px] sm:p-7 xl:col-span-3">
           <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full border-[35px] border-white/[0.04]" />
           <div className="pointer-events-none absolute -bottom-28 right-28 h-56 w-56 rounded-full border-[30px] border-white/[0.04]" />
 
@@ -416,7 +508,7 @@ export function DashboardPage() {
       <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
 
         {/* Recently added */}
-        <div className="min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6 xl:col-span-3">
+        <div data-tour="library" className="min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6 xl:col-span-3">
           <SectionTitle
             eyebrow="YOUR LIBRARY"
             title="Recently added"
@@ -434,7 +526,7 @@ export function DashboardPage() {
         </div>
 
         {/* Account security */}
-        <aside className="flex min-w-0 flex-col rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6 xl:col-span-2">
+        <aside data-tour="account" className="flex min-w-0 flex-col rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6 xl:col-span-2">
           <SectionTitle
             eyebrow="ACCOUNT CARE"
             title="Your account matters."
@@ -480,6 +572,41 @@ export function DashboardPage() {
         </p>
       </div>
     </main>
+    {tourStep !== null && (() => {
+      const step = DASHBOARD_TOUR_STEPS[tourStep];
+      const StepIcon = step.icon;
+      return <div className="dashboard-tour-backdrop" style={tourTarget ? { background: "transparent", backdropFilter: "none" } : undefined}>
+        {tourTarget && <div
+          className="dashboard-tour-spotlight"
+          style={{ top: tourTarget.top - 6, left: tourTarget.left - 6, width: tourTarget.width + 12, height: tourTarget.height + 12 }}
+          aria-hidden="true"
+        />}
+        <section className="dashboard-tour-dialog" role="dialog" aria-modal="true" aria-labelledby="dashboard-tour-title" aria-describedby="dashboard-tour-description">
+          <div className="dashboard-tour-topline">
+            <span className="eyebrow">A QUICK WALKTHROUGH</span>
+            <button type="button" className="dashboard-tour-close" aria-label="Close walkthrough" onClick={() => setTourStep(null)}><X size={18} /></button>
+          </div>
+          <div className="dashboard-tour-progress" aria-label={`Step ${tourStep + 1} of ${DASHBOARD_TOUR_STEPS.length}`}>
+            {DASHBOARD_TOUR_STEPS.map((item, index) => <span key={item.label} className={index <= tourStep ? "is-current" : ""} />)}
+          </div>
+          <div className="dashboard-tour-icon"><StepIcon size={22} /></div>
+          <span className="dashboard-tour-step-label">{step.label}</span>
+          <h2 id="dashboard-tour-title">{step.title}</h2>
+          <p id="dashboard-tour-description">{step.description}</p>
+          <div className="dashboard-tour-footer">
+            <button className="dashboard-tour-skip" type="button" onClick={() => setTourStep(null)}>Skip tour</button>
+            <div>
+              <button className="button button-outline button-compact" type="button" disabled={tourStep === 0} onClick={() => setTourStep((current) => current === null ? null : current - 1)}>Back</button>
+              <button className="button button-green button-compact" type="button" onClick={() => setTourStep(tourStep === DASHBOARD_TOUR_STEPS.length - 1 ? null : tourStep + 1)}>
+                {tourStep === DASHBOARD_TOUR_STEPS.length - 1 ? "Finish" : "Next"}
+                {tourStep < DASHBOARD_TOUR_STEPS.length - 1 && <ArrowRight size={14} />}
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>;
+    })()}
+    </>
   );
 }
 

@@ -24,6 +24,7 @@ import {
 import type { PlatformAdminRequest } from './platform-admin.types';
 import type {
   AdminAnalyticsQueryDto,
+  AdminAnnouncementsQueryDto,
   AdminAnnouncementRecipientsQueryDto,
   AdminAuditQueryDto,
   AdminEventsQueryDto,
@@ -783,15 +784,20 @@ export class AdminService {
     };
   }
 
-  async announcements(query: AdminPageQueryDto, request: PlatformAdminRequest) {
+  async announcements(query: AdminAnnouncementsQueryDto, request: PlatformAdminRequest) {
     await this.auditRead(request, 'admin.announcements.read', 'platform-announcement', {
       page: query.page,
       pageSize: query.pageSize,
+      archived: query.archived,
     });
     const { skip, take } = pagination(query);
+    const where: Prisma.PlatformAnnouncementWhereInput = {
+      archivedAt: query.archived ? { not: null } : null,
+    };
     const [totalItems, records, emailDeliveryGroups] = await Promise.all([
-      this.prisma.platformAnnouncement.count(),
+      this.prisma.platformAnnouncement.count({ where }),
       this.prisma.platformAnnouncement.findMany({
+        where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip,
         take,
@@ -804,6 +810,7 @@ export class AdminService {
           signupWindowMinutes: true,
           emailEnabled: true,
           createdAt: true,
+          archivedAt: true,
           _count: { select: { deliveries: true } },
         },
       }),
@@ -952,6 +959,7 @@ export class AdminService {
           signupWindowMinutes: true,
           emailEnabled: true,
           createdAt: true,
+          archivedAt: true,
         },
       });
       await tx.platformAnnouncementDelivery.createMany({
@@ -1015,6 +1023,44 @@ export class AdminService {
         { queuedRecipientCount: queued.count },
       );
       return { announcementId, queuedRecipientCount: queued.count };
+    });
+  }
+
+  async archiveAnnouncement(announcementId: string, request: PlatformAdminRequest) {
+    return this.setAnnouncementArchived(announcementId, true, request);
+  }
+
+  async restoreAnnouncement(announcementId: string, request: PlatformAdminRequest) {
+    return this.setAnnouncementArchived(announcementId, false, request);
+  }
+
+  private async setAnnouncementArchived(
+    announcementId: string,
+    archived: boolean,
+    request: PlatformAdminRequest,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.platformAnnouncement.findUnique({
+        where: { id: announcementId },
+        select: { id: true, archivedAt: true },
+      });
+      if (!current) throw new NotFoundException('Announcement not found');
+      if (Boolean(current.archivedAt) === archived) return current;
+
+      const updated = await tx.platformAnnouncement.update({
+        where: { id: announcementId },
+        data: { archivedAt: archived ? new Date() : null },
+        select: { id: true, archivedAt: true },
+      });
+      await this.auditMutation(
+        tx,
+        request,
+        archived ? 'admin.announcement.archive' : 'admin.announcement.restore',
+        'platform-announcement',
+        announcementId,
+        { archived },
+      );
+      return updated;
     });
   }
 
