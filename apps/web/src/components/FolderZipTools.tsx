@@ -423,12 +423,12 @@ export function FolderZipTools({
     <div className={`folder-zip-tools ${variant === "file" ? "folder-zip-tools-file" : ""}`}>
       {variant === "file" && file && canDownload && canExtract && !file.name.toLowerCase().endsWith(".zip") && (
         <button className="zip-row-button" type="button" aria-label={`Create ZIP from ${file.name}`} title="Create ZIP in this folder" disabled={busy} onClick={() => void zipStoredFile()}>
-          <Archive size={15} />
+          <Archive size={15} /><span>Create ZIP file</span>
         </button>
       )}
       {variant === "file" && file && canDownload && canExtract && file.name.toLowerCase().endsWith(".zip") && (
         <button className="zip-row-button" type="button" aria-label={`Extract ${file.name}`} title="Extract ZIP in this folder" disabled={busy} onClick={requestStoredFileExtraction}>
-          <FolderOpen size={15} />
+          <FolderOpen size={15} /><span>Extract ZIP folder</span>
         </button>
       )}
       {variant === "folder" && canDownload && (
