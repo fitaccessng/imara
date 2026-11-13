@@ -38,26 +38,3 @@ export function removeEventTokens(userId: string, eventId: string): void {
     // Nothing else needs to happen when browser storage is restricted.
   }
 }
-
-export function clearEventTokensForUser(userId: string): void {
-  const prefix = `${EVENT_TOKEN_STORAGE_PREFIX}${encodeURIComponent(userId)}:`;
-  try {
-    const keys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index));
-    keys.forEach((key) => {
-      if (key?.startsWith(prefix)) window.localStorage.removeItem(key);
-    });
-  } catch {
-    // Nothing else needs to happen when browser storage is restricted.
-  }
-}
-
-export function clearAllEventTokens(): void {
-  try {
-    const keys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index));
-    keys.forEach((key) => {
-      if (key?.startsWith(EVENT_TOKEN_STORAGE_PREFIX)) window.localStorage.removeItem(key);
-    });
-  } catch {
-    // Nothing else needs to happen when browser storage is restricted.
-  }
-}

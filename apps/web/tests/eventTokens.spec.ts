@@ -1,6 +1,4 @@
 import {
-  clearAllEventTokens,
-  clearEventTokensForUser,
   readEventTokens,
   removeEventTokens,
   saveEventTokens,
@@ -46,13 +44,12 @@ describe("event token persistence", () => {
     expect(readEventTokens("user-1", "event-2")?.captureToken).toBe("c2");
   });
 
-  it("clears only that user's links on account change and all links on sign out", () => {
+  it("retains saved links for each owner and does not expose them across accounts", () => {
     saveEventTokens("user-1", "event-1", { captureToken: "c1", galleryToken: "g1" });
     saveEventTokens("user-2", "event-2", { captureToken: "c2", galleryToken: "g2" });
-    clearEventTokensForUser("user-1");
-    expect(readEventTokens("user-2", "event-2")).not.toBeNull();
 
-    clearAllEventTokens();
-    expect(readEventTokens("user-2", "event-2")).toBeNull();
+    expect(readEventTokens("user-1", "event-1")?.captureToken).toBe("c1");
+    expect(readEventTokens("user-2", "event-2")).not.toBeNull();
+    expect(readEventTokens("user-3", "event-1")).toBeNull();
   });
 });

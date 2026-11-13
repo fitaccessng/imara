@@ -6,8 +6,8 @@ export interface StorageBreakdown {
 
 export function formatStoragePercent(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0%";
-  const rounded = Math.round(value);
-  return rounded === 0 ? "<1%" : `${rounded}%`;
+  if (value < 10) return `${Number(value.toFixed(1))}%`;
+  return `${Math.round(value)}%`;
 }
 
 export function getStorageBreakdown(

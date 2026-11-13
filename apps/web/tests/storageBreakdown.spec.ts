@@ -18,11 +18,12 @@ describe("getStorageBreakdown", () => {
   });
 
   describe("formatStoragePercent", () => {
-    it("keeps a non-zero but tiny slice visible", () => {
-      expect(formatStoragePercent(0.2)).toBe("<1%");
+    it("shows a real percentage for non-zero storage below one percent", () => {
+      expect(formatStoragePercent(0.2)).toBe("0.2%");
     });
 
-    it("rounds ordinary percentages for compact chart labels", () => {
+    it("keeps compact percentages with one decimal place below ten percent", () => {
+      expect(formatStoragePercent(4.26)).toBe("4.3%");
       expect(formatStoragePercent(42.6)).toBe("43%");
       expect(formatStoragePercent(0)).toBe("0%");
     });

@@ -11,7 +11,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiRequest, type User } from "../lib/api";
 import { createIdleTimeout, SESSION_IDLE_TIMEOUT_MS } from "./idleTimeout";
-import { clearAllEventTokens, clearEventTokensForUser } from "../events/eventTokens";
 
 const IDLE_ACTIVITY_STORAGE_PREFIX = "imara:last-activity:";
 const KNOWN_SESSION_STORAGE_KEY = "imara:session-established";
@@ -44,7 +43,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const hadUser = userIdRef.current !== null;
     if (userIdRef.current && userIdRef.current !== nextUser?.id) {
       queryClient.clear();
-      clearEventTokensForUser(userIdRef.current);
     }
     userIdRef.current = nextUser?.id ?? null;
     setUser(nextUser);
@@ -63,7 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ignore storage restrictions; the server session is still revoked.
       }
     }
-    if (!nextUser) clearAllEventTokens();
   }, [queryClient]);
 
   const refresh = useCallback(async () => {
