@@ -74,9 +74,58 @@ function SectionTitle({
   );
 }
 
-function LoadingDashboard() {
+function DashboardQuickTools({ online }: { online: boolean }) {
+  return (
+    <section className="dashboard-tools-panel" aria-labelledby="dashboard-tools-title">
+      <div className="dashboard-tools-heading">
+        <div>
+          <span className="dashboard-tools-eyebrow">YOUR WORKSPACE</span>
+          <h2 id="dashboard-tools-title">Quick tools</h2>
+        </div>
+        <span>Everyday actions, one click away</span>
+      </div>
+      <div className="dashboard-tools-grid">
+        <Link to="/notes" className="dashboard-tool-card">
+          <span className="dashboard-tool-icon dashboard-tool-notes"><NotebookPen size={19} /></span>
+          <span><strong>IMARA Notes</strong><small>Capture a thought</small></span>
+          <ArrowRight size={15} className="dashboard-tool-arrow" />
+        </Link>
+        <Link to="/file-requests" className="dashboard-tool-card">
+          <span className="dashboard-tool-icon dashboard-tool-requests"><MailPlus size={19} /></span>
+          <span><strong>Request files</strong><small>Collect files by link</small></span>
+          <ArrowRight size={15} className="dashboard-tool-arrow" />
+        </Link>
+        <Link to="/document-tools" className="dashboard-tool-card">
+          <span className="dashboard-tool-icon dashboard-tool-documents"><WandSparkles size={19} /></span>
+          <span><strong>Document tools</strong><small>Convert and create</small></span>
+          <ArrowRight size={15} className="dashboard-tool-arrow" />
+        </Link>
+        <Link to="/events" className="dashboard-tool-card">
+          <span className="dashboard-tool-icon dashboard-tool-events"><Camera size={19} /></span>
+          <span><strong>Events</strong><small>Manage shared galleries</small></span>
+          <ArrowRight size={15} className="dashboard-tool-arrow" />
+        </Link>
+        <Link to="/calendar" className="dashboard-tool-card">
+          <span className="dashboard-tool-icon dashboard-tool-calendar"><CalendarDays size={19} /></span>
+          <span><strong>Calendar</strong><small>Keep dates in view</small></span>
+          <ArrowRight size={15} className="dashboard-tool-arrow" />
+        </Link>
+      </div>
+      {!online && (
+        <div className="dashboard-offline-notice" role="status">
+          <CloudDownload size={18} />
+          <p><strong>You’re offline.</strong> Saved copies are still available on this device.</p>
+          <Link to="/offline-files">Offline access <ArrowRight size={14} /></Link>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LoadingDashboard({ online }: { online: boolean }) {
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
+      <DashboardQuickTools online={online} />
       <div className="animate-pulse space-y-3">
         <div className="h-3 w-28 rounded bg-slate-200" />
         <div className="h-8 w-64 max-w-full rounded-lg bg-slate-200" />
@@ -212,23 +261,26 @@ export function DashboardPage() {
   });
 
   if (isLoading) {
-    return <LoadingDashboard />;
+    return <LoadingDashboard online={online} />;
   }
 
   if (isError || !data) {
     const authenticationRequired = (error instanceof ApiError && error.status === 401)
       || (error instanceof Error && /authentication required/i.test(error.message));
     return (
-      <ErrorState
-        message={
-          error instanceof Error
-            ? error.message
-            : "Please check your internet connection and try again."
-        }
-        onRetry={() => void refetch()}
-        onLogin={() => setUser(null)}
-        authenticationRequired={authenticationRequired}
-      />
+      <div className="mx-auto w-full max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
+        <DashboardQuickTools online={online} />
+        <ErrorState
+          message={
+            error instanceof Error
+              ? error.message
+              : "Please check your internet connection and try again."
+          }
+          onRetry={() => void refetch()}
+          onLogin={() => setUser(null)}
+          authenticationRequired={authenticationRequired}
+        />
+      </div>
     );
   }
 
@@ -358,49 +410,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="dashboard-tools-panel" aria-labelledby="dashboard-tools-title">
-        <div className="dashboard-tools-heading">
-          <div>
-            <span className="dashboard-tools-eyebrow">YOUR WORKSPACE</span>
-            <h2 id="dashboard-tools-title">Quick tools</h2>
-          </div>
-          <span>Everyday actions, one click away</span>
-        </div>
-        <div className="dashboard-tools-grid">
-          <Link to="/notes" className="dashboard-tool-card">
-            <span className="dashboard-tool-icon dashboard-tool-notes"><NotebookPen size={19} /></span>
-            <span><strong>IMARA Notes</strong><small>Capture a thought</small></span>
-            <ArrowRight size={15} className="dashboard-tool-arrow" />
-          </Link>
-          <Link to="/file-requests" className="dashboard-tool-card">
-            <span className="dashboard-tool-icon dashboard-tool-requests"><MailPlus size={19} /></span>
-            <span><strong>Request files</strong><small>Collect files by link</small></span>
-            <ArrowRight size={15} className="dashboard-tool-arrow" />
-          </Link>
-          <Link to="/document-tools" className="dashboard-tool-card">
-            <span className="dashboard-tool-icon dashboard-tool-documents"><WandSparkles size={19} /></span>
-            <span><strong>Document tools</strong><small>Convert and create</small></span>
-            <ArrowRight size={15} className="dashboard-tool-arrow" />
-          </Link>
-          <Link to="/events" className="dashboard-tool-card">
-            <span className="dashboard-tool-icon dashboard-tool-events"><Camera size={19} /></span>
-            <span><strong>Events</strong><small>Manage shared galleries</small></span>
-            <ArrowRight size={15} className="dashboard-tool-arrow" />
-          </Link>
-          <Link to="/calendar" className="dashboard-tool-card">
-            <span className="dashboard-tool-icon dashboard-tool-calendar"><CalendarDays size={19} /></span>
-            <span><strong>Calendar</strong><small>Keep dates in view</small></span>
-            <ArrowRight size={15} className="dashboard-tool-arrow" />
-          </Link>
-        </div>
-        {!online && (
-          <div className="dashboard-offline-notice" role="status">
-            <CloudDownload size={18} />
-            <p><strong>You’re offline.</strong> Saved copies are still available on this device.</p>
-            <Link to="/offline-files">Offline access <ArrowRight size={14} /></Link>
-          </div>
-        )}
-      </section>
+      <DashboardQuickTools online={online} />
 
       {/* Library and account */}
       <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
