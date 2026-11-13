@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, MoreHorizontal, Move, Pencil, Share2, Star, Trash2, X } from "lucide-react";
+import { ArrowLeft, Camera, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, MailPlus, MoreHorizontal, Move, Pencil, Share2, Star, Trash2, X } from "lucide-react";
 import { useState, type FormEvent, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile, type StoredFile, type UserFolder } from "../lib/api";
@@ -256,6 +256,9 @@ export function FilesPage() {
           <p className="page-subtitle">A private home for the documents you want to keep.</p>
         </div>
         <div className="files-heading-actions">
+          <Link className="button button-outline" to="/file-requests">
+            <MailPlus size={15} /> Request files
+          </Link>
           <Link className="button button-outline files-scan-button" to={folderId ? `/scanner?folder=${encodeURIComponent(folderId)}` : "/scanner"}>
             <Camera size={15} /> Scan a document
           </Link>

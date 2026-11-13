@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "./auth/AuthProvider";
 import { AuthPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./pages/AuthPages";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -69,6 +69,18 @@ function ProtectedRoutes() {
     return <main className="full-state"><span className="loader" />Checking your secure session…</main>;
   }
   if (loadError) {
+    if (!navigator.onLine) {
+      return (
+        <main className="full-state">
+          <div className="state-card">
+            <span className="eyebrow">Offline mode</span>
+            <h1>Your saved documents are still here.</h1>
+            <p>Reconnect to refresh your account. Files saved to this device can be opened now.</p>
+            <Link className="button button-dark" to="/offline-files">Open offline access</Link>
+          </div>
+        </main>
+      );
+    }
     return (
       <main className="full-state">
         <div className="state-card">

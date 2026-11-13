@@ -1,18 +1,24 @@
 
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
+  Camera,
   CheckCircle2,
   Cloud,
   Compass,
+  CalendarDays,
+  CloudDownload,
   FileText,
   FolderPlus,
   LockKeyhole,
+  MailPlus,
   NotebookPen,
   ShieldCheck,
   Sparkles,
   Upload,
+  WandSparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
@@ -183,11 +189,22 @@ function EmptyLibrary({
 
 export function DashboardPage() {
   const { setUser } = useAuth();
+  const [online, setOnline] = useState(navigator.onLine);
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["dashboard-summary"],
     queryFn: () => apiRequest<DashboardSummary>("/dashboard/summary"),
     refetchInterval: 30_000,
   });
+
+  useEffect(() => {
+    const updateOnline = () => setOnline(navigator.onLine);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
+  }, []);
   const insightsQuery = useQuery({
     queryKey: ["weekly-insights"],
     queryFn: () => apiRequest<WeeklyInsights>("/insights/weekly"),
@@ -339,6 +356,50 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="dashboard-tools-panel" aria-labelledby="dashboard-tools-title">
+        <div className="dashboard-tools-heading">
+          <div>
+            <span className="dashboard-tools-eyebrow">YOUR WORKSPACE</span>
+            <h2 id="dashboard-tools-title">Quick tools</h2>
+          </div>
+          <span>Everyday actions, one click away</span>
+        </div>
+        <div className="dashboard-tools-grid">
+          <Link to="/notes" className="dashboard-tool-card">
+            <span className="dashboard-tool-icon dashboard-tool-notes"><NotebookPen size={19} /></span>
+            <span><strong>IMARA Notes</strong><small>Capture a thought</small></span>
+            <ArrowRight size={15} className="dashboard-tool-arrow" />
+          </Link>
+          <Link to="/file-requests" className="dashboard-tool-card">
+            <span className="dashboard-tool-icon dashboard-tool-requests"><MailPlus size={19} /></span>
+            <span><strong>Request files</strong><small>Collect files by link</small></span>
+            <ArrowRight size={15} className="dashboard-tool-arrow" />
+          </Link>
+          <Link to="/document-tools" className="dashboard-tool-card">
+            <span className="dashboard-tool-icon dashboard-tool-documents"><WandSparkles size={19} /></span>
+            <span><strong>Document tools</strong><small>Convert and create</small></span>
+            <ArrowRight size={15} className="dashboard-tool-arrow" />
+          </Link>
+          <Link to="/events" className="dashboard-tool-card">
+            <span className="dashboard-tool-icon dashboard-tool-events"><Camera size={19} /></span>
+            <span><strong>Events</strong><small>Manage shared galleries</small></span>
+            <ArrowRight size={15} className="dashboard-tool-arrow" />
+          </Link>
+          <Link to="/calendar" className="dashboard-tool-card">
+            <span className="dashboard-tool-icon dashboard-tool-calendar"><CalendarDays size={19} /></span>
+            <span><strong>Calendar</strong><small>Keep dates in view</small></span>
+            <ArrowRight size={15} className="dashboard-tool-arrow" />
+          </Link>
+        </div>
+        {!online && (
+          <div className="dashboard-offline-notice" role="status">
+            <CloudDownload size={18} />
+            <p><strong>You’re offline.</strong> Saved copies are still available on this device.</p>
+            <Link to="/offline-files">Offline access <ArrowRight size={14} /></Link>
+          </div>
+        )}
       </section>
 
       {/* Library and account */}

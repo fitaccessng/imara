@@ -10,14 +10,12 @@ import {
   CalendarDays,
   ClipboardCheck,
   CreditCard,
-  CloudDownload,
   Files,
   LayoutDashboard,
   LockKeyhole,
   LogOut,
   LifeBuoy,
   MailPlus,
-  NotebookPen,
   MessageCircle,
   Menu,
   Search,
@@ -27,7 +25,6 @@ import {
   Star,
   Trash2,
   Users,
-  WandSparkles,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -346,26 +343,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/files" end className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Files size={17} strokeWidth={1.8} /><span>Your files</span>
           </NavLink>
-          <NavLink to="/document-tools" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <WandSparkles size={17} strokeWidth={1.8} /><span>Document tools</span>
-          </NavLink>
-          <NavLink to="/notes" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <NotebookPen size={17} strokeWidth={1.8} /><span>IMARA Notes</span>
-          </NavLink>
-          <NavLink to="/offline-files" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <CloudDownload size={17} strokeWidth={1.8} /><span>Offline access</span>
-          </NavLink>
-          <NavLink to="/file-requests" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <MailPlus size={17} strokeWidth={1.8} /><span>Request files</span>
-          </NavLink>
           <NavLink to="/calendar" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CalendarDays size={17} strokeWidth={1.8} /><span>Calendar</span>
           </NavLink>
           <NavLink to="/favorites" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Star size={17} strokeWidth={1.8} /><span>Favourites</span>
-          </NavLink>
-          <NavLink to="/events" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
-            <CalendarDays size={17} strokeWidth={1.8} /><span>Events</span>
           </NavLink>
           <NavLink to="/notifications" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Bell size={17} strokeWidth={1.8} /><span>Announcements</span>{unreadAnnouncementCount > 0 && <small className="announcement-nav-count">{unreadAnnouncementCount}</small>}
