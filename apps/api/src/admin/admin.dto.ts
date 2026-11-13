@@ -218,6 +218,80 @@ export class AdminAnnouncementRecipientsQueryDto extends AdminPageQueryDto {
   createdWithinMinutes?: number;
 }
 
+export enum AdminEmailRecipientFilter {
+  ALL = 'ALL',
+  VERIFIED = 'VERIFIED',
+  UNVERIFIED = 'UNVERIFIED',
+}
+
+export class AdminEmailRecipientsQueryDto extends AdminPageQueryDto {
+  @IsOptional()
+  @IsEnum(AdminEmailRecipientFilter)
+  filter: AdminEmailRecipientFilter = AdminEmailRecipientFilter.ALL;
+
+  @IsOptional()
+  @IsEnum(PlatformAnnouncementAudience)
+  audience?: PlatformAnnouncementAudience;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([30, 60, 1440, 10080, 43200])
+  createdWithinMinutes?: number;
+}
+
+export class AdminEmailComposerSendDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  recipientIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  userIds?: string[];
+
+  @IsOptional()
+  @IsEnum(PlatformAnnouncementTarget)
+  target?: PlatformAnnouncementTarget;
+
+  @IsOptional()
+  @IsEnum(PlatformAnnouncementAudience)
+  audience?: PlatformAnnouncementAudience;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([30, 60, 1440, 10080, 43200])
+  signupWindowMinutes?: number;
+
+  @IsOptional()
+  @IsEnum(AdminEmailRecipientFilter)
+  filter?: AdminEmailRecipientFilter;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(180)
+  @Matches(/^[^\u0000-\u001f\u007f]+$/)
+  subject!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(250)
+  preheader?: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100_000)
+  html!: string;
+}
+
 export class SupportTicketCreateDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

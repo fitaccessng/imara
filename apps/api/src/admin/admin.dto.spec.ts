@@ -18,6 +18,8 @@ import {
   AdminAnnouncementCreateDto,
   AdminAnalyticsQueryDto,
   AdminEventsQueryDto,
+  AdminEmailComposerSendDto,
+  AdminEmailRecipientsQueryDto,
   AdminPaymentsQueryDto,
   AdminPageQueryDto,
   AdminPlatformAdminUpdateDto,
@@ -30,6 +32,13 @@ import {
 } from './admin.dto';
 
 describe('admin directory query validation', () => {
+  it('defaults to active announcements when the archive filter is omitted', async () => {
+    const query = plainToInstance(AdminAnnouncementsQueryDto, {});
+
+    expect(query.archived).toBe(false);
+    await expect(validate(query)).resolves.toHaveLength(0);
+  });
+
   it('validates the archived announcement filter', async () => {
     const active = plainToInstance(AdminAnnouncementsQueryDto, { archived: 'false' });
     const archived = plainToInstance(AdminAnnouncementsQueryDto, { archived: 'true' });
@@ -164,6 +173,7 @@ describe('admin directory query validation', () => {
       target: 'AUDIENCE',
       emailEnabled: true,
     });
+
     const invalid = plainToInstance(AdminAnnouncementCreateDto, {
       title: '',
       body: '',
@@ -178,6 +188,34 @@ describe('admin directory query validation', () => {
       body: 'A product improvement is now available.',
     });
     expect((await validate(invalid)).length).toBeGreaterThan(0);
+  });
+
+  it('validates bounded composer input and recipient filters', async () => {
+    const query = plainToInstance(AdminEmailRecipientsQueryDto, { filter: 'VERIFIED', pageSize: '50' });
+    const selected = plainToInstance(AdminEmailComposerSendDto, {
+      recipientIds: ['4e345489-2235-4e56-a74a-aae5a6821546'],
+      subject: '  Product update  ',
+      html: '<p>Hello</p>',
+    });
+    const oversized = plainToInstance(AdminEmailComposerSendDto, {
+      recipientIds: Array.from({ length: 501 }, (_, index) =>
+        `4e345489-2235-4e56-a74a-aae5a682${String(index).padStart(4, '0')}`),
+      subject: 'x'.repeat(181),
+      html: 'x'.repeat(100_001),
+    });
+    const invalidFilter = plainToInstance(AdminEmailRecipientsQueryDto, { filter: 'SUSPENDED' });
+    const invalidSubject = plainToInstance(AdminEmailComposerSendDto, {
+      filter: 'ALL',
+      subject: 'hello\r\nBcc: victim@example.test',
+      html: '<p>Hello</p>',
+    });
+
+    await expect(validate(query)).resolves.toHaveLength(0);
+    await expect(validate(selected)).resolves.toHaveLength(0);
+    expect(selected.subject).toBe('Product update');
+    expect((await validate(oversized)).length).toBeGreaterThan(0);
+    expect((await validate(invalidFilter)).length).toBeGreaterThan(0);
+    expect((await validate(invalidSubject)).length).toBeGreaterThan(0);
   });
 
   it('keeps existing announcement callers on the default audience target', async () => {

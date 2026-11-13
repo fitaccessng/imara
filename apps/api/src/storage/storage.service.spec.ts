@@ -17,6 +17,10 @@ jest.mock('@nestjs/common', () => {
 
 import { PayloadTooLargeException } from '@nestjs/common';
 import { FileCategory, StoredFileStatus, StoredFileUploadSource } from '@prisma/client';
+import { createHash, randomUUID } from 'node:crypto';
+import { rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { assertSameFileExtension, StorageService } from './storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from './object-storage.service';
@@ -103,7 +107,14 @@ describe('StorageService quota-safe uploads', () => {
   };
   const folderFindMany = jest.fn().mockResolvedValue([]);
   const storedFileFindMany = jest.fn().mockResolvedValue([]);
+  const subscriptionFindUnique = jest.fn().mockResolvedValue({
+    id: 'subscription-id',
+    plan: 'FREE',
+    storageUsedBytes: 20n,
+    storageReservedBytes: 0n,
+  });
   const prisma = {
+    subscription: { findUnique: subscriptionFindUnique },
     folder: {
       findMany: folderFindMany,
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -128,6 +139,7 @@ describe('StorageService quota-safe uploads', () => {
       staffLimit: 3,
       activeEventLimit: 3,
       storageLimitBytes: 100n,
+      maxUploadBytes: 100 * 1024 * 1024,
       canEditDocuments: true,
       canScanDocuments: true,
       advancedTeamManagement: false,
@@ -138,10 +150,17 @@ describe('StorageService quota-safe uploads', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    subscriptionFindUnique.mockResolvedValue({
+      id: 'subscription-id',
+      plan: 'FREE',
+      storageUsedBytes: 20n,
+      storageReservedBytes: 0n,
+    });
     jest.mocked(planCatalogue.getEntitlements).mockResolvedValue({
       staffLimit: 3,
       activeEventLimit: 3,
       storageLimitBytes: 100n,
+      maxUploadBytes: 100 * 1024 * 1024,
       canEditDocuments: true,
       canScanDocuments: true,
       advancedTeamManagement: false,
@@ -284,11 +303,50 @@ describe('StorageService quota-safe uploads', () => {
     expect(result).not.toHaveProperty('objectKey');
   });
 
+  it('hashes and streams disk-backed uploads without requiring a memory buffer', async () => {
+    const body = Buffer.alloc(12, 1);
+    const temporaryPath = path.join(os.tmpdir(), `imara-upload-test-${randomUUID()}`);
+    await writeFile(temporaryPath, body);
+    try {
+      await service.upload('owner-id', {
+        path: temporaryPath,
+        originalname: 'disk-upload.pdf',
+        mimetype: 'application/pdf',
+        size: body.length,
+      });
+
+      expect(objects.put).toHaveBeenCalledWith(
+        fileRow.objectKey,
+        expect.objectContaining({ path: temporaryPath, size: body.length }),
+        'application/pdf',
+      );
+      const finalizedData = jest.mocked(transactionClient.storedFile.updateMany).mock.calls
+        .find(([args]) => 'contentHash' in args.data)?.[0].data;
+      expect(finalizedData?.contentHash).toBe(createHash('sha256').update(body).digest('hex'));
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+  });
+
+  it('rejects uploads above the uploader plan limit before storage or quota reservation', async () => {
+    await expect(service.upload('owner-id', {
+      path: '/tmp/not-opened-because-plan-is-too-small',
+      originalname: 'oversized.pdf',
+      mimetype: 'application/pdf',
+      size: 100 * 1024 * 1024 + 1,
+    })).rejects.toBeInstanceOf(PayloadTooLargeException);
+
+    expect(objects.assertConfigured).not.toHaveBeenCalled();
+    expect(transactionClient.subscription.updateMany).not.toHaveBeenCalled();
+    expect(objects.put).not.toHaveBeenCalled();
+  });
+
   it('rejects uploads that exceed remaining quota before contacting object storage', async () => {
     jest.mocked(planCatalogue.getEntitlements).mockResolvedValue({
       staffLimit: 3,
       activeEventLimit: 3,
       storageLimitBytes: 95n,
+      maxUploadBytes: 100 * 1024 * 1024,
       canEditDocuments: true,
       canScanDocuments: true,
       advancedTeamManagement: false,

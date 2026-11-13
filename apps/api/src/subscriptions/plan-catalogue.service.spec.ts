@@ -64,6 +64,7 @@ describe('PlanCatalogueService', () => {
       staffLimit: 8,
       activeEventLimit: 6,
       storageLimitBytes: 15_000n,
+      maxUploadBytes: 250 * 1024 * 1024,
       canEditDocuments: true,
       canScanDocuments: true,
       advancedTeamManagement: false,
@@ -125,7 +126,7 @@ describe('PlanCatalogueService', () => {
           name: 'Free',
           currency: 'NGN',
           monthlyPriceMinor: '0',
-          limits: { staffLimit: 3, activeEventLimit: 3, storageLimitBytes: '5000' },
+          limits: { staffLimit: 3, activeEventLimit: 3, storageLimitBytes: '5000', maxUploadBytes: String(100 * 1024 * 1024) },
           features: {
             canEditDocuments: false,
             canScanDocuments: false,
@@ -137,7 +138,7 @@ describe('PlanCatalogueService', () => {
           name: 'Pro',
           currency: 'NGN',
           monthlyPriceMinor: '300000',
-          limits: { staffLimit: 8, activeEventLimit: 6, storageLimitBytes: '15000' },
+          limits: { staffLimit: 8, activeEventLimit: 6, storageLimitBytes: '15000', maxUploadBytes: String(250 * 1024 * 1024) },
           features: {
             canEditDocuments: true,
             canScanDocuments: true,
@@ -149,7 +150,7 @@ describe('PlanCatalogueService', () => {
           name: 'Business',
           currency: 'NGN',
           monthlyPriceMinor: '1000000',
-          limits: { staffLimit: 30, activeEventLimit: 20, storageLimitBytes: '25000' },
+          limits: { staffLimit: 30, activeEventLimit: 20, storageLimitBytes: '25000', maxUploadBytes: String(500 * 1024 * 1024) },
           features: {
             canEditDocuments: true,
             canScanDocuments: true,

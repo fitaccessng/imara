@@ -1,13 +1,12 @@
 import { ArrowDown, ArrowLeft, ArrowUp, Camera, CheckCircle2, FileText, LoaderCircle, Save, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthProvider";
 import { apiRequest } from "../../lib/api";
 import { PlanLimitMessage } from "../../components/PlanLimitMessage";
 import { deleteScanDraft, loadScanDraft, saveScanDraft, type ScanPage } from "./scanDraft";
 
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_SCAN_PAGES = 100;
 
 async function createPdf(pages: ScanPage[]) {
@@ -77,7 +76,14 @@ export function ScannerHomePage() {
   const [searchParams] = useSearchParams();
   const folderId = searchParams.get("folder") ?? "";
   const queryClient = useQueryClient();
+  const uploadPolicyQuery = useQuery({
+    queryKey: ["subscription"],
+    queryFn: () => apiRequest<{ storage: { maxUploadBytes: string } }>("/subscription"),
+  });
+  const uploadLimitBytes = Number(uploadPolicyQuery.data?.storage.maxUploadBytes);
+  const uploadPolicyReady = Number.isSafeInteger(uploadLimitBytes) && uploadLimitBytes > 0;
   const cameraInput = useRef<HTMLInputElement>(null);
+  const uploadController = useRef<AbortController | null>(null);
   const [pages, setPages] = useState<ScanPage[]>([]);
   const [documentName, setDocumentName] = useState("Scanned document");
   const [ready, setReady] = useState(false);
@@ -139,12 +145,13 @@ export function ScannerHomePage() {
     setBusy(true);
     setError("");
     try {
+      if (!uploadPolicyReady) throw new Error("Your upload limit could not be checked. Refresh the page before adding files.");
       const selected = Array.from(fileList);
       if (pages.length + selected.length > MAX_SCAN_PAGES) {
         throw new Error(`A scan can contain up to ${MAX_SCAN_PAGES} pages.`);
       }
-      const oversized = selected.find((file) => file.size > MAX_UPLOAD_BYTES);
-      if (oversized) throw new Error(`${oversized.name} is larger than the 25 MB per-file limit.`);
+      const oversized = selected.find((file) => file.size > uploadLimitBytes);
+      if (oversized) throw new Error(`${oversized.name} exceeds your plan’s ${Math.round(uploadLimitBytes / 1024 ** 2)} MiB per-file limit.`);
       const next = [
         ...pages,
         ...selected.map((file) => ({
@@ -194,20 +201,26 @@ export function ScannerHomePage() {
 
   async function uploadPdf() {
     if (!previewBlob || !pages.length) return;
-    if (previewBlob.size > MAX_UPLOAD_BYTES) {
-      setError("This PDF is larger than the 25 MB upload limit. Remove some pages or use smaller images.");
+    if (!uploadPolicyReady) {
+      setError("Your upload limit could not be checked. Refresh the page before uploading.");
+      return;
+    }
+    if (previewBlob.size > uploadLimitBytes) {
+      setError(`This PDF is larger than your plan’s ${Math.round(uploadLimitBytes / 1024 ** 2)} MiB upload limit. Remove some pages or upgrade your plan.`);
       return;
     }
     setSaving(true);
     setError("");
     setNotice("");
+    const controller = new AbortController();
+    uploadController.current = controller;
     try {
       const baseName = documentName.trim().replace(/[\\/]/g, "-") || "Scanned document";
       const name = baseName.toLowerCase().endsWith(".pdf") ? baseName : `${baseName}.pdf`;
       const body = new FormData();
       body.append("file", new File([previewBlob], name, { type: "application/pdf" }));
       if (folderId) body.append("folderId", folderId);
-      await apiRequest("/files/scan", { method: "POST", body });
+      await apiRequest("/files/scan", { method: "POST", body, signal: controller.signal });
       await deleteScanDraft(user!.id);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["storage-files"] }),
@@ -217,8 +230,10 @@ export function ScannerHomePage() {
       setPreviewBlob(null);
       setNotice("Your scanned PDF was saved to My Files.");
     } catch (reason) {
+      if (controller.signal.aborted) return;
       setError(reason instanceof Error ? reason.message : "Could not save the scanned PDF.");
     } finally {
+      uploadController.current = null;
       setSaving(false);
     }
   }
@@ -253,6 +268,7 @@ export function ScannerHomePage() {
           <PlanLimitMessage message={error} />
         </div>
       )}
+      {uploadPolicyQuery.isError && <p className="form-alert" role="alert">Your upload limit could not be checked. Refresh the page before uploading.</p>}
       {notice && <p className="document-scanner-notice" role="status"><CheckCircle2 size={17} />{notice} <Link to="/files">Open My Files</Link></p>}
 
       {!ready ? (
@@ -291,10 +307,11 @@ export function ScannerHomePage() {
                   ))}
                 </ol>
                 <div className="document-scanner-save">
-                  <button type="button" className="button button-green" disabled={saving || !previewBlob || busy} onClick={() => void uploadPdf()}>
+                  <button type="button" className="button button-green" disabled={saving || !previewBlob || busy || !uploadPolicyReady} onClick={() => void uploadPdf()}>
                     {saving ? <LoaderCircle className="document-scanner-spin" size={16} /> : <Save size={16} />}
                     {saving ? "Saving PDF…" : folderId ? "Save PDF to this folder" : "Save PDF to My Files"}
                   </button>
+                  {saving && <button type="button" className="button button-outline" onClick={() => uploadController.current?.abort()}>Cancel upload</button>}
                   <button type="button" className="document-scanner-clear" disabled={saving || busy} onClick={() => void clearScan()}>Clear scan</button>
                 </div>
               </>

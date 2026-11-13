@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "./auth/AuthProvider";
 import { AuthPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./pages/AuthPages";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -139,9 +139,13 @@ function FolderRoute() {
 }
 
 export function App() {
+  const { sessionExpired, dismissSessionExpired } = useAuth();
+  const navigate = useNavigate();
+
   return (
-    <Suspense fallback={<main className="full-state"><span className="loader" />Opening page…</main>}>
-      <Routes>
+    <>
+      <Suspense fallback={<main className="full-state"><span className="loader" />Opening page…</main>}>
+        <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/home" element={<HomePage />} />
         <Route path="/about" element={<AboutPage />} />
@@ -168,7 +172,26 @@ export function App() {
         <Route path="/gallery/:token" element={<EventGalleryPage />} />
         <Route path="/share/:token" element={<SharedFilePreviewPage />} />
         <Route path="/*" element={<ProtectedRoutes />} />
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+      {sessionExpired && (
+        <div className="session-expired-backdrop">
+          <section className="session-expired-dialog" role="dialog" aria-modal="true" aria-labelledby="session-expired-title">
+            <span className="eyebrow">SECURE SESSION</span>
+            <h2 id="session-expired-title">Please log in again</h2>
+            <p>Your session has expired. Log in to continue using IMARA.</p>
+            <button
+              className="button button-dark"
+              onClick={() => {
+                dismissSessionExpired();
+                navigate("/login", { replace: true });
+              }}
+            >
+              Login
+            </button>
+          </section>
+        </div>
+      )}
+    </>
   );
 }

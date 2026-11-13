@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
-  BookOpen,
   CheckCircle2,
   Cloud,
   Compass,
@@ -14,43 +13,11 @@ import {
   ShieldCheck,
   Sparkles,
   Upload,
-  X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError, apiRequest, type DashboardSummary } from "../lib/api";
-
-const DASHBOARD_TOUR_STEPS = [
-  {
-    label: "01 · YOUR STORAGE",
-    title: "Know what space you have.",
-    description: "See how much storage is in use, what remains, and which plan is protecting your files.",
-    icon: HardDrive,
-    target: "storage",
-  },
-  {
-    label: "02 · GET ORGANIZED",
-    title: "Give every document a home.",
-    description: "Create folders, scan paper documents, or upload files straight into your private library.",
-    icon: FolderPlus,
-    target: "organize",
-  },
-  {
-    label: "03 · YOUR LIBRARY",
-    title: "Pick up right where you left off.",
-    description: "Your recent documents and saved files are one click away. Open the library to sort, share, and manage them.",
-    icon: BookOpen,
-    target: "library",
-  },
-  {
-    label: "04 · ACCOUNT CARE",
-    title: "Keep your space secure.",
-    description: "Review your profile and security settings whenever your details or sign-in needs change.",
-    icon: ShieldCheck,
-    target: "account",
-  },
-];
+import { formatStoragePercent, getStorageBreakdown } from "./storageBreakdown";
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 1) return "0 bytes";
@@ -218,34 +185,10 @@ function EmptyLibrary({
 
 export function DashboardPage() {
   const { setUser } = useAuth();
-  const [tourStep, setTourStep] = useState<number | null>(null);
-  const [tourTarget, setTourTarget] = useState<DOMRect | null>(null);
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["dashboard-summary"],
     queryFn: () => apiRequest<DashboardSummary>("/dashboard/summary"),
   });
-
-  useEffect(() => {
-    if (tourStep === null) {
-      setTourTarget(null);
-      return;
-    }
-    const target = document.querySelector<HTMLElement>(`[data-tour="${DASHBOARD_TOUR_STEPS[tourStep].target}"]`);
-    if (!target) {
-      setTourTarget(null);
-      return;
-    }
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-    const updateTarget = () => setTourTarget(target.getBoundingClientRect());
-    const frame = window.requestAnimationFrame(updateTarget);
-    window.addEventListener("resize", updateTarget);
-    window.addEventListener("scroll", updateTarget, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", updateTarget);
-      window.removeEventListener("scroll", updateTarget, true);
-    };
-  }, [tourStep]);
 
   if (isLoading) {
     return <LoadingDashboard />;
@@ -270,10 +213,11 @@ export function DashboardPage() {
 
   const limit = Number(data.subscription.storage.limitBytes);
   const used = Number(data.subscription.storage.usedBytes);
+  const reserved = Number(data.subscription.storage.reservedBytes);
   const available = Number(data.subscription.storage.availableBytes);
 
   if (
-    ![limit, used, available].every(
+    ![limit, used, reserved, available].every(
       (value) => Number.isSafeInteger(value) && value >= 0
     )
   ) {
@@ -285,8 +229,11 @@ export function DashboardPage() {
     );
   }
 
-  const percent =
-    limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const storageBreakdown = getStorageBreakdown(used, reserved, available);
+  const percent = formatStoragePercent(storageBreakdown.usedPercent);
+  const chartCircumference = 2 * Math.PI * 68;
+  const usedArc = (storageBreakdown.usedPercent / 100) * chartCircumference;
+  const reservedArc = (storageBreakdown.reservedPercent / 100) * chartCircumference;
 
   const firstName =
     data.user.name.trim().split(/\s+/)[0] || data.user.name;
@@ -327,15 +274,15 @@ export function DashboardPage() {
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           <button
             type="button"
-            onClick={() => setTourStep(0)}
-            className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
+            onClick={() => window.dispatchEvent(new Event("imara:start-product-tour"))}
+            className="dashboard-quick-action inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
           >
             <Compass size={15} />
             Take a tour
           </button>
           <Link
             to="/files?createFolder=1"
-            className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
+            className="dashboard-quick-action inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
           >
             <FolderPlus size={15} />
             New folder
@@ -343,7 +290,7 @@ export function DashboardPage() {
 
           <Link
             to="/files"
-            className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#189638] sm:flex-none sm:px-4 sm:text-sm"
+            className="dashboard-quick-action inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#189638] sm:flex-none sm:px-4 sm:text-sm"
           >
             <Upload size={15} />
             Upload file
@@ -374,23 +321,43 @@ export function DashboardPage() {
           </div>
 
           <div className="relative mt-7 flex flex-col items-center gap-6 sm:flex-row sm:justify-center lg:justify-start">
-            {/* Progress ring */}
             <div
               className="relative h-40 w-40 shrink-0"
               role="img"
-              aria-label={`${percent}% of storage used`}
-              style={{
-                background: `conic-gradient(#20AD43 ${percent * 3.6}deg, #EDF1F5 0deg)`,
-                borderRadius: "50%",
-              }}
+              aria-label={`${percent} used, ${formatStoragePercent(storageBreakdown.reservedPercent)} reserved, ${formatStoragePercent(storageBreakdown.availablePercent)} available`}
             >
-              <div className="absolute inset-[11px] flex flex-col items-center justify-center rounded-full bg-white">
-                <HardDrive size={19} className="mb-2 text-[#20AD43]" />
+              <svg className="h-full w-full -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
+                <circle cx="80" cy="80" r="68" fill="none" stroke="#EDF1F5" strokeWidth="18" />
+                {reservedArc > 0 && (
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="68"
+                    fill="none"
+                    stroke="#F6AD55"
+                    strokeWidth="18"
+                    strokeDasharray={`${reservedArc} ${chartCircumference - reservedArc}`}
+                    strokeDashoffset={-usedArc}
+                  />
+                )}
+                {usedArc > 0 && (
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="68"
+                    fill="none"
+                    stroke="#20AD43"
+                    strokeWidth="18"
+                    strokeDasharray={`${usedArc} ${chartCircumference - usedArc}`}
+                  />
+                )}
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-3xl font-bold tracking-tight text-[#172B3A]">
-                  {percent}%
+                  {percent}
                 </span>
-                <span className="mt-0.5 text-[11px] text-[#718096]">
-                  Storage used
+                <span className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#718096]">
+                  used
                 </span>
               </div>
             </div>
@@ -413,7 +380,7 @@ export function DashboardPage() {
                     <span className="h-2.5 w-2.5 rounded-full bg-[#20AD43]" />
                     Used
                   </span>
-                  <strong className="text-[#172B3A]">
+                  <strong className="text-right text-[#172B3A]">
                     {formatBytes(used)}
                   </strong>
                 </div>
@@ -423,10 +390,22 @@ export function DashboardPage() {
                     <span className="h-2.5 w-2.5 rounded-full bg-[#E5EAF0]" />
                     Available
                   </span>
-                  <strong className="text-[#172B3A]">
+                  <strong className="text-right text-[#172B3A]">
                     {formatBytes(available)}
                   </strong>
                 </div>
+
+                {reserved > 0 && (
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="flex items-center gap-2 text-[#718096]">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#F6AD55]" />
+                      Reserved
+                    </span>
+                    <strong className="text-right text-[#172B3A]">
+                      {formatBytes(reserved)}
+                    </strong>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -572,40 +551,6 @@ export function DashboardPage() {
         </p>
       </div>
     </main>
-    {tourStep !== null && (() => {
-      const step = DASHBOARD_TOUR_STEPS[tourStep];
-      const StepIcon = step.icon;
-      return <div className="dashboard-tour-backdrop" style={tourTarget ? { background: "transparent", backdropFilter: "none" } : undefined}>
-        {tourTarget && <div
-          className="dashboard-tour-spotlight"
-          style={{ top: tourTarget.top - 6, left: tourTarget.left - 6, width: tourTarget.width + 12, height: tourTarget.height + 12 }}
-          aria-hidden="true"
-        />}
-        <section className="dashboard-tour-dialog" role="dialog" aria-modal="true" aria-labelledby="dashboard-tour-title" aria-describedby="dashboard-tour-description">
-          <div className="dashboard-tour-topline">
-            <span className="eyebrow">A QUICK WALKTHROUGH</span>
-            <button type="button" className="dashboard-tour-close" aria-label="Close walkthrough" onClick={() => setTourStep(null)}><X size={18} /></button>
-          </div>
-          <div className="dashboard-tour-progress" aria-label={`Step ${tourStep + 1} of ${DASHBOARD_TOUR_STEPS.length}`}>
-            {DASHBOARD_TOUR_STEPS.map((item, index) => <span key={item.label} className={index <= tourStep ? "is-current" : ""} />)}
-          </div>
-          <div className="dashboard-tour-icon"><StepIcon size={22} /></div>
-          <span className="dashboard-tour-step-label">{step.label}</span>
-          <h2 id="dashboard-tour-title">{step.title}</h2>
-          <p id="dashboard-tour-description">{step.description}</p>
-          <div className="dashboard-tour-footer">
-            <button className="dashboard-tour-skip" type="button" onClick={() => setTourStep(null)}>Skip tour</button>
-            <div>
-              <button className="button button-outline button-compact" type="button" disabled={tourStep === 0} onClick={() => setTourStep((current) => current === null ? null : current - 1)}>Back</button>
-              <button className="button button-green button-compact" type="button" onClick={() => setTourStep(tourStep === DASHBOARD_TOUR_STEPS.length - 1 ? null : tourStep + 1)}>
-                {tourStep === DASHBOARD_TOUR_STEPS.length - 1 ? "Finish" : "Next"}
-                {tourStep < DASHBOARD_TOUR_STEPS.length - 1 && <ArrowRight size={14} />}
-              </button>
-            </div>
-          </div>
-        </section>
-      </div>;
-    })()}
     </>
   );
 }

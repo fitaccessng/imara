@@ -64,6 +64,13 @@ enum PlatformAnnouncementEmailStatus {
   FAILED
 }
 
+enum AdminEmailDeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
 enum StoredFileUploadSource {
   STANDARD
   SCAN
@@ -151,6 +158,22 @@ enum ReminderDeliveryStatus {
   FAILED
 }
 
+enum CalendarReminderStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum CalendarReminderChannelStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 enum WorkspaceRole {
   OWNER
   ADMIN
@@ -208,6 +231,8 @@ model User {
   role            UserRole              @default(USER)
   accountStatus   UserAccountStatus     @default(ACTIVE)
   emailVerifiedAt DateTime?
+  referralCode    String                @unique @db.VarChar(32)
+  referredByUserId String?              @db.Uuid
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
   sessions        Session[]
@@ -224,12 +249,16 @@ model User {
   platformAdminAuditEvents PlatformAdminAuditLog[] @relation("PlatformAdminAuditActor")
   createdPlatformAnnouncements PlatformAnnouncement[] @relation("PlatformAnnouncementCreator")
   platformAnnouncementDeliveries PlatformAnnouncementDelivery[]
+  createdAdminEmailCampaigns AdminEmailCampaign[] @relation("AdminEmailCampaignCreator")
+  adminEmailCampaignDeliveries AdminEmailCampaignDelivery[]
   supportTickets SupportTicket[] @relation("SupportTicketCustomer")
   assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
   supportMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
   notifications   Notification[]
   events          Event[]
   createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreator")
+  calendarEventTags CalendarEventTag[]
+  calendarReminderRecipients CalendarReminderRecipient[]
   sentFileDeliveries FileDelivery[] @relation("FileDeliverySender")
   receivedFileDeliveries FileDelivery[] @relation("FileDeliveryRecipient")
   galleryGrants   EventGalleryGrant[]
@@ -239,6 +268,11 @@ model User {
   createdReminders Reminder[] @relation("ReminderCreator")
   assignedReminders Reminder[] @relation("ReminderAssignee")
   paymentAttempts PaymentAttempt[]
+  referrer        User?                 @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referredUsers   User[]                @relation("UserReferrals")
+  referralRewards ReferralReward[]      @relation("ReferralRewardInviter")
+
+  @@index([referredByUserId, emailVerifiedAt])
 }
 
 model PlatformAdminProfile {
@@ -303,6 +337,28 @@ model Subscription {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ReferralReward {
+  id                     String   @id @default(uuid()) @db.Uuid
+  inviterUserId          String   @db.Uuid
+  verifiedReferralCount  Int
+  storageBytes           BigInt
+  createdAt              DateTime @default(now())
+  inviter                User     @relation("ReferralRewardInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
+
+  @@unique([inviterUserId, verifiedReferralCount])
+  @@index([inviterUserId, createdAt])
+}
+
+model ReferralProgramConfig {
+  id                String   @id @default("default") @db.VarChar(32)
+  active            Boolean  @default(false)
+  title             String   @default("Share IMARA. Grow your space.") @db.VarChar(100)
+  message           String   @default("Invite friends to join IMARA. For every five verified referrals, you’ll receive an extra 1 GB of storage.") @db.VarChar(500)
+  linkTemplate      String   @default("https://www.useimara.space/register?ref={code}") @db.VarChar(500)
+  copyInstructions  String   @default("Copy your referral link and share it with friends.") @db.VarChar(2000)
+  updatedAt         DateTime @updatedAt
 }
 
 model PaymentAttempt {
@@ -587,21 +643,75 @@ model WorkspaceChatMessage {
 }
 
 model CalendarEvent {
-  id          String    @id @default(uuid()) @db.Uuid
-  createdById String    @db.Uuid
-  workspaceId String?   @db.Uuid
-  title       String    @db.VarChar(200)
-  description String?   @db.VarChar(4000)
-  startsAt    DateTime
-  endsAt      DateTime
-  allDay      Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  creator     User      @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                    String    @id @default(uuid()) @db.Uuid
+  createdById           String    @db.Uuid
+  workspaceId           String?   @db.Uuid
+  title                 String    @db.VarChar(200)
+  description           String?   @db.VarChar(4000)
+  startsAt              DateTime
+  endsAt                DateTime
+  allDay                Boolean   @default(false)
+  reminderMinutesBefore Int?
+  reminderAt            DateTime?
+  reminderRevision      Int       @default(0)
+  reminderStatus        CalendarReminderStatus @default(PENDING)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  creator               User      @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  workspace             Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  taggedUsers           CalendarEventTag[]
+  reminderDispatches    CalendarReminderDispatch[]
 
   @@index([createdById, workspaceId, startsAt])
   @@index([workspaceId, startsAt, endsAt])
+  @@index([reminderStatus, reminderAt])
+}
+
+model CalendarEventTag {
+  eventId String        @db.Uuid
+  userId  String        @db.Uuid
+  event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@index([userId])
+}
+
+model CalendarReminderDispatch {
+  id           String                 @id @default(uuid()) @db.Uuid
+  eventId      String                 @db.Uuid
+  revision     Int
+  scheduledFor DateTime
+  status       CalendarReminderStatus @default(PENDING)
+  attempts     Int                    @default(0)
+  lastError    String?                @db.VarChar(255)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  sentAt       DateTime?
+  event        CalendarEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  recipients   CalendarReminderRecipient[]
+
+  @@unique([eventId, revision])
+  @@index([status, scheduledFor, updatedAt])
+}
+
+model CalendarReminderRecipient {
+  id             String                        @id @default(uuid()) @db.Uuid
+  dispatchId     String                        @db.Uuid
+  userId         String                        @db.Uuid
+  inAppStatus    CalendarReminderChannelStatus @default(PENDING)
+  emailStatus    CalendarReminderChannelStatus @default(PENDING)
+  inAppAttemptAt DateTime?
+  emailAttemptAt DateTime?
+  lastError      String?                       @db.VarChar(255)
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+  dispatch       CalendarReminderDispatch      @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  user           User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dispatchId, userId])
+  @@index([inAppStatus, updatedAt])
+  @@index([emailStatus, updatedAt])
 }
 
 model FileDelivery {
@@ -737,6 +847,37 @@ model PlatformAnnouncementDelivery {
   @@index([emailStatus, updatedAt])
 }
 
+model AdminEmailCampaign {
+  id              String                       @id @default(uuid()) @db.Uuid
+  subject         String                       @db.VarChar(180)
+  preheader       String?                      @db.VarChar(250)
+  html            String
+  createdByUserId String                       @db.Uuid
+  createdAt       DateTime                     @default(now())
+  creator         User                         @relation("AdminEmailCampaignCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  deliveries      AdminEmailCampaignDelivery[]
+
+  @@index([createdAt])
+}
+
+model AdminEmailCampaignDelivery {
+  id         String                  @id @default(uuid()) @db.Uuid
+  campaignId String                  @db.Uuid
+  userId     String                  @db.Uuid
+  status     AdminEmailDeliveryStatus @default(PENDING)
+  attempts   Int                     @default(0)
+  sentAt     DateTime?
+  lastError  String?                 @db.VarChar(255)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  campaign   AdminEmailCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, userId])
+  @@index([status, updatedAt])
+  @@index([campaignId, status])
+}
+
 model SupportTicket {
   id              String                @id @default(uuid()) @db.Uuid
   userId          String                @db.Uuid
@@ -772,14 +913,15 @@ model SupportTicketMessage {
 
 model Notification {
   id          String    @id @default(uuid()) @db.Uuid
-  workspaceId String    @db.Uuid
+  workspaceId String?   @db.Uuid
   userId      String    @db.Uuid
   type        String    @db.VarChar(100)
   message     String    @db.VarChar(500)
   metadata    Json?
+  sourceKey   String?   @unique @db.VarChar(200)
   readAt      DateTime?
   createdAt   DateTime  @default(now())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])

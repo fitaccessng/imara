@@ -166,8 +166,53 @@ origin `http://localhost:5173`. Browser requests must use credentials
 (`fetch(..., { credentials: 'include' })`). The API also rejects disallowed `Origin`
 headers on requests. In production set `COOKIE_SECURE=true`, use HTTPS, use a
 production frontend origin, and keep SMTP/database secrets outside source control.
-For cross-site frontend/API hosting, configure `COOKIE_SAME_SITE=none` together with
-`COOKIE_SECURE=true`; otherwise the default `lax` cookie is preferable.
+Production defaults to `COOKIE_SAME_SITE=none` with `COOKIE_SECURE=true` so the
+session cookie is sent when the frontend and API are on different sites. Override
+this with `COOKIE_SAME_SITE=lax` only when both are hosted on the same site.
+
+## Calendar reminders and browser push
+
+Personal and workspace calendar events accept an optional `reminderMinutesBefore`
+choice of `0`, `5`, `15`, `30`, `60`, or `1440` minutes; `null` disables it. Workspace events also
+accept `taggedUserIds`, but the API stores tags only after verifying every ID is
+an active member of that workspace. Omit the field to retain existing tags and
+send an empty array to clear them. The creator receives workspace reminders
+alongside tagged active members. Personal events always notify only their owner.
+
+Existing create/update routes are unchanged:
+
+- `POST /api/v1/calendar/events` and `PATCH /api/v1/calendar/events/:eventId`
+- `POST /api/v1/workspaces/:workspaceId/calendar/events` and
+  `PATCH /api/v1/workspaces/:workspaceId/calendar/events/:eventId`
+
+The event response includes `reminderMinutesBefore`, `taggedUserIds: string[]`,
+and `taggedUsers: [{ id, name, email }]` (only active workspace tags are returned).
+Delivery is persisted and polled by the API worker.
+Edits to start time, reminder time or workspace tags cancel unsent prior work
+and schedule a fresh revision; deleting the event cascades queued work. Database
+uniqueness and notification source keys prevent duplicate queue/notification
+records. Email delivery is retried and is therefore at-least-once in the unlikely
+case a provider accepts a message but its acknowledgement is lost.
+
+Apply the new migration before starting updated API instances:
+`npm run prisma:deploy -w @imara/api`. It adds nullable reminder scheduling
+columns, recipient/dispatch/tag tables, a personal-notification source key, and
+nullable notification workspace scope.
+Existing calendar events remain without reminders.
+
+The worker sends email through the existing SMTP configuration, writes an
+in-app `Notification`. Browser push is not enabled; reminders use email and
+in-app notifications only.
+`CALENDAR_REMINDER_DELIVERY_INTERVAL_MS` optionally adjusts the polling interval
+(default 30000ms; minimum 1000ms).
+
+Authenticated frontend contracts:
+
+- `GET /api/v1/notifications` lists the signed-in user's personal-event notifications;
+  `POST /api/v1/notifications/:notificationId/read` marks one as read.
+- Workspace-event notifications remain at
+  `GET /api/v1/workspaces/:workspaceId/notifications` and
+  `POST /api/v1/workspaces/:workspaceId/notifications/:notificationId/read`.
 
 ## Bachs plan payments
 
@@ -208,6 +253,9 @@ volume. Install `hivepod-storage-server.py` and `hivepod-storage-run.sh` in
 `sh /home/hivepod/data/imara-storage/run.sh`, configure `PORT=8080` and the
 shared token there, apply the changes, and expose port 8080 over HTTPS. Health
 checks verify the authenticated storage service is reachable.
+Set `HIVEPOD_STORAGE_MAX_BYTES` to at least `524288000` (500 MiB) on the
+storage pod. This is the platform ceiling; plan limits are enforced by the API:
+Free 100 MiB, Pro 250 MiB, and Business 500 MiB per file.
 
 The optional `OBJECT_STORAGE_DRIVER=s3` uses DockHive Hive Buckets through the
 S3-compatible API. Configure `DOCKHIVE_S3_ENDPOINT`, `DOCKHIVE_BUCKET`,
@@ -221,12 +269,22 @@ For development and tests, `OBJECT_STORAGE_DRIVER=local` stores files beneath
 `OBJECT_STORAGE_LOCAL_DIR` and is rejected in production. Upload/download/delete
 return 503 when the selected storage is not configured or available.
 
-Uploads are proxied through the API and buffered in memory, capped at 25 MiB per file
-(`MAX_UPLOAD_BYTES`, with a hard 25 MiB maximum); the upload route is additionally
-rate-limited. Consider this cap when sizing API memory and bandwidth. The server records
-random user-scoped object keys; filenames and MIME types are metadata only and are never
-used to construct object keys. Downloads are private, authenticated attachments and are
-sent with `nosniff`. Do not expose the bucket publicly.
+Uploads are proxied through the API using private temporary disk files (not whole-file
+memory buffers), streamed to object storage, and limited per file by the uploading
+account's plan: Free 100 MiB, Pro 250 MiB, and Business 500 MiB. The multipart parser
+has a 500 MiB platform ceiling. Configure `IMARA_UPLOAD_TMP_DIR` if the OS temp volume
+is too small; keep it private and provision enough free disk for concurrent uploads.
+Aborted and completed requests remove temporary files. File-size rejection returns 413
+with `plan`, decimal-string `maxUploadBytes`, `message`, and `upgradeMessage` fields.
+The subscription response exposes `storage.maxUploadBytes`; the dashboard exposes it
+at `subscription.storage.maxUploadBytes`. Event capture preflight uses the event owner's
+plan and exposes decimal-string `maxUploadBytes` from
+`GET /api/v1/events/capture/:token`. Workspace uploads enforce the uploader's per-file
+limit and the owner's overall workspace storage quota. The API also enforces a single
+file per request and rate-limits upload routes. Random user-scoped object keys are used;
+filenames and MIME types are metadata only and are never used to construct object keys.
+Downloads are private, authenticated attachments and are sent with `nosniff`. Do not
+expose the bucket publicly.
 
 Before sending an object, the API atomically reserves quota in PostgreSQL. Successful
 uploads convert that reservation to used bytes; failed operations release it. Stale
@@ -306,8 +364,8 @@ only by create/rotate operations. Keep those responses out of application logs a
 redact event token paths in reverse-proxy/access logs.
 
 Event uploads are limited to image/video MIME types with matching magic bytes, a single
-multipart file, `MAX_UPLOAD_BYTES` (up to 25 MiB), and a stricter per-route throttle.
-They use the existing private S3-compatible storage, atomic subscription quota
+multipart file, the event owner's 100/250/500 MiB plan limit, and a stricter per-route
+throttle. They use the existing private S3-compatible storage, atomic subscription quota
 reservations, and a per-event byte cap fixed to subscription quota remaining at event
 creation. Event reservations also count against the event cap. Event gallery unlocks
 issue 30-minute hashed grants; send the raw grant only in the `Authorization` header.

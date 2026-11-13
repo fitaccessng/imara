@@ -80,6 +80,8 @@ describe('RemindersService', () => {
       description: null,
       recurrence: ReminderRecurrence.DAILY,
       emailEnabled: false,
+      approvalRequestId: null,
+      signatureSignerId: null,
       dueAt: new Date(),
       nextDueAt,
       completedAt: null,

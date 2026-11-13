@@ -1,6 +1,23 @@
-import { IsBoolean, IsDateString, IsOptional, IsString, Length, Matches } from 'class-validator';
+import {
+  ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID,
+  Length, Matches,
+} from 'class-validator';
 
-export class CreateCalendarEventDto {
+export const CALENDAR_REMINDER_OPTIONS = [0, 5, 15, 30, 60, 1440] as const;
+
+abstract class CalendarReminderFields {
+  @IsOptional()
+  @IsIn(CALENDAR_REMINDER_OPTIONS)
+  reminderMinutesBefore?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID(undefined, { each: true })
+  taggedUserIds?: string[];
+}
+
+export class CreateCalendarEventDto extends CalendarReminderFields {
   @IsString()
   @Length(1, 200)
   @Matches(/\S/, { message: 'Title cannot be empty' })
@@ -21,7 +38,7 @@ export class CreateCalendarEventDto {
   allDay!: boolean;
 }
 
-export class UpdateCalendarEventDto {
+export class UpdateCalendarEventDto extends CalendarReminderFields {
   @IsOptional()
   @IsString()
   @Length(1, 200)

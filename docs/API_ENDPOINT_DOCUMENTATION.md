@@ -218,11 +218,22 @@ Gallery GET returns `{ "event": { "id", "name", "date", "description" }, "media"
 Download routes stream the original media bytes with its stored content type.
 
 Capture upload is `multipart/form-data` with a single `file`. Accepted types are
-JPEG, PNG, GIF, WebP, MP4, QuickTime, and WebM, checked against file signatures and
-the configured `MAX_UPLOAD_BYTES` (default and hard limit 25 MiB). Each event's
-immutable byte cap is the organizer's remaining subscription quota when the event is
-created. In-progress reservations and completed media count against both the event cap
-and the account subscription quota.
+JPEG, PNG, GIF, WebP, MP4, QuickTime, and WebM, checked against file signatures.
+Each event's per-file cap is set by the event owner's plan: Free 100 MiB, Pro 250 MiB, and
+Business 500 MiB. `GET /api/v1/events/capture/:token` includes the numeric
+`perFileMaxBytes` field for capture-page preflight. Oversized files return HTTP 413
+with `plan`, `perFileMaxBytes`, `message`, and `upgradeMessage` fields. The same
+plan limits apply to authenticated personal uploads; `GET /api/v1/subscriptions/me`
+exposes the current limit at `entitlements.perFileMaxBytes`, and dashboard responses
+use `subscription.entitlements.perFileMaxBytes`. Public plan entries expose the same
+number as `plans[].limits.perFileMaxBytes`. Workspace uploads apply the
+uploader's plan for the per-file cap and the workspace owner's plan for the shared
+workspace quota. The API stages uploads on private temporary disk files and streams
+them to object storage; set `IMARA_UPLOAD_TMP_DIR` and provision adequate temporary
+disk space. The multipart platform ceiling and HivePod storage-server ceiling are
+500 MiB. Each event's immutable byte cap is the organizer's remaining subscription
+quota when the event is created. In-progress reservations and completed media count
+against both the event cap and the account subscription quota.
 
 Gallery unlock payload is `{ "passcode": "..." }`; success returns
 `{ "accessToken": "...", "expiresAt": "..." }`. Send the returned value as

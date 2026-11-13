@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 jest.mock('@nestjs/common', () => ({
   Injectable: () => (target: unknown) => target,
+  BadRequestException: class BadRequestException extends Error {},
   ServiceUnavailableException: class ServiceUnavailableException extends Error {},
 }));
 
@@ -48,6 +49,25 @@ describe('ObjectStorageService drivers', () => {
 
     await storage.delete('user-id/event-id/media.bin');
     await expect(storage.get('user-id/event-id/media.bin')).rejects.toThrow();
+  });
+
+  it('copies disk-backed uploads to local storage without buffering the object', async () => {
+    const bytes = Buffer.alloc(1024, 7);
+    const sourcePath = path.join(directory, 'temporary-upload');
+    await writeFile(sourcePath, bytes);
+
+    await storage.put(
+      'user-id/event-id/disk-upload.bin',
+      { path: sourcePath, size: bytes.length },
+      'application/octet-stream',
+    );
+    const object = await storage.get('user-id/event-id/disk-upload.bin');
+    const chunks: Buffer[] = [];
+    for await (const chunk of object.body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    expect(Buffer.concat(chunks)).toEqual(bytes);
   });
 
   it('rejects object keys that escape the storage root', async () => {

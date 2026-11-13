@@ -11,7 +11,7 @@ import {
   UserRound,
   Building2,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import {
   Link,
@@ -345,6 +345,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const [searchParams] = useSearchParams();
 
   const inviteToken = searchParams.get("invite");
+  const referralCode = searchParams.get("ref") ?? searchParams.get("referralCode");
 
   const invitationReturnTo = inviteToken
     ? `/workspace/invitations/accept?token=${encodeURIComponent(inviteToken)}`
@@ -441,13 +442,14 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
 
     try {
       if (mode === "register") {
-        const registration = await apiRequest<{ emailVerified: boolean }>("/auth/register", {
+        const registration = await apiRequest<{ emailVerified: boolean; workspaceId?: string }>("/auth/register", {
           method: "POST",
           body: JSON.stringify({
             name: `${values.firstName?.trim()} ${values.lastName?.trim()}`,
             email: values.email,
             password: values.password,
             accountType: inviteToken ? "PERSONAL" : accountType,
+            ...(referralCode && !inviteToken ? { referralCode } : {}),
             ...(accountType === "BUSINESS" && !inviteToken && workspaceName.trim()
               ? { workspaceName: workspaceName.trim() }
               : {}),
@@ -465,15 +467,16 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         }
 
         if (registration.emailVerified) {
-          navigate("/login", {
-            replace: true,
-            state: {
-              notice: "Your account is ready. Sign in to continue.",
-              ...((invitationReturnTo || returnTo)
-                ? { from: invitationReturnTo || returnTo }
-                : {}),
-            },
+          const loginResult = await apiRequest<{ user: User; workspaceId: string | null }>("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ email: values.email, password: values.password }),
           });
+          setUser(loginResult.user);
+          navigate(
+            invitationReturnTo || returnTo ||
+              (loginResult.workspaceId ? workspaceHref("/workspace", loginResult.workspaceId) : "/dashboard"),
+            { replace: true },
+          );
         } else {
           navigate(`/verify-email?email=${encodeURIComponent(values.email.trim())}`, {
             replace: true,
@@ -1144,6 +1147,11 @@ export function ResetPasswordPage() {
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const location = useLocation();
+  const { setUser } = useAuth();
+  const tokenVerificationRequest = useRef<{
+    token: string;
+    promise: Promise<{ user: User; workspaceId: string | null }>;
+  } | null>(null);
   const token = params.get("token");
   const email = params.get("email") ?? "";
   const [code, setCode] = useState("");
@@ -1180,12 +1188,19 @@ export function VerifyEmailPage() {
 
     let active = true;
 
-    apiRequest("/auth/verify-email", {
-      method: "POST",
-      body: JSON.stringify({ token }),
-    })
-      .then(() => {
+    if (!tokenVerificationRequest.current || tokenVerificationRequest.current.token !== token) {
+      tokenVerificationRequest.current = {
+        token,
+        promise: apiRequest<{ user: User; workspaceId: string | null }>("/auth/verify-email", {
+          method: "POST",
+          body: JSON.stringify({ token }),
+        }),
+      };
+    }
+    tokenVerificationRequest.current.promise
+      .then((result) => {
         if (active) {
+          setUser(result.user);
           setStatus("success");
         }
       })
@@ -1204,17 +1219,18 @@ export function VerifyEmailPage() {
     return () => {
       active = false;
     };
-  }, [token, location.state]);
+  }, [token, location.state, setUser]);
 
   async function submitCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
     setVerifyingCode(true);
     try {
-      await apiRequest("/auth/verify-email-code", {
+      const result = await apiRequest<{ user: User; workspaceId: string | null }>("/auth/verify-email-code", {
         method: "POST",
         body: JSON.stringify({ email: email.trim(), code }),
       });
+      setUser(result.user);
       setStatus("success");
     } catch (error) {
       setStatus("error");
@@ -1266,14 +1282,9 @@ export function VerifyEmailPage() {
 
           <Link
             className={primaryButtonClass}
-            to="/login"
-            state={
-              invitationReturnTo || postVerificationReturnTo
-                ? { from: invitationReturnTo || postVerificationReturnTo }
-                : undefined
-            }
+            to={invitationReturnTo || postVerificationReturnTo || "/dashboard"}
           >
-            Log in to your space
+            Continue to IMARA
             <ArrowRight size={17} />
           </Link>
         </>

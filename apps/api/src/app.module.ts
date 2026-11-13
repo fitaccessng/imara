@@ -17,6 +17,7 @@ import { SupportTicketModule } from './support/support-ticket.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { SignaturesModule } from './signatures/signatures.module';
+import { ReferralsModule } from './referrals/referrals.module';
 import { HealthController } from './health.controller';
 import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
 
@@ -41,6 +42,7 @@ import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
     ApprovalsModule,
     RemindersModule,
     SignaturesModule,
+    ReferralsModule,
   ],
   controllers: [HealthController],
   providers: [

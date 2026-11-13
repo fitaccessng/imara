@@ -16,12 +16,12 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { getMaxUploadBytes, type UploadInput } from '../storage/storage.service';
+import type { UploadInput } from '../storage/storage.service';
+import { TempUploadInterceptor } from '../storage/temp-upload.interceptor';
 import { CreateEventDto, UnlockGalleryDto, UpdateEventDto } from './events.dto';
 import { EventsService } from './events.service';
 
@@ -49,7 +49,7 @@ export class EventsController {
 
   @Post('capture/:token/uploads')
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  @UseInterceptors(TempUploadInterceptor())
   captureUpload(@Param('token') token: string, @UploadedFile() file: UploadInput) {
     return this.events.captureUpload(token, file);
   }

@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlsplit
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "8080"))
-MAX_OBJECT_BYTES = int(os.environ.get("HIVEPOD_STORAGE_MAX_BYTES", str(100 * 1024 * 1024)))
+MAX_OBJECT_BYTES = int(os.environ.get("HIVEPOD_STORAGE_MAX_BYTES", str(500 * 1024 * 1024)))
 TOKEN = os.environ.get("HIVEPOD_STORAGE_TOKEN", "")
 ROOT = Path(os.environ.get(
     "HIVEPOD_STORAGE_PATH",

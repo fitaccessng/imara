@@ -19,6 +19,7 @@ jest.mock('@nestjs/common', () => ({
   UseGuards: () => () => undefined,
 }));
 jest.mock('@nestjs/core', () => ({ Reflector: class Reflector {} }));
+jest.mock('@nestjs/throttler', () => ({ Throttle: () => () => undefined }));
 jest.mock('../auth/session.guard', () => ({ SessionGuard: class SessionGuard {} }));
 jest.mock('../auth/auth.service', () => ({ AuthService: class AuthService {} }));
 jest.mock('./platform-admin.guard', () => ({ PlatformAdminGuard: class PlatformAdminGuard {} }));
@@ -85,6 +86,9 @@ describe('AdminController', () => {
       announcements: jest.fn().mockResolvedValue({ items: [], page: {} }),
       announcementRecipients: jest.fn().mockResolvedValue({ items: [], page: {} }),
       createAnnouncement: jest.fn().mockResolvedValue({ id: 'announcement-id' }),
+      emailComposerRecipients: jest.fn().mockResolvedValue({ items: [], page: {} }),
+      emailComposerCampaignStatus: jest.fn().mockResolvedValue({ campaignId: 'campaign-id' }),
+      sendComposedEmail: jest.fn().mockResolvedValue({ campaignId: 'campaign-id', status: 'QUEUED' }),
       retryAnnouncementEmail: jest.fn().mockResolvedValue({ queuedRecipientCount: 0 }),
       archiveAnnouncement: jest.fn().mockResolvedValue({ id: 'announcement-id', archivedAt: new Date() }),
       restoreAnnouncement: jest.fn().mockResolvedValue({ id: 'announcement-id', archivedAt: null }),
@@ -154,6 +158,12 @@ describe('AdminController', () => {
     await expect(controller.announcementRecipients({ q: 'sample' } as never, request))
       .resolves.toEqual({ items: [], page: {} });
     await expect(controller.createAnnouncement({} as never, request)).resolves.toEqual({ id: 'announcement-id' });
+    await expect(controller.emailComposerRecipients({ filter: 'ALL' } as never, request))
+      .resolves.toEqual({ items: [], page: {} });
+    await expect(controller.emailComposerCampaignStatus('campaign-id', request))
+      .resolves.toEqual({ campaignId: 'campaign-id' });
+    await expect(controller.sendComposedEmail({} as never, request))
+      .resolves.toEqual({ campaignId: 'campaign-id', status: 'QUEUED' });
     await expect(controller.retryAnnouncementEmail('announcement-id', request))
       .resolves.toEqual({ queuedRecipientCount: 0 });
     await expect(controller.supportTicketsList({ page: 1, pageSize: 10 } as never, request))

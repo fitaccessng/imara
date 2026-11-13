@@ -11,6 +11,7 @@ interface OfficePreviewEditorProps {
   blob: Blob;
   saveUrl: string;
   canEdit: boolean;
+  maxUploadBytes?: number;
   onSaved: (updatedBlob: Blob) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }
@@ -139,7 +140,7 @@ function displayCell(cell: SpreadsheetCell | undefined, raw = false): string {
   return cell.v === undefined || cell.v === null ? "" : String(cell.v);
 }
 
-export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onDirtyChange }: OfficePreviewEditorProps) {
+export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadBytes, onSaved, onDirtyChange }: OfficePreviewEditorProps) {
   const [preview, setPreview] = useState<OfficePreviewData | null>(null);
   const [activeSheet, setActiveSheet] = useState("");
   const [editing, setEditing] = useState(false);
@@ -345,6 +346,12 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, onSaved, onD
   }
 
   async function upload(updatedBlob: Blob, changeSummary: string) {
+    if (typeof maxUploadBytes !== "number" || !Number.isSafeInteger(maxUploadBytes) || maxUploadBytes < 1) {
+      throw new Error("Your upload limit could not be checked. Refresh the page before uploading.");
+    }
+    if (updatedBlob.size > maxUploadBytes) {
+      throw new Error(`The edited file exceeds your plan’s ${Math.round(maxUploadBytes / 1024 ** 2)} MiB upload limit. Upgrade your plan for larger files.`);
+    }
     const updatedFile = new File([updatedBlob], file.name, { type: file.mimeType });
     const body = new FormData();
     body.append("file", updatedFile);

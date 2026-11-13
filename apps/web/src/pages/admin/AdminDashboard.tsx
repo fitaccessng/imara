@@ -20,6 +20,7 @@ import {
   FileText,
   FileStack,
   FolderOpen,
+  Gift,
   HardDrive,
   LayoutDashboard,
   LogOut,
@@ -43,6 +44,8 @@ import { SubscriptionManagementPage } from "./SubscriptionManagementPage";
 import { PaymentManagementPage } from "./PaymentManagementPage";
 import { PlatformSettingsPage } from "./PlatformSettingsPage";
 import { AdminRolesPage } from "./AdminRolesPage";
+import { AdminReferralProgramPage } from "./AdminReferralProgramPage";
+import { AdminEmailComposerPage } from "./AdminEmailComposerPage";
 import { adminCurrency } from "./AdminManagementCommon";
 
 type AdminRole =
@@ -1063,7 +1066,13 @@ function AdminAnnouncements() {
   const [showArchived, setShowArchived] = useState(false);
   const query = useQuery({
     queryKey: ["admin-announcements", showArchived],
-    queryFn: () => apiRequest<PageResult<AdminAnnouncement>>(`/admin/announcements?page=1&pageSize=50&archived=${showArchived}`),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: "1", pageSize: "50" });
+      // Older API deployments reject unknown query parameters. Active is the
+      // endpoint default, so send the new filter only when archived records are requested.
+      if (showArchived) params.set("archived", "true");
+      return apiRequest<PageResult<AdminAnnouncement>>(`/admin/announcements?${params}`);
+    },
   });
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -1702,6 +1711,8 @@ export function AdminDashboard({ identity, onSignOut, signingOut, signOutError }
     { to: "/admin/system-health", label: "System health", icon: Activity, visible: canViewUploadMonitoring(role) },
     { to: "/admin/events", label: "Events", icon: CalendarDays, visible: canViewEvents(role) },
     { to: "/admin/announcements", label: "Announcements", icon: Megaphone, visible: canManageAnnouncements(role) },
+    { to: "/admin/email", label: "Email studio", icon: Mail, visible: canManageAnnouncements(role) },
+    { to: "/admin/referrals", label: "Referral programme", icon: Gift, visible: canManageAnnouncements(role) },
     { to: "/admin/support-tickets", label: "Support tickets", icon: LifeBuoy, visible: canViewSupportTickets(role) },
     { to: "/admin/analytics", label: "Analytics", icon: ChartNoAxesColumnIncreasing, visible: canViewAnalytics(role) },
     { to: "/admin/audit-logs", label: "Audit log", icon: Activity, visible: canViewAudit(role) },
@@ -1746,6 +1757,8 @@ export function AdminDashboard({ identity, onSignOut, signingOut, signOutError }
             <Route path="uploads" element={canViewUploadMonitoring(role) ? <AdminUploadMonitoring /> : <AdminRouteBlocked />} />
             <Route path="system-health" element={canViewUploadMonitoring(role) ? <AdminSystemHealth /> : <AdminRouteBlocked />} />
             <Route path="announcements" element={canManageAnnouncements(role) ? <AdminAnnouncements /> : <AdminRouteBlocked />} />
+            <Route path="email" element={canManageAnnouncements(role) ? <AdminEmailComposerPage /> : <AdminRouteBlocked />} />
+            <Route path="referrals" element={canManageAnnouncements(role) ? <AdminReferralProgramPage /> : <AdminRouteBlocked />} />
             <Route path="support-tickets" element={canViewSupportTickets(role) ? <AdminSupportTickets /> : <AdminRouteBlocked />} />
             <Route path="support-tickets/:id" element={canViewSupportTickets(role) ? <AdminSupportTicketDetail identity={identity} /> : <AdminRouteBlocked />} />
             <Route path="events" element={canViewEvents(role) ? <AdminEvents /> : <AdminRouteBlocked />} />

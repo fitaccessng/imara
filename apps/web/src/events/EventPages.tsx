@@ -23,15 +23,16 @@ import {
 } from "lucide-react";
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError, apiBlob, apiRequest, downloadFile } from "../lib/api";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
 import { BrandIdentity, BrandMark } from "../components/BrandLockup";
 import { PlanLimitMessage } from "../components/PlanLimitMessage";
+import { readEventTokens, removeEventTokens, saveEventTokens, type EventTokens } from "./eventTokens";
 
 type GallerySetting = "PRIVATE" | "LINK_PUBLIC" | "PASSCODE";
-const MAX_EVENT_CAPTURE_BYTES = 25 * 1024 * 1024;
+const EVENT_UPLOAD_CONCURRENCY = 2;
 type EventQrTheme = "classic" | "sage" | "terracotta";
 
 const EVENT_QR_THEMES: Record<EventQrTheme, { label: string; background: string; accent: string; ink: string }> = {
@@ -65,11 +66,6 @@ interface EventMedia {
   mimeType: string;
   sizeBytes: string;
   createdAt: string;
-}
-
-interface EventTokens {
-  captureToken: string;
-  galleryToken: string;
 }
 
 interface EventCreated {
@@ -106,6 +102,11 @@ function formatBytes(raw: string | number) {
   const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const amount = bytes / 1024 ** unit;
   return `${amount >= 10 || unit === 0 ? Math.round(amount) : amount.toFixed(1)} ${units[unit]}`;
+}
+
+function formatUploadLimit(bytes: number) {
+  const mebibytes = bytes / 1024 ** 2;
+  return `${Number.isInteger(mebibytes) ? mebibytes : mebibytes.toFixed(1)} MiB`;
 }
 
 function formatEventDate(value: string) {
@@ -211,6 +212,7 @@ export function EventsPage() {
 export function CreateEventPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [name, setName] = useState("");
   const [date, setDate] = useState(eventDateInputValue);
   const [description, setDescription] = useState("");
@@ -225,8 +227,9 @@ export function CreateEventPage() {
     }),
     onSuccess: async (created) => {
       queryClient.setQueryData(["event-tokens", created.event.id], created.tokens);
+      if (user) saveEventTokens(user.id, created.event.id, created.tokens);
       await queryClient.invalidateQueries({ queryKey: ["events"] });
-      navigate(`/events/${created.event.id}`);
+      navigate(`/events/${created.event.id}`, { state: { highlightGallerySharing: true } });
     },
     onError: (error) => setFormError(errorMessage(error, "Could not create this event.")),
   });
@@ -385,12 +388,14 @@ function EventMediaCard({
 
 export function EventDetailPage() {
   const { eventId = "" } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const tokensQuery = useQuery<EventTokens | null>({
     queryKey: ["event-tokens", eventId],
     queryFn: async () => null,
-    initialData: null,
+    initialData: () => user ? readEventTokens(user.id, eventId) : null,
     staleTime: Infinity,
     gcTime: Infinity,
   });
@@ -400,6 +405,8 @@ export function EventDetailPage() {
   const [feedback, setFeedback] = useState("");
   const [actionModal, setActionModal] = useState<ActionModalRequest | null>(null);
   const qrCanvas = useRef<HTMLCanvasElement>(null);
+  const gallerySharingRef = useRef<HTMLElement>(null);
+  const [highlightGallerySharing, setHighlightGallerySharing] = useState(false);
   const [qrTheme, setQrTheme] = useState<EventQrTheme>("classic");
   const eventQuery = useQuery({
     queryKey: ["event", eventId],
@@ -421,6 +428,20 @@ export function EventDetailPage() {
     if (event) setGallerySetting(event.gallerySetting);
   }, [event?.id, event?.gallerySetting]);
 
+  useEffect(() => {
+    const navigationState = location.state as { highlightGallerySharing?: boolean } | null;
+    if (!event || !navigationState?.highlightGallerySharing) return;
+    setHighlightGallerySharing(true);
+    const scrollTimer = window.setTimeout(() => {
+      gallerySharingRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    const highlightTimer = window.setTimeout(() => setHighlightGallerySharing(false), 6500);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(highlightTimer);
+    };
+  }, [event?.id, location.state]);
+
   const updateGallery = useMutation({
     mutationFn: () => apiRequest<ImaraEvent>(`/events/${eventId}`, {
       method: "PATCH",
@@ -440,6 +461,7 @@ export function EventDetailPage() {
     mutationFn: () => apiRequest<EventTokens>(`/events/${eventId}/rotate-tokens`, { method: "POST" }),
     onSuccess: (newTokens) => {
       queryClient.setQueryData(["event-tokens", eventId], newTokens);
+      if (user) saveEventTokens(user.id, eventId, newTokens);
       setFeedback("New QR and gallery links are ready. Previous links have been disabled.");
     },
     onError: (error) => setFeedback(errorMessage(error, "Could not generate new links.")),
@@ -448,6 +470,7 @@ export function EventDetailPage() {
     mutationFn: () => apiRequest<void>(`/events/${eventId}`, { method: "DELETE" }),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ["event-tokens", eventId], exact: true });
+      if (user) removeEventTokens(user.id, eventId);
       await queryClient.invalidateQueries({ queryKey: ["events"] });
       navigate("/events", { replace: true });
     },
@@ -616,7 +639,7 @@ export function EventDetailPage() {
             </div>
           ) : (
             <div className="event-token-missing">
-              <p>For security, event links are kept only in memory during this app session. Generate new links to show a fresh QR code.</p>
+              <p>This browser doesn’t have the event links yet. Generate the QR and links once; they’ll remain available here until you generate replacements.</p>
               <button className="button button-outline" disabled={rotateTokens.isPending} onClick={() => setActionModal({
                 title: "Generate new event links",
                 description: "Any previously printed QR code will stop working when you generate new links.",
@@ -626,13 +649,18 @@ export function EventDetailPage() {
                   setActionModal(null);
                   return;
                 },
-              })}><RefreshCw size={15} /> Generate a new QR</button>
+              })}><RefreshCw size={15} /> Generate QR code & links</button>
             </div>
           )}
         </section>
 
-        <section className="event-panel">
-          <div className="event-panel-heading"><div><span className="eyebrow">GALLERY SETTINGS</span><h2>Choose who can view</h2></div><span className="event-panel-icon"><ShieldCheck size={17} /></span></div>
+        <section
+          ref={gallerySharingRef}
+          id="event-gallery-sharing"
+          className={`event-panel event-gallery-sharing${highlightGallerySharing ? " is-highlighted" : ""}`}
+        >
+          <div className="event-panel-heading"><div><span className="eyebrow">GALLERY SETTINGS</span><h2>Gallery sharing</h2></div><span className="event-panel-icon"><ShieldCheck size={17} /></span></div>
+          {highlightGallerySharing && <p className="event-share-created" role="status"><Check size={15} /> Your event is ready. Share the gallery link below.</p>}
           <form className="event-gallery-form" onSubmit={saveGallerySettings}>
             <label className="event-field"><span>Access</span>
               <select value={gallerySetting} onChange={(change) => setGallerySetting(change.target.value as GallerySetting)}>
@@ -651,15 +679,24 @@ export function EventDetailPage() {
               {updateGallery.isPending ? "Saving…" : "Save gallery access"}
             </button>
           </form>
-          {tokens && event.gallerySetting !== "PRIVATE" && (
-            <div className="event-share-link">
-              <span>GALLERY LINK</span>
-              <div><code>{galleryUrl}</code><button aria-label="Copy gallery link" className="icon-button" onClick={() => void copyLink(galleryUrl, "Gallery link")}><Copy size={15} /></button></div>
-              <a className="button button-outline event-open-gallery" href={galleryUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open shared gallery</a>
+          {event.gallerySetting === "PRIVATE" ? (
+            <div className="event-share-link event-share-link-private">
+              <span>SHARED GALLERY LINK</span>
+              <p>This gallery is private, so guests cannot open a shared link yet. Choose “Anyone with the gallery link” or “Passcode protected” above and save to enable sharing.</p>
+            </div>
+          ) : tokens ? (
+            <div className={`event-share-link${highlightGallerySharing ? " is-highlighted" : ""}`}>
+              <span>SHARED GALLERY LINK</span>
+              <div className="event-share-url-row"><code>{galleryUrl}</code></div>
+              <div className="event-share-actions">
+                <button type="button" className="button button-green" onClick={() => void copyLink(galleryUrl, "Gallery link")}><Copy size={15} /> Copy gallery link</button>
+                <a className="button button-outline event-open-gallery" href={galleryUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open gallery</a>
+              </div>
               {event.gallerySetting === "PASSCODE" && <small>Share the passcode separately. It is not shown again after leaving this page.</small>}
             </div>
+          ) : (
+            <p className="event-form-hint">Regenerate the event links to reveal the current gallery link. Previous links will stop working.</p>
           )}
-          {!tokens && event.gallerySetting !== "PRIVATE" && <p className="event-form-hint">Regenerate the event links to reveal the current gallery link. Previous links will stop working.</p>}
         </section>
       </div>
 
@@ -712,6 +749,7 @@ export function CaptureEventPage() {
   const [captureMode, setCaptureMode] = useState<"photo" | "video">("photo");
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [capturedMedia, setCapturedMedia] = useState<{ file: File; url: string; type: "image" | "video" } | null>(null);
+  const uploadController = useRef<AbortController | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingAudioStreamRef = useRef<MediaStream | null>(null);
@@ -725,11 +763,25 @@ export function CaptureEventPage() {
   const galleryInput = useRef<HTMLInputElement>(null);
   const eventQuery = useQuery({
     queryKey: ["capture-event", token],
-    queryFn: () => apiRequest<{ id: string; name: string; date: string; description: string | null }>(`/events/capture/${token}`),
+    queryFn: () => apiRequest<{ id: string; name: string; date: string; description: string | null; maxUploadBytes: string }>(`/events/capture/${token}`),
     enabled: Boolean(token),
   });
+  const maxUploadBytes = Number(eventQuery.data?.maxUploadBytes);
+  const uploadLimitReady = Number.isSafeInteger(maxUploadBytes) && maxUploadBytes > 0;
+
+  useEffect(() => () => uploadController.current?.abort(), []);
 
   function setCapturedFile(file: File) {
+    if (!uploadLimitReady) {
+      setUploadError("The event’s upload limit could not be checked. Please reload this page and try again.");
+      setUploadMessage("");
+      return;
+    }
+    if (file.size > maxUploadBytes) {
+      setUploadError(`${file.name} is ${formatBytes(file.size)}. This event’s plan allows files up to ${formatUploadLimit(maxUploadBytes)}. Ask the event host to upgrade their plan for larger uploads.`);
+      setUploadMessage("");
+      return;
+    }
     setCapturedMedia({
       file,
       url: URL.createObjectURL(file),
@@ -800,39 +852,85 @@ export function CaptureEventPage() {
 
   async function uploadFiles(selected: File[]) {
     if (!selected.length) return;
+    if (!uploadLimitReady) {
+      setUploadError("The event’s upload limit could not be checked. Please reload this page and try again.");
+      return;
+    }
+    const oversized = selected.filter((file) => file.size > maxUploadBytes);
+    if (oversized.length) {
+      setUploadError(`${oversized[0].name} is ${formatBytes(oversized[0].size)}. This event’s plan allows files up to ${formatUploadLimit(maxUploadBytes)}. Ask the event host to upgrade their plan for larger uploads.`);
+      setUploadMessage("");
+      return;
+    }
     setUploading(true);
     setUploadError("");
     setUploadMessage("");
+    const controller = new AbortController();
+    uploadController.current = controller;
     let completed = 0;
-    try {
-      for (const file of selected) {
-        const body = new FormData();
-        body.append("file", file);
-        const uploaded = await apiRequest<EventMedia>(`/events/capture/${token}/uploads`, { method: "POST", body });
-        const eventId = eventQuery.data?.id;
-        if (eventId) {
-          queryClient.setQueryData<EventMedia[]>(["event-media", eventId], (current) => current
-            ? [...current.filter((media) => media.id !== uploaded.id), uploaded]
-              .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-            : current);
-          queryClient.setQueryData<ImaraEvent>(["event", eventId], (current) => {
-            return current ? addEventStorageUsage(current, uploaded.sizeBytes) : current;
-          });
-          queryClient.setQueryData<ImaraEvent[]>(["events"], (current) => current?.map((event) => {
-            return event.id === eventId ? addEventStorageUsage(event, uploaded.sizeBytes) : event;
-          }));
-        }
-        completed += 1;
-        setUploadedCount((count) => count + 1);
+    let nextIndex = 0;
+    const errors: string[] = [];
+
+    async function uploadOne(file: File) {
+      const body = new FormData();
+      body.append("file", file);
+      const uploaded = await apiRequest<EventMedia>(`/events/capture/${token}/uploads`, {
+        method: "POST",
+        body,
+        signal: controller.signal,
+      });
+      const eventId = eventQuery.data?.id;
+      if (eventId) {
+        queryClient.setQueryData<EventMedia[]>(["event-media", eventId], (current) => current
+          ? [...current.filter((media) => media.id !== uploaded.id), uploaded]
+            .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+          : current);
+        queryClient.setQueryData<ImaraEvent>(["event", eventId], (current) => {
+          return current ? addEventStorageUsage(current, uploaded.sizeBytes) : current;
+        });
+        queryClient.setQueryData<ImaraEvent[]>(["events"], (current) => current?.map((event) => {
+          return event.id === eventId ? addEventStorageUsage(event, uploaded.sizeBytes) : event;
+        }));
       }
-      setUploadMessage(`${completed} ${completed === 1 ? "memory was" : "memories were"} added to the event.`);
-      setCapturedMedia(null);
-    } catch (error) {
-      setUploadError(errorMessage(error, "Upload failed. Please try again."));
+      completed += 1;
+      setUploadedCount((count) => count + 1);
+    }
+
+    try {
+      async function uploadNext() {
+        while (!controller.signal.aborted) {
+          const index = nextIndex;
+          nextIndex += 1;
+          const file = selected[index];
+          if (!file) return;
+          try {
+            await uploadOne(file);
+          } catch (error) {
+            if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+            errors.push(`${file.name}: ${errorMessage(error, "Upload failed.")}`);
+          }
+        }
+      }
+
+      await Promise.all(
+        Array.from({ length: Math.min(EVENT_UPLOAD_CONCURRENCY, selected.length) }, () => uploadNext()),
+      );
+      if (errors.length) setUploadError(errors.join(" "));
+      if (controller.signal.aborted) {
+        setUploadMessage(`${completed} ${completed === 1 ? "memory was" : "memories were"} added before upload cancellation.`);
+      } else {
+        setUploadMessage(`${completed} of ${selected.length} ${completed === 1 ? "memory was" : "memories were"} added to the event.`);
+        if (completed === selected.length) setCapturedMedia(null);
+      }
     } finally {
+      uploadController.current = null;
       setUploading(false);
       if (galleryInput.current) galleryInput.current.value = "";
     }
+  }
+
+  function cancelUploads() {
+    uploadController.current?.abort();
   }
 
   async function startCamera(facing: "environment" | "user" = cameraFacing) {
@@ -939,6 +1037,10 @@ export function CaptureEventPage() {
       setCameraError("Video recording isn't supported by this browser. You can choose a video from your device.");
       return;
     }
+    if (!uploadLimitReady) {
+      setCameraError("The event’s upload limit could not be checked. Please reload this page before recording.");
+      return;
+    }
 
     const requestId = cameraRequestRef.current;
     setRecordingStarting(true);
@@ -973,7 +1075,7 @@ export function CaptureEventPage() {
       setRecordingSeconds(0);
       recorder.ondataavailable = (event) => {
         if (!event.data.size) return;
-        if (recordingBytesRef.current + event.data.size > MAX_EVENT_CAPTURE_BYTES) {
+        if (!uploadLimitReady || recordingBytesRef.current + event.data.size > maxUploadBytes) {
           recordingLimitReachedRef.current = true;
           if (recorder.state === "recording") recorder.stop();
           return;
@@ -992,7 +1094,7 @@ export function CaptureEventPage() {
         if (recordingLimitReachedRef.current) {
           recordingChunksRef.current = [];
           recordingBytesRef.current = 0;
-          setCameraError("This video reached the 25 MB upload limit. Record a shorter video and try again.");
+          setCameraError(`This video reached the ${formatUploadLimit(maxUploadBytes)} upload limit. Record a shorter video or ask the host to upgrade their plan.`);
           return;
         }
         const type = recorder.mimeType || "video/webm";
@@ -1004,8 +1106,8 @@ export function CaptureEventPage() {
           setCameraError("No video was captured. Please try recording again.");
           return;
         }
-        if (blob.size > MAX_EVENT_CAPTURE_BYTES) {
-          setCameraError("This video is over the 25 MB upload limit. Record a shorter video and try again.");
+        if (blob.size > maxUploadBytes) {
+          setCameraError(`This video is over the ${formatUploadLimit(maxUploadBytes)} upload limit. Record a shorter video or ask the host to upgrade their plan.`);
           return;
         }
         setCapturedFile(new File([blob], `imara-video-${Date.now()}.${extension}`, { type }));
@@ -1056,6 +1158,7 @@ export function CaptureEventPage() {
               {uploadError && <p className="capture-camera-alert" role="alert"><PlanLimitMessage message={uploadError} /></p>}
               <div className="capture-review-actions">
                 <button className="capture-review-circle capture-review-retake" type="button" disabled={uploading} onClick={() => setCapturedMedia(null)} aria-label="Retake"><RotateCcw size={19} /><span>Retake</span></button>
+                {uploading && <button className="capture-camera-cancel" type="button" onClick={cancelUploads}>Cancel upload</button>}
                 <button className="capture-review-circle capture-upload-button" type="button" disabled={uploading} onClick={() => void uploadFiles([capturedMedia.file])} aria-label={uploading ? "Saving media" : "Save media"}>
                   {uploading ? <span className="loader" /> : <Check size={24} />}
                   <span>{uploading ? "Saving" : "Save"}</span>
@@ -1092,7 +1195,7 @@ export function CaptureEventPage() {
               {recording
                 ? <span className="capture-recording-badge"><i /> REC {`${Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:${(recordingSeconds % 60).toString().padStart(2, "0")}`}</span>
                 : cameraReady && <span className="capture-live-badge">LIVE</span>}
-              {uploading && <span className="capture-uploading-badge">Uploading securely…</span>}
+              {uploading && <span className="capture-uploading-badge">Uploading securely… <button type="button" onClick={cancelUploads}>Cancel</button></span>}
             </div>
 
             <footer className="capture-camera-controls">
@@ -1119,7 +1222,7 @@ export function CaptureEventPage() {
                 </>
               ) : (
                 <>
-                  <p className="capture-camera-hint">Photos and videos up to 25 MB</p>
+                  <p className="capture-camera-hint">Photos and videos up to {formatUploadLimit(maxUploadBytes)}</p>
                   <div className="capture-fallback-actions">
                     <button type="button" onClick={() => nativeCameraInput.current?.click()}><Video size={17} />Open device camera</button>
                     <button type="button" onClick={() => galleryInput.current?.click()}><Upload size={17} />Choose media</button>
@@ -1184,7 +1287,7 @@ export function EventGalleryPage() {
   const unavailable = queryError instanceof ApiError && queryError.status === 404;
 
   if (galleryQuery.isLoading) return <PublicEventState><span className="loader" /><p>Loading the collection…</p></PublicEventState>;
-  if (requiresPasscode && !accessToken) {
+  if (requiresPasscode) {
     return (
       <PublicEventState>
         <form className="gallery-unlock-card" onSubmit={(event) => void unlock(event)}>
@@ -1192,7 +1295,7 @@ export function EventGalleryPage() {
           <div className="public-event-icon"><LockKeyhole size={22} /></div>
           <span className="eyebrow">A PRIVATE COLLECTION</span>
           <h1>Enter the passcode.</h1>
-          <p>This event’s host has protected the gallery.</p>
+          <p>{accessToken ? "Your gallery access has expired. Enter the passcode to continue." : "This event’s host has protected the gallery."}</p>
           <input autoFocus autoComplete="current-password" maxLength={128} minLength={8} required type="password" value={passcode} onChange={(event) => setPasscode(event.target.value)} placeholder="Gallery passcode" />
           {unlockError && <p className="form-alert" role="alert">{unlockError}</p>}
           <button className="button button-green" type="submit" disabled={unlocking}>{unlocking ? "Checking…" : "View gallery"}<ArrowRight size={15} /></button>

@@ -1011,6 +1011,7 @@ describe('AdminService analytics', () => {
           staffLimit: 10,
           activeEventLimit: 10,
           storageLimitBytes: '15000',
+          maxUploadBytes: String(250 * 1024 * 1024),
         },
         features: {
           canEditDocuments: true,

@@ -13,13 +13,23 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   private cookieOptions() {
-    const sameSite = process.env.COOKIE_SAME_SITE ?? 'lax';
+    const sameSite = process.env.COOKIE_SAME_SITE
+      ?? (process.env.NODE_ENV === 'production' ? 'none' : 'lax');
     return {
       httpOnly: true,
       secure: process.env.COOKIE_SECURE === 'true',
       sameSite: (sameSite === 'none' ? 'none' : sameSite === 'strict' ? 'strict' : 'lax') as 'lax' | 'strict' | 'none',
       path: '/',
     };
+  }
+
+  private setSessionCookie(res: Response, session: { token: string; expiresAt: Date }) {
+    const days = Number(process.env.SESSION_TTL_DAYS ?? 30);
+    res.cookie(process.env.SESSION_COOKIE_NAME ?? 'imara_session', session.token, {
+      ...this.cookieOptions(),
+      maxAge: days * 86_400_000,
+      expires: session.expiresAt,
+    });
   }
 
   @Post('register')
@@ -34,13 +44,8 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.login(dto.email, dto.password, req.get('user-agent'));
-    const days = Number(process.env.SESSION_TTL_DAYS ?? 30);
-    res.cookie(process.env.SESSION_COOKIE_NAME ?? 'imara_session', result.token, {
-      ...this.cookieOptions(),
-      maxAge: days * 86_400_000,
-      expires: result.expiresAt,
-    });
-    return { user: result.user };
+    this.setSessionCookie(res, result);
+    return { user: result.user, workspaceId: result.workspaceId };
   }
 
   @Post('logout')
@@ -52,17 +57,25 @@ export class AuthController {
   }
 
   @Post('verify-email')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  async verifyEmail(@Body() dto: TokenDto) {
-    await this.auth.verifyEmail(dto.token);
+  async verifyEmail(@Body() dto: TokenDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const result = await this.auth.verifyEmail(dto.token, req.get('user-agent'));
+    this.setSessionCookie(res, result);
+    return { user: result.user, workspaceId: result.workspaceId };
   }
 
   @Post('verify-email-code')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  async verifyEmailCode(@Body() dto: VerifyEmailCodeDto) {
-    await this.auth.verifyEmailCode(dto.email, dto.code);
+  async verifyEmailCode(
+    @Body() dto: VerifyEmailCodeDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.verifyEmailCode(dto.email, dto.code, req.get('user-agent'));
+    this.setSessionCookie(res, result);
+    return { user: result.user, workspaceId: result.workspaceId };
   }
 
   @Post('resend-verification')

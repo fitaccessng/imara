@@ -331,18 +331,31 @@ describe('session management', () => {
     const tokenUpdateMany = jest.fn();
     const tokenDeleteMany = jest.fn();
     const userUpdate = jest.fn();
+    const accountLock = jest.fn();
+    const sessionCreate = jest.fn();
+    const workspaceFindFirst = jest.fn();
+    const queryRaw = jest.fn();
+    const referralCount = jest.fn();
+    const referralRewardCreateMany = jest.fn();
+    const subscriptionUpdate = jest.fn();
     const txClient = {
+      $queryRaw: queryRaw,
       verificationToken: {
         findFirst: tokenFindFirst,
         updateMany: tokenUpdateMany,
         deleteMany: tokenDeleteMany,
       },
-      user: { update: userUpdate },
+      user: { update: userUpdate, updateMany: accountLock, count: referralCount },
+      referralReward: { createMany: referralRewardCreateMany },
+      subscription: { update: subscriptionUpdate },
+      session: { create: sessionCreate },
+      workspaceMember: { findFirst: workspaceFindFirst },
     };
     const transaction = jest.fn(async (callback: (tx: typeof txClient) => Promise<unknown>) => callback(txClient));
     const service = new AuthService(
       {
         user: { findUnique: userFindUnique },
+        session: { create: sessionCreate },
         $transaction: transaction,
       } as unknown as PrismaService,
       {} as MailerService,
@@ -387,15 +400,32 @@ describe('session management', () => {
     });
 
     it('consumes a valid code and marks the matching user verified', async () => {
-      userFindUnique.mockResolvedValue({ id: 'user-id', emailVerifiedAt: null });
+      userFindUnique.mockResolvedValue({
+        id: 'user-id',
+        email: 'person@example.com',
+        name: 'Person Example',
+        role: 'USER',
+        accountStatus: 'ACTIVE',
+        emailVerifiedAt: null,
+      });
       tokenFindFirst.mockResolvedValue({ id: 'verification-id', tokenHash: hashToken('user-id:123456') });
       tokenDeleteMany.mockResolvedValue({ count: 1 });
+      accountLock.mockResolvedValue({ count: 1 });
+      sessionCreate.mockResolvedValue({ id: 'session-id' });
+      workspaceFindFirst.mockResolvedValue({ workspaceId: 'workspace-id' });
 
-      await service.verifyEmailCode(' PERSON@example.com ', '123456');
+      const result = await service.verifyEmailCode(' PERSON@example.com ', '123456');
 
       expect(userFindUnique).toHaveBeenCalledWith({
         where: { email: 'person@example.com' },
-        select: { id: true, emailVerifiedAt: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          emailVerifiedAt: true,
+          accountStatus: true,
+        },
       });
       expect(tokenFindFirst).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({ userId: 'user-id', failedAttempts: { lt: 5 } }),
@@ -403,6 +433,54 @@ describe('session management', () => {
       expect(userUpdate).toHaveBeenCalledWith({
         where: { id: 'user-id' },
         data: { emailVerifiedAt: expect.any(Date) },
+      });
+      expect(result.user).toEqual({
+        id: 'user-id',
+        email: 'person@example.com',
+        name: 'Person Example',
+        role: 'USER',
+        emailVerified: true,
+      });
+      expect(sessionCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({ userId: 'user-id', tokenHash: hashToken(result.token) }),
+      });
+    });
+
+    it('credits the inviter when an invited account verifies by code', async () => {
+      userFindUnique.mockResolvedValue({
+        id: 'user-id',
+        email: 'person@example.com',
+        name: 'Person Example',
+        role: 'USER',
+        accountStatus: 'ACTIVE',
+        emailVerifiedAt: null,
+      });
+      tokenFindFirst.mockResolvedValue({ id: 'verification-id', tokenHash: hashToken('user-id:123456') });
+      tokenDeleteMany.mockResolvedValue({ count: 1 });
+      userUpdate.mockResolvedValue({ referredByUserId: 'inviter-id' });
+      accountLock.mockResolvedValue({ count: 1 });
+      sessionCreate.mockResolvedValue({ id: 'session-id' });
+      workspaceFindFirst.mockResolvedValue(null);
+      referralCount.mockResolvedValue(5);
+      referralRewardCreateMany.mockResolvedValue({ count: 1 });
+      subscriptionUpdate.mockResolvedValue({});
+
+      await service.verifyEmailCode('person@example.com', '123456');
+
+      expect(referralCount).toHaveBeenCalledWith({
+        where: { referredByUserId: 'inviter-id', emailVerifiedAt: { not: null } },
+      });
+      expect(referralRewardCreateMany).toHaveBeenCalledWith({
+        data: [{
+          inviterUserId: 'inviter-id',
+          verifiedReferralCount: 5,
+          storageBytes: 1_073_741_824n,
+        }],
+        skipDuplicates: true,
+      });
+      expect(subscriptionUpdate).toHaveBeenCalledWith({
+        where: { userId: 'inviter-id' },
+        data: { storageLimitBytes: { increment: 1_073_741_824n } },
       });
     });
 

@@ -9,6 +9,7 @@ import {
   Clock3,
   Eye,
   EyeOff,
+  Gift,
   Laptop,
   LockKeyhole,
   Monitor,
@@ -25,6 +26,7 @@ import { z } from "zod";
 
 import { useAuth } from "../auth/AuthProvider";
 import { apiRequest, type AuthSession, type User } from "../lib/api";
+import { ReferralSettingsCard } from "../components/ReferralComponents";
 
 /* -------------------------------------------------------------------------- */
 /* Validation                                                                 */
@@ -177,6 +179,12 @@ export function ProfilePage() {
       label: "Security",
       description: "Password and active devices",
       icon: LockKeyhole,
+    },
+    {
+      id: "referrals",
+      label: "Referrals",
+      description: "Share IMARA and earn storage",
+      icon: Gift,
     },
     {
       id: "privacy",
@@ -416,6 +424,10 @@ export function ProfilePage() {
                 </div>
               </form>
             </section>
+
+            <div id="referrals" className="scroll-mt-6">
+              <ReferralSettingsCard />
+            </div>
 
             {/* Security */}
             <section

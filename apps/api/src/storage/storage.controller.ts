@@ -17,12 +17,12 @@ import {
   Req,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
 import { CreateFolderDto, MoveFolderDto, RenameFolderDto, ReplaceFileContentDto, SearchFilesDto, UpdateFavoriteDto, UpdateFileOrganizationDto, UploadFileDto } from './storage.dto';
-import { getMaxUploadBytes, StorageService, type UploadInput } from './storage.service';
+import { StorageService, type UploadInput } from './storage.service';
+import { TempUploadInterceptor } from './temp-upload.interceptor';
 
 @Controller()
 @UseGuards(SessionGuard)
@@ -113,7 +113,7 @@ export class StorageController {
 
   @Post('files')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  @UseInterceptors(TempUploadInterceptor())
   uploadFile(
     @Req() req: AuthenticatedRequest,
     @UploadedFile() file: UploadInput,
@@ -124,7 +124,7 @@ export class StorageController {
 
   @Post('files/scan')
   @Throttle({ default: { limit: 6, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  @UseInterceptors(TempUploadInterceptor())
   uploadScannedFile(
     @Req() req: AuthenticatedRequest,
     @UploadedFile() file: UploadInput,
@@ -135,7 +135,7 @@ export class StorageController {
 
   @Patch('files/:id/content')
   @Throttle({ default: { limit: 12, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  @UseInterceptors(TempUploadInterceptor())
   replaceFileContent(
     @Req() req: AuthenticatedRequest,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,

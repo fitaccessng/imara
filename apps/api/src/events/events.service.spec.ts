@@ -11,6 +11,10 @@ jest.mock('@nestjs/common', () => {
 });
 
 import { EventGallerySetting } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { hashPassword } from '../auth/password';
 import { hashToken } from '../auth/token';
 import { ObjectStorageService } from '../storage/object-storage.service';
@@ -89,24 +93,64 @@ describe('EventsService media access', () => {
     });
   });
 
-  it('accepts supported image signatures and rejects MIME-spoofed media', () => {
+  it('accepts supported image signatures and rejects MIME-spoofed media', async () => {
     const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
     const webm = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x00]);
-    expect(isSupportedMedia({
+    await expect(isSupportedMedia({
       buffer: png, originalname: 'photo.png', mimetype: 'image/png', size: png.length,
-    })).toBe(true);
-    expect(isSupportedMedia({
+    })).resolves.toBe(true);
+    await expect(isSupportedMedia({
       buffer: webm,
       originalname: 'clip.webm',
       mimetype: 'video/webm;codecs=vp8,opus',
       size: webm.length,
-    })).toBe(true);
-    expect(isSupportedMedia({
+    })).resolves.toBe(true);
+    await expect(isSupportedMedia({
       buffer: Buffer.from('not an image'), originalname: 'photo.png', mimetype: 'image/png', size: 12,
-    })).toBe(false);
-    expect(isSupportedMedia({
+    })).resolves.toBe(false);
+    await expect(isSupportedMedia({
       buffer: png, originalname: 'photo.txt', mimetype: 'text/plain', size: png.length,
-    })).toBe(false);
+    })).resolves.toBe(false);
+  });
+
+  it('validates media signatures from disk-backed temporary uploads', async () => {
+    const body = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const temporaryPath = path.join(os.tmpdir(), `imara-event-upload-${randomUUID()}`);
+    await writeFile(temporaryPath, body);
+    try {
+      await expect(isSupportedMedia({
+        path: temporaryPath, originalname: 'photo.png', mimetype: 'image/png', size: body.length,
+      })).resolves.toBe(true);
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+  });
+
+  it('exposes the event owner per-file upload limit to capture clients', async () => {
+    const eventInfo = {
+      id: 'event-id', ownerUserId: 'owner-id', name: 'Wedding',
+      date: new Date('2026-10-01T00:00:00.000Z'), description: null,
+    };
+    const captureService = new EventsService(
+      {
+        event: { findFirst: jest.fn().mockResolvedValue(eventInfo) },
+        subscription: { findUnique: jest.fn().mockResolvedValue({ plan: 'PRO' }) },
+      } as never,
+      {} as StorageService,
+      {} as ObjectStorageService,
+      {
+        currentPlan: jest.fn().mockResolvedValue('PRO'),
+        getEntitlements: jest.fn().mockResolvedValue({ maxUploadBytes: 250 * 1024 * 1024 }),
+      } as never,
+    );
+
+    await expect(captureService.captureInfo('capture-token')).resolves.toEqual({
+      id: eventInfo.id,
+      name: eventInfo.name,
+      date: eventInfo.date,
+      description: null,
+      maxUploadBytes: String(250 * 1024 * 1024),
+    });
   });
 
   it('does not expose media from a private gallery', async () => {

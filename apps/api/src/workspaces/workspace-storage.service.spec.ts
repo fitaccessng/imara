@@ -143,13 +143,13 @@ describe('workspace storage authorization', () => {
     };
     const tx = {
       workspace: { findUnique: jest.fn().mockResolvedValue({ storageUsedBytes: 4n, storageReservedBytes: 0n }) },
-      subscription: { findUnique: jest.fn().mockResolvedValue({}) },
+      subscription: { findUnique: jest.fn().mockResolvedValue({ plan: 'BUSINESS' }) },
       storedFile: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       auditLog: { create: auditCreate },
     };
     const prisma = {
       storedFile: { findFirst: jest.fn().mockResolvedValue(file) },
-      subscription: { findUnique: jest.fn().mockResolvedValue({}) },
+      subscription: { findUnique: jest.fn().mockResolvedValue({ plan: 'BUSINESS' }) },
       $transaction: jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx)),
     };
     const objects = {

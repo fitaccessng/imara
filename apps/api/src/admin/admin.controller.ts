@@ -32,6 +32,8 @@ import {
   AdminAnnouncementCreateDto,
   AdminAnnouncementsQueryDto,
   AdminAnnouncementRecipientsQueryDto,
+  AdminEmailComposerSendDto,
+  AdminEmailRecipientsQueryDto,
   AdminEventsQueryDto,
   AdminPaymentsQueryDto,
   AdminPlatformAdminUpdateDto,
@@ -44,6 +46,9 @@ import {
   SupportTicketMessageDto,
 } from './admin.dto';
 import { SupportTicketService } from '../support/support-ticket.service';
+import { ReferralsService } from '../referrals/referrals.service';
+import { UpdateReferralProgramDto } from '../referrals/referrals.dto';
+import { Throttle } from '@nestjs/throttler';
 
 export interface PlatformAdminIdentity {
   id: string;
@@ -61,6 +66,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly supportTickets: SupportTicketService,
     private readonly auth: AuthService,
+    private readonly referrals?: ReferralsService,
   ) {}
 
   @Get('me')
@@ -117,6 +123,21 @@ export class AdminController {
   @RequirePlatformAdminPermission(PlatformAdminPermission.PLAN_CATALOGUE_READ)
   plans(@Req() request: PlatformAdminRequest) {
     return this.admin.plans(request);
+  }
+
+  @Get('referral-program')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.REFERRALS_READ)
+  referralProgramConfig() {
+    return this.referrals!.getProgramConfig();
+  }
+
+  @Patch('referral-program')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.REFERRALS_UPDATE)
+  updateReferralProgramConfig(
+    @Body() dto: UpdateReferralProgramDto,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.referrals!.updateProgramConfig(dto, request);
   }
 
   @Patch('plans/:plan')
@@ -191,6 +212,35 @@ export class AdminController {
   @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_SEND)
   createAnnouncement(@Body() dto: AdminAnnouncementCreateDto, @Req() request: PlatformAdminRequest) {
     return this.admin.createAnnouncement(dto, request);
+  }
+
+  @Get('email-composer/recipients')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_READ)
+  emailComposerRecipients(
+    @Query() query: AdminEmailRecipientsQueryDto,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.emailComposerRecipients(query, request);
+  }
+
+  @Get('email-composer/campaigns/:id')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_READ)
+  emailComposerCampaignStatus(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.emailComposerCampaignStatus(id, request);
+  }
+
+  @Post(['email/send', 'email-composer/send'])
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_SEND)
+  sendComposedEmail(
+    @Body() dto: AdminEmailComposerSendDto,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.sendComposedEmail(dto, request);
   }
 
   @Post('announcements/:id/retry-email')

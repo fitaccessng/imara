@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, ServiceUnavailableException } from '@ne
 import { Plan, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  getPlanMaxUploadBytes,
   PlanEntitlements,
   serializePlanCatalogue,
 } from './plan-entitlements';
@@ -30,6 +31,7 @@ export class PlanCatalogueService {
       staffLimit: catalogue.staffLimit,
       activeEventLimit: catalogue.activeEventLimit,
       storageLimitBytes: catalogue.storageLimitBytes,
+      maxUploadBytes: getPlanMaxUploadBytes(plan),
       canEditDocuments: catalogue.canEditDocuments,
       canScanDocuments: catalogue.canScanDocuments,
       advancedTeamManagement: catalogue.advancedTeamManagement,

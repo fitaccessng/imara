@@ -6,10 +6,10 @@ import {
 import { FolderPermissionEffect, Prisma, StoredFileStatus, WorkspaceMemberStatus, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
-import { assertSameFileExtension, getMaxUploadBytes, UploadInput } from '../storage/storage.service';
+import { assertSameFileExtension, isUploadInput, UploadInput } from '../storage/storage.service';
 import { WorkspacesService } from './workspaces.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
-import { getPlanLimitMessage } from '../subscriptions/plan-entitlements';
+import { assertPlanFileSize, getPlanLimitMessage } from '../subscriptions/plan-entitlements';
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
 
@@ -296,13 +296,15 @@ export class WorkspaceStorageService {
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
     systemGenerated = false,
   ) {
-    if (!file || !Buffer.isBuffer(file.buffer) || !Number.isSafeInteger(file.size) || file.buffer.length !== file.size) {
+    if (!isUploadInput(file)) {
       throw new BadRequestException('The uploaded file is invalid');
     }
-    if (file.size < 1 || (!systemGenerated && file.size > getMaxUploadBytes())) {
-      throw new PayloadTooLargeException('File exceeds the upload size limit');
-    }
+    if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
+    const uploaderSubscription = await this.prisma.subscription.findUnique({ where: { userId } });
+    if (!uploaderSubscription) throw new NotFoundException('Subscription not found');
+    const uploaderPlan = await this.plans.currentPlan(uploaderSubscription);
+    assertPlanFileSize(uploaderPlan, file.size);
     if (folderId && !systemGenerated) await this.allowedFolder(workspaceId, userId, folderId, 'uploadFiles');
     else if (!systemGenerated && member.role !== WorkspaceRole.OWNER && member.role !== WorkspaceRole.ADMIN) throw new NotFoundException('Folder not found');
     await this.objects.assertConfigured();
@@ -320,7 +322,7 @@ export class WorkspaceStorageService {
     const originalName = this.name(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
     try {
-      await this.objects.put(reservation.objectKey, file.buffer, mimeType);
+      await this.objects.put(reservation.objectKey, file.buffer ?? file, mimeType);
       return await this.prisma.$transaction(async (tx) => {
         const finalized = await tx.storedFile.updateMany({
           where: { id: reservation.id, workspaceId, status: StoredFileStatus.UPLOADING, createdAt: { gte: new Date(Date.now() - RESERVATION_TTL_MS) } },
@@ -385,16 +387,17 @@ export class WorkspaceStorageService {
   }
 
   async replaceContent(workspaceId: string, userId: string, fileId: string, replacement: UploadInput, changeSummary?: string) {
-    if (!replacement || !Buffer.isBuffer(replacement.buffer)
-      || !Number.isSafeInteger(replacement.size) || replacement.buffer.length !== replacement.size) {
+    if (!isUploadInput(replacement)) {
       throw new BadRequestException('The uploaded file is invalid');
     }
-    if (replacement.size < 1 || replacement.size > getMaxUploadBytes()) {
-      throw new PayloadTooLargeException('File exceeds the upload size limit');
-    }
+    if (replacement.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
     const current = await this.authorizedFile(workspaceId, userId, fileId, 'editFiles');
     assertSameFileExtension(current.originalName, replacement.originalname);
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
+    const uploaderSubscription = await this.prisma.subscription.findUnique({ where: { userId } });
+    if (!uploaderSubscription) throw new NotFoundException('Subscription not found');
+    const uploaderPlan = await this.plans.currentPlan(uploaderSubscription);
+    assertPlanFileSize(uploaderPlan, replacement.size);
     const subscription = await this.prisma.subscription.findUnique({
       where: { userId: member.workspace.ownerUserId },
     });
@@ -407,7 +410,7 @@ export class WorkspaceStorageService {
     const nextSize = BigInt(replacement.size);
     const delta = nextSize - current.sizeBytes;
     const contentType = (replacement.mimetype || 'application/octet-stream').slice(0, 255);
-    await this.objects.put(nextKey, replacement.buffer, contentType);
+    await this.objects.put(nextKey, replacement.buffer ?? replacement, contentType);
     try {
       await this.prisma.$transaction(async (tx) => {
         const workspace = await tx.workspace.findUnique({ where: { id: workspaceId } });

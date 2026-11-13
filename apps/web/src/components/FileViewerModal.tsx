@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileText, LoaderCircle, Printer, Save, Upload, X } from "lucide-react";
 import { apiBlob, apiRequest } from "../lib/api";
 import { OfficePreviewEditor } from "./OfficePreviewEditor";
@@ -18,6 +18,7 @@ interface FileViewerModalProps {
   canEdit: boolean;
   canDownload: boolean;
   onDownload: () => void;
+  maxUploadBytes?: number;
 }
 
 function isEditableText(file: ViewableFile) {
@@ -33,7 +34,7 @@ function isOfficeDocument(file: ViewableFile) {
   return ["csv", "doc", "docx", "pdf", "ppt", "pptx", "xls", "xlsx"].includes(extension ?? "");
 }
 
-export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canEdit, canDownload, onDownload }: FileViewerModalProps) {
+export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes }: FileViewerModalProps) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [text, setText] = useState("");
   const [savedText, setSavedText] = useState("");
@@ -43,6 +44,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
   const [replacement, setReplacement] = useState<File | null>(null);
   const [replacementError, setReplacementError] = useState("");
   const [officeDirty, setOfficeDirty] = useState(false);
+  const uploadController = useRef<AbortController | null>(null);
   const officeDocument = isOfficeDocument(file);
   const editableText = canEdit && isEditableText(file);
   const canReplace = canEdit && officeDocument;
@@ -88,22 +90,43 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
   async function save() {
     setSaving(true);
     setError("");
+    const controller = new AbortController();
+    uploadController.current = controller;
     try {
       const body = new FormData();
-      body.append("file", new File([text], file.name, { type: file.mimeType || "text/plain" }));
-      await apiRequest(saveUrl, { method: "PATCH", body });
+      const updatedFile = new File([text], file.name, { type: file.mimeType || "text/plain" });
+      if (typeof maxUploadBytes !== "number" || !Number.isSafeInteger(maxUploadBytes) || maxUploadBytes < 1) {
+        throw new Error("Your upload limit could not be checked. Refresh the page before uploading.");
+      }
+      if (updatedFile.size > maxUploadBytes) {
+        throw new Error(`This file exceeds your plan’s ${Math.round(maxUploadBytes / 1024 ** 2)} MiB upload limit. Upgrade your plan for larger files.`);
+      }
+      body.append("file", updatedFile);
+      await apiRequest(saveUrl, { method: "PATCH", body, signal: controller.signal });
       setSavedText(text);
       setBlob(new Blob([text], { type: file.mimeType || "text/plain" }));
       await onSaved();
     } catch (reason) {
+      if (controller.signal.aborted) return;
       setError(reason instanceof Error ? reason.message : "Unable to save this file.");
     } finally {
+      uploadController.current = null;
       setSaving(false);
     }
   }
 
   function chooseReplacement(selected: File | undefined) {
     if (!selected) return;
+    if (typeof maxUploadBytes !== "number" || !Number.isSafeInteger(maxUploadBytes) || maxUploadBytes < 1) {
+      setReplacementError("Your upload limit could not be checked. Refresh the page before uploading.");
+      setReplacement(null);
+      return;
+    }
+    if (selected.size > maxUploadBytes) {
+      setReplacementError(`${selected.name} exceeds your plan’s ${Math.round(maxUploadBytes / 1024 ** 2)} MiB upload limit. Upgrade your plan for larger files.`);
+      setReplacement(null);
+      return;
+    }
     const extension = file.name.split(".").pop()?.toLowerCase();
     const selectedExtension = selected.name.split(".").pop()?.toLowerCase();
     if (!extension || selectedExtension !== extension) {
@@ -118,15 +141,19 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
     if (!replacement) return;
     setSaving(true);
     setReplacementError("");
+    const controller = new AbortController();
+    uploadController.current = controller;
     try {
       const body = new FormData();
       body.append("file", replacement);
-      await apiRequest(saveUrl, { method: "PATCH", body });
+      await apiRequest(saveUrl, { method: "PATCH", body, signal: controller.signal });
       setReplacement(null);
       await onSaved();
     } catch (reason) {
+      if (controller.signal.aborted) return;
       setReplacementError(reason instanceof Error ? reason.message : "Unable to upload the edited file.");
     } finally {
+      uploadController.current = null;
       setSaving(false);
     }
   }
@@ -145,6 +172,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
           <div className="file-viewer-file"><span><FileText size={17} /></span><div><h2 id="file-viewer-title">{file.name}</h2><p>{editableText ? "Text editor" : "File preview"}</p></div></div>
           <div className="file-viewer-actions">
             {editableText && <button className="button button-green" disabled={!dirty || saving || loading} onClick={() => void save()}><Save size={15} />{saving ? "Saving…" : "Save changes"}</button>}
+            {saving && !replacement && <button className="button button-outline" onClick={() => uploadController.current?.abort()}>Cancel upload</button>}
             {canReplace && <>
               <input
                 id={`replace-${file.id}`}
@@ -172,6 +200,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
               blob={blob}
               saveUrl={saveUrl}
               canEdit={canEdit}
+              maxUploadBytes={maxUploadBytes}
               onDirtyChange={setOfficeDirty}
               onSaved={async (updatedBlob) => {
                 setBlob(updatedBlob);
@@ -192,7 +221,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
             <p><strong>{replacement.name}</strong> will replace the current {file.name} version. This can’t be undone.</p>
             {replacementError && <p className="form-alert" role="alert">{replacementError}</p>}
             <div className="folder-move-actions">
-              <button className="button button-outline" onClick={() => { setReplacement(null); setReplacementError(""); }} disabled={saving}>Cancel</button>
+              <button className="button button-outline" onClick={() => saving ? uploadController.current?.abort() : (setReplacement(null), setReplacementError(""))}>{saving ? "Cancel upload" : "Cancel"}</button>
               <button className="button button-green" onClick={() => void uploadReplacement()} disabled={saving}>{saving ? "Uploading…" : "Replace file"}</button>
             </div>
           </section>

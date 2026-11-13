@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { open, stat } from 'node:fs/promises';
 import {
   BadRequestException,
   ConflictException,
@@ -14,16 +16,56 @@ import { ObjectStorageService } from './object-storage.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { getPlanLimitMessage } from '../subscriptions/plan-entitlements';
 import { UpdateFileOrganizationDto } from './storage.dto';
+import { assertPlanFileSize } from '../subscriptions/plan-entitlements';
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
-const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-const HARD_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const HARD_MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 export interface UploadInput {
-  buffer: Buffer;
+  buffer?: Buffer;
+  path?: string;
   originalname: string;
   mimetype: string;
   size: number;
+}
+
+export function isUploadInput(file: UploadInput | undefined | null): file is UploadInput {
+  return Boolean(file && Number.isSafeInteger(file.size) && file.size >= 0
+    && ((Buffer.isBuffer(file.buffer) && file.buffer.length === file.size)
+      || (typeof file.path === 'string' && file.path.length > 0)));
+}
+
+export async function readUploadPrefix(file: UploadInput, byteCount = 12): Promise<Buffer> {
+  if (Buffer.isBuffer(file.buffer)) return file.buffer.subarray(0, byteCount);
+  if (!file.path) return Buffer.alloc(0);
+  const handle = await open(file.path, 'r');
+  try {
+    const bytes = Buffer.alloc(byteCount);
+    const { bytesRead } = await handle.read(bytes, 0, byteCount, 0);
+    return bytes.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function hashUploadInput(file: UploadInput): Promise<string> {
+  const hash = createHash('sha256');
+  let actualSize = 0;
+  if (Buffer.isBuffer(file.buffer)) {
+    actualSize = file.buffer.length;
+    hash.update(file.buffer);
+  } else if (file.path) {
+    const info = await stat(file.path);
+    if (!info.isFile() || info.size !== file.size) throw new BadRequestException('The uploaded file size is invalid');
+    for await (const chunk of createReadStream(file.path)) {
+      actualSize += (chunk as Buffer).length;
+      hash.update(chunk as Buffer);
+    }
+  } else {
+    throw new BadRequestException('Upload file is required');
+  }
+  if (actualSize !== file.size) throw new BadRequestException('The uploaded file size is invalid');
+  return hash.digest('hex');
 }
 
 export function assertSameFileExtension(currentName: string, replacementName: string): void {
@@ -38,11 +80,7 @@ export function assertSameFileExtension(currentName: string, replacementName: st
 }
 
 export function getMaxUploadBytes(): number {
-  const maxBytes = Number(process.env.MAX_UPLOAD_BYTES ?? DEFAULT_MAX_UPLOAD_BYTES);
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > HARD_MAX_UPLOAD_BYTES) {
-    throw new Error(`MAX_UPLOAD_BYTES must be an integer between 1 and ${HARD_MAX_UPLOAD_BYTES}`);
-  }
-  return maxBytes;
+  return HARD_MAX_UPLOAD_BYTES;
 }
 
 function storageFailureContext(error: unknown): string {
@@ -499,6 +537,7 @@ export class StorageService {
           if (!subscription) throw new NotFoundException('Subscription not found');
           const plan = await this.plans.currentPlan(subscription, tx);
           const entitlements = await this.plans.getEntitlements(plan, tx);
+          assertPlanFileSize(plan, Number(sizeBytes));
           if (requiredFeature) {
             await this.plans.requireFeature(plan, requiredFeature, tx);
           }
@@ -557,22 +596,25 @@ export class StorageService {
     folderId?: string,
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
   ) {
-    if (!file || !Buffer.isBuffer(file.buffer)) throw new BadRequestException('Upload file is required');
-    if (!Number.isSafeInteger(file.size) || file.buffer.length !== file.size) {
+    if (!isUploadInput(file)) throw new BadRequestException('The uploaded file size is invalid');
+    if (!Number.isSafeInteger(file.size)) {
       throw new BadRequestException('The uploaded file size is invalid');
     }
 
     if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
-    if (file.size > getMaxUploadBytes()) throw new PayloadTooLargeException('File exceeds the upload size limit');
+    const subscription = await this.prisma.subscription.findUnique({ where: { userId } });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription);
+    assertPlanFileSize(plan, file.size);
     await this.objects.assertConfigured();
     const sizeBytes = BigInt(file.size);
     const reserved = await this.reserve(userId, sizeBytes, folderId, requiredFeature);
     const name = this.safeName(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
-    const contentHash = createHash('sha256').update(file.buffer).digest('hex');
     const category = this.categorizeFile(name, mimeType);
     try {
-      await this.objects.put(reserved.objectKey, file.buffer, mimeType);
+      const contentHash = await hashUploadInput(file);
+      await this.objects.put(reserved.objectKey, file.buffer ?? file, mimeType);
       return await this.prisma.$transaction(async (tx) => {
         const finalized = await tx.storedFile.updateMany({
           where: { id: reserved.id, userId, workspaceId: null, status: StoredFileStatus.UPLOADING, createdAt: { gte: new Date(Date.now() - RESERVATION_TTL_MS) } },
@@ -624,13 +666,10 @@ export class StorageService {
   }
 
   async replaceContent(userId: string, fileId: string, replacement: UploadInput, _changeSummary?: string) {
-    if (!replacement || !Buffer.isBuffer(replacement.buffer)
-      || !Number.isSafeInteger(replacement.size) || replacement.buffer.length !== replacement.size) {
+    if (!isUploadInput(replacement)) {
       throw new BadRequestException('The uploaded file is invalid');
     }
-    if (replacement.size < 1 || replacement.size > getMaxUploadBytes()) {
-      throw new PayloadTooLargeException('File exceeds the upload size limit');
-    }
+    if (replacement.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
     const current = await this.prisma.storedFile.findFirst({
       where: { id: fileId, userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null },
       select: { id: true, objectKey: true, originalName: true, sizeBytes: true },
@@ -639,6 +678,7 @@ export class StorageService {
     const subscription = await this.prisma.subscription.findUnique({ where: { userId } });
     if (!subscription) throw new NotFoundException('Subscription not found');
     const plan = await this.plans.currentPlan(subscription);
+    assertPlanFileSize(plan, replacement.size);
     await this.plans.requireFeature(plan, 'canEditDocuments');
     assertSameFileExtension(current.originalName, replacement.originalname);
     await this.objects.assertConfigured();
@@ -647,7 +687,8 @@ export class StorageService {
     const nextSize = BigInt(replacement.size);
     const delta = nextSize - current.sizeBytes;
     const contentType = (replacement.mimetype || 'application/octet-stream').slice(0, 255);
-    await this.objects.put(nextKey, replacement.buffer, contentType);
+    const contentHash = await hashUploadInput(replacement);
+    await this.objects.put(nextKey, replacement.buffer ?? replacement, contentType);
     try {
       await this.prisma.$transaction(async (tx) => {
         const subscription = await tx.subscription.findUnique({ where: { userId } });
@@ -682,7 +723,7 @@ export class StorageService {
             objectKey: nextKey,
             sizeBytes: nextSize,
             mimeType: contentType,
-            contentHash: createHash('sha256').update(replacement.buffer).digest('hex'),
+            contentHash,
           },
         });
         if (!updated.count) throw new ConflictException('This file changed while you were editing. Reload it and try again.');
@@ -732,6 +773,7 @@ export class StorageService {
           if (!subscription) throw new NotFoundException('Subscription not found');
           const plan = await this.plans.currentPlan(subscription, tx);
           const entitlements = await this.plans.getEntitlements(plan, tx);
+          assertPlanFileSize(plan, Number(fileSize));
           if (
             subscription.storageUsedBytes + subscription.storageReservedBytes + fileSize
             > entitlements.storageLimitBytes
@@ -791,19 +833,17 @@ export class StorageService {
   }
 
   async uploadEvent(eventId: string, file: UploadInput) {
-    if (!file || !Buffer.isBuffer(file.buffer)) throw new BadRequestException('Upload file is required');
-    if (!Number.isSafeInteger(file.size) || file.buffer.length !== file.size) {
+    if (!isUploadInput(file)) {
       throw new BadRequestException('The uploaded file size is invalid');
     }
     if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
-    if (file.size > getMaxUploadBytes()) throw new PayloadTooLargeException('File exceeds the upload size limit');
     await this.objects.assertConfigured();
     const sizeBytes = BigInt(file.size);
     const reserved = await this.reserveEventUpload(eventId, sizeBytes);
     const name = this.safeName(file.originalname);
     const mimeType = file.mimetype.slice(0, 255);
     try {
-      await this.objects.put(reserved.objectKey, file.buffer, mimeType);
+      await this.objects.put(reserved.objectKey, file.buffer ?? file, mimeType);
       return await this.prisma.$transaction(async (tx) => {
         const event = await tx.event.findFirst({
           where: { id: eventId, ownerUserId: reserved.userId, status: EventStatus.ACTIVE },

@@ -2,12 +2,12 @@ import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post,
   Query, Req, Res, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
 import { RenameFolderDto, ReplaceFileContentDto, UploadFileDto } from '../storage/storage.dto';
-import { getMaxUploadBytes, UploadInput } from '../storage/storage.service';
+import { UploadInput } from '../storage/storage.service';
+import { TempUploadInterceptor } from '../storage/temp-upload.interceptor';
 import { CreateWorkspaceFolderDto, MoveWorkspaceFileDto, RenameWorkspaceFileDto } from './workspace-storage.dto';
 import { WorkspaceStorageService } from './workspace-storage.service';
 import { FileDeliveryService } from './file-delivery.service';
@@ -77,7 +77,7 @@ export class WorkspaceStorageController {
 
   @Post('files')
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  @UseInterceptors(TempUploadInterceptor())
   upload(
     @Req() req: AuthenticatedRequest,
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
@@ -89,7 +89,7 @@ export class WorkspaceStorageController {
 
   @Post('files/scan')
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  @UseInterceptors(TempUploadInterceptor())
   uploadScannedFile(
     @Req() req: AuthenticatedRequest,
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
@@ -100,7 +100,7 @@ export class WorkspaceStorageController {
   }
 
   @Patch('files/:fileId/content')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: getMaxUploadBytes(), files: 1 } }))
+  @UseInterceptors(TempUploadInterceptor())
   replaceFileContent(
     @Req() req: AuthenticatedRequest,
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,

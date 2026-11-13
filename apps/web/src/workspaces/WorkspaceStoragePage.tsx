@@ -66,6 +66,10 @@ export function WorkspaceStoragePage() {
     queryFn: () => apiRequest<WorkspaceFolderContents>(`/workspaces/${workspaceId}/storage${folderId ? `?folderId=${encodeURIComponent(folderId)}` : ""}`),
     enabled: Boolean(workspaceId),
   });
+  const uploadPolicyQuery = useQuery({
+    queryKey: ["subscription"],
+    queryFn: () => apiRequest<{ storage: { maxUploadBytes: string } }>("/subscription"),
+  });
   const currentFolder = accessibleFoldersQuery.data?.find((folder) => folder.id === folderId);
   const rights = new Set(currentFolder?.permissions ?? []);
   const canCreateFolder = isAdministrator || rights.has("createSubfolders");
@@ -215,6 +219,8 @@ export function WorkspaceStoragePage() {
   const folders = contentsQuery.data?.folders ?? [];
   const files = contentsQuery.data?.files ?? [];
   const currentPermissions = currentFolder?.permissions ?? [];
+  const uploadLimitBytes = Number(uploadPolicyQuery.data?.storage.maxUploadBytes);
+  const uploadPolicyReady = Number.isSafeInteger(uploadLimitBytes) && uploadLimitBytes > 0;
   const busy = createFolder.isPending || uploadFile.isPending || batchUploadBusy;
   const canViewFiles = isAdministrator || currentPermissions.includes("viewFiles");
   const hasWorkspaceContent = Boolean(folders.length || files.length);
@@ -237,24 +243,26 @@ export function WorkspaceStoragePage() {
           {canUpload && (
             <>
               <CreateDocumentButton<WorkspaceFile>
-                disabled={busy}
+                disabled={busy || !uploadPolicyReady}
                 onCreate={(file) => uploadFile.mutateAsync(file)}
                 onCreated={setViewingFile}
               />
               <BatchUploadControls
-                disabled={busy}
+                disabled={busy || !uploadPolicyReady}
                 canCreateFolders={canCreateFolder}
                 rootFolderId={folderId}
-                getFolders={async (parentFolderId) => (await apiRequest<WorkspaceFolderContents>(`/workspaces/${workspaceId}/storage${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`)).folders}
-                createFolder={(name, parentFolderId) => apiRequest<WorkspaceFolder>(`/workspaces/${workspaceId}/folders`, {
+                maxFileSizeBytes={uploadLimitBytes}
+                getFolders={async (parentFolderId, signal) => (await apiRequest<WorkspaceFolderContents>(`/workspaces/${workspaceId}/storage${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`, { signal })).folders}
+                createFolder={(name, parentFolderId, signal) => apiRequest<WorkspaceFolder>(`/workspaces/${workspaceId}/folders`, {
                   method: "POST",
                   body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
+                  signal,
                 })}
-                uploadFile={(file, parentFolderId) => {
+                uploadFile={(file, parentFolderId, signal) => {
                   const form = new FormData();
                   form.append("file", file);
                   if (parentFolderId) form.append("folderId", parentFolderId);
-                  return apiRequest<WorkspaceFile>(`/workspaces/${workspaceId}/files`, { method: "POST", body: form });
+                  return apiRequest<WorkspaceFile>(`/workspaces/${workspaceId}/files`, { method: "POST", body: form, signal });
                 }}
                 onComplete={refreshLibrary}
                 onBusyChange={setBatchUploadBusy}
@@ -263,6 +271,7 @@ export function WorkspaceStoragePage() {
           )}
         </div>
       </div>
+      {canUpload && uploadPolicyQuery.isError && <p className="inline-error" role="alert">Your upload limit could not be checked. Refresh the page before uploading.</p>}
 
       <div className="files-toolbar workspace-files-toolbar">
         <div className="files-breadcrumb">
@@ -280,8 +289,9 @@ export function WorkspaceStoragePage() {
           folderId={folderId}
           folderName={currentFolder?.name ?? `${workspace.name} files`}
           canDownload={isAdministrator || Boolean(folderId && currentPermissions.includes("downloadFiles"))}
-          canExtract={canUpload}
+          canExtract={canUpload && uploadPolicyReady}
           canCreateFolders={canCreateFolder}
+          maxUploadBytes={uploadLimitBytes}
           onComplete={refreshLibrary}
         />
       </div>
@@ -322,8 +332,9 @@ export function WorkspaceStoragePage() {
                   folderId={folderId}
                   folderName={currentFolder?.name ?? `${workspace.name} files`}
                   canDownload={isAdministrator || currentPermissions.includes("downloadFiles")}
-                  canExtract={canUpload}
+                  canExtract={canUpload && uploadPolicyReady}
                   canCreateFolders={canCreateFolder}
+                  maxUploadBytes={uploadLimitBytes}
                   onComplete={refreshLibrary}
                 />
                 {(isAdministrator || currentPermissions.includes("viewFiles")) && <button aria-label={`View ${file.name}`} title="View file" onClick={() => setViewingFile(file)}><Eye size={15} /></button>}
@@ -350,6 +361,7 @@ export function WorkspaceStoragePage() {
         file={viewingFile}
         readUrl={`/workspaces/${workspaceId}/files/${viewingFile.id}/download`}
         saveUrl={`/workspaces/${workspaceId}/files/${viewingFile.id}/content`}
+        maxUploadBytes={uploadLimitBytes}
         canEdit={isAdministrator || currentPermissions.includes("editFiles")}
         canDownload={isAdministrator || currentPermissions.includes("downloadFiles")}
         onClose={() => setViewingFile(null)}

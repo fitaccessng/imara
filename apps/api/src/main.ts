@@ -7,7 +7,8 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const sameSite = process.env.COOKIE_SAME_SITE ?? 'lax';
+  const sameSite = process.env.COOKIE_SAME_SITE
+    ?? (process.env.NODE_ENV === 'production' ? 'none' : 'lax');
   const secureCookie = process.env.COOKIE_SECURE === 'true';
   if (process.env.NODE_ENV === 'production' && !secureCookie) {
     throw new Error('COOKIE_SECURE=true is required in production');

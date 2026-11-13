@@ -26,6 +26,13 @@ export class RegisterDto {
   @IsString()
   @MaxLength(160)
   workspaceName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(32)
+  @Matches(/^[A-Za-z0-9]+$/)
+  referralCode?: string;
 }
 
 export class LoginDto {

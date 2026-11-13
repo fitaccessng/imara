@@ -57,6 +57,10 @@ export function FilesPage() {
     queryKey: ["storage-files", folderId ?? null],
     queryFn: () => apiRequest<FolderContents>(`/files${folderId ? `?folderId=${encodeURIComponent(folderId)}` : ""}`),
   });
+  const uploadPolicyQuery = useQuery({
+    queryKey: ["subscription"],
+    queryFn: () => apiRequest<{ storage: { maxUploadBytes: string } }>("/subscription"),
+  });
   const currentFolderQuery = useQuery({
     queryKey: ["storage-folder", folderId],
     queryFn: () => apiRequest<UserFolder>(`/folders/${folderId}`),
@@ -239,6 +243,8 @@ export function FilesPage() {
     }
   }
   const moveTargets = folderTree.filter((folder) => !excludedMoveTargets.has(folder.id));
+  const uploadLimitBytes = Number(uploadPolicyQuery.data?.storage.maxUploadBytes);
+  const uploadPolicyReady = Number.isSafeInteger(uploadLimitBytes) && uploadLimitBytes > 0;
   const busy = createFolder.isPending || uploadFile.isPending || batchUploadBusy || deleteFile.isPending || setFavorite.isPending || deleteFolder.isPending || moveFolder.isPending;
 
   return (
@@ -250,37 +256,40 @@ export function FilesPage() {
           <p className="page-subtitle">A private home for the documents you want to keep.</p>
         </div>
         <div className="files-heading-actions">
-          <Link className="button button-outline" to={folderId ? `/scanner?folder=${encodeURIComponent(folderId)}` : "/scanner"}>
+          <Link className="button button-outline files-scan-button" to={folderId ? `/scanner?folder=${encodeURIComponent(folderId)}` : "/scanner"}>
             <Camera size={15} /> Scan a document
           </Link>
           <button className="button button-outline" type="button" onClick={() => setCreateFolderOpen(true)}>
             <FolderPlus size={15} /> New folder
           </button>
           <CreateDocumentButton<StoredFile>
-            disabled={busy}
+            disabled={busy || !uploadPolicyReady}
             onCreate={(file) => uploadFile.mutateAsync(file)}
             onCreated={setViewingFile}
           />
           <BatchUploadControls
-            disabled={busy}
+            disabled={busy || !uploadPolicyReady}
             canCreateFolders
             rootFolderId={folderId}
-            getFolders={async (parentFolderId) => (await apiRequest<FolderContents>(`/files${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`)).folders}
-            createFolder={(name, parentFolderId) => apiRequest<UserFolder>("/folders", {
+            maxFileSizeBytes={uploadLimitBytes}
+            getFolders={async (parentFolderId, signal) => (await apiRequest<FolderContents>(`/files${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`, { signal })).folders}
+            createFolder={(name, parentFolderId, signal) => apiRequest<UserFolder>("/folders", {
               method: "POST",
               body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
+              signal,
             })}
-            uploadFile={(file, parentFolderId) => {
+            uploadFile={(file, parentFolderId, signal) => {
               const form = new FormData();
               form.append("file", file);
               if (parentFolderId) form.append("folderId", parentFolderId);
-              return apiRequest<StoredFile>("/files", { method: "POST", body: form });
+              return apiRequest<StoredFile>("/files", { method: "POST", body: form, signal });
             }}
             onComplete={refreshLibrary}
             onBusyChange={setBatchUploadBusy}
           />
         </div>
       </div>
+      {uploadPolicyQuery.isError && <p className="inline-error" role="alert">Your upload limit could not be checked. Refresh the page before uploading.</p>}
 
       <div className="files-toolbar">
         <div className="files-breadcrumb">
@@ -296,8 +305,9 @@ export function FilesPage() {
           folderId={folderId}
           folderName={currentFolderQuery.data?.name ?? "Your files"}
           canDownload
-          canExtract
+          canExtract={uploadPolicyReady}
           canCreateFolders
+          maxUploadBytes={uploadLimitBytes}
           onComplete={refreshLibrary}
         />
       </div>
@@ -384,8 +394,9 @@ export function FilesPage() {
                       folderId={folderId}
                       folderName={currentFolderQuery.data?.name ?? "Your files"}
                       canDownload
-                      canExtract
+                      canExtract={uploadPolicyReady}
                       canCreateFolders
+                      maxUploadBytes={uploadLimitBytes}
                       onComplete={refreshLibrary}
                     />
                     <button className="file-action-item file-action-danger" onClick={(event) => {
@@ -491,6 +502,7 @@ export function FilesPage() {
         file={viewingFile}
         readUrl={`/files/${viewingFile.id}/download`}
         saveUrl={`/files/${viewingFile.id}/content`}
+        maxUploadBytes={uploadLimitBytes}
         canEdit
         canDownload
         onClose={() => setViewingFile(null)}
@@ -499,7 +511,7 @@ export function FilesPage() {
       />}
       {sharingFile && <FileShareDialog file={sharingFile} sharesUrl={`/files/${encodeURIComponent(sharingFile.id)}/shares`} onClose={() => setSharingFile(null)} />}
       {actionModal && <ActionModal request={actionModal} onClose={() => setActionModal(null)} />}
-      <p className="storage-footnote">Files use your account’s storage quota. Individual uploads are limited to 25 MiB.</p>
+      <p className="storage-footnote">Files use your account’s storage quota. Per-file upload limits depend on your plan.</p>
     </div>
   );
 }

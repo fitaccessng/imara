@@ -116,7 +116,7 @@ const sections: DocSection[] = [
         points: [
           "Open the scanner and capture pages with a device camera or add supported images from your device.",
           "Review and reorder pages, and use the available page tools to prepare a readable document.",
-          "A scan can contain up to 100 pages. The PDF upload limit is 25 MB; reduce the page count or use smaller images if the file exceeds it.",
+          "A scan can contain up to 100 pages. The resulting PDF must fit within your plan’s per-file upload limit; reduce the page count or use smaller images if it exceeds the limit.",
         ],
       },
       {

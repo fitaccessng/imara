@@ -25,6 +25,8 @@ export enum PlatformAdminPermission {
   PLATFORM_HEALTH_READ = 'admin.platform-health.read',
   SUPPORT_TICKETS_READ = 'admin.support-tickets.read',
   SUPPORT_TICKETS_UPDATE = 'admin.support-tickets.update',
+  REFERRALS_READ = 'admin.referrals.read',
+  REFERRALS_UPDATE = 'admin.referrals.update',
 }
 
 export const PLATFORM_ADMIN_PERMISSIONS: Readonly<
@@ -60,6 +62,8 @@ export const PLATFORM_ADMIN_PERMISSIONS: Readonly<
     PlatformAdminPermission.DASHBOARD_OVERVIEW_READ,
     PlatformAdminPermission.ANNOUNCEMENTS_READ,
     PlatformAdminPermission.ANNOUNCEMENTS_SEND,
+    PlatformAdminPermission.REFERRALS_READ,
+    PlatformAdminPermission.REFERRALS_UPDATE,
   ],
   [PlatformAdminRole.OPERATIONS_ADMIN]: [
     PlatformAdminPermission.DASHBOARD_OVERVIEW_READ,

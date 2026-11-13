@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -7,7 +8,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomInt } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import {
   Plan,
   Prisma,
@@ -22,6 +23,7 @@ import { hashPassword, verifyPassword } from './password';
 import { createOpaqueToken, hashToken } from './token';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { serializePlanEntitlements } from '../subscriptions/plan-entitlements';
+import { creditVerifiedReferral } from '../referrals/referrals.service';
 
 @Injectable()
 export class AuthService {
@@ -67,7 +69,8 @@ export class AuthService {
   }
 
   async register(input: {
-    email: string; password: string; name: string; accountType?: 'PERSONAL' | 'BUSINESS'; workspaceName?: string;
+    email: string; password: string; name: string; accountType?: 'PERSONAL' | 'BUSINESS';
+    workspaceName?: string; referralCode?: string;
   }) {
     this.requireMailer();
     const skipEmailVerification = this.mailer.isLocalConsoleMode();
@@ -77,11 +80,22 @@ export class AuthService {
     try {
       user = await this.prisma.$transaction(async (tx) => {
         const freePlan = await this.plans.getPlan(Plan.FREE, tx);
+        const inviter = input.referralCode
+          ? await tx.user.findUnique({
+            where: { referralCode: input.referralCode.trim().toUpperCase() },
+            select: { id: true },
+          })
+          : null;
+        if (input.referralCode && !inviter) {
+          throw new BadRequestException('Referral code is invalid');
+        }
         const created = await tx.user.create({
           data: {
             email,
             name: input.name.trim(),
             passwordHash,
+            referralCode: randomUUID().replace(/-/g, '').toUpperCase(),
+            ...(inviter ? { referredByUserId: inviter.id } : {}),
             ...(skipEmailVerification ? { emailVerifiedAt: new Date() } : {}),
             subscription: {
               create: {
@@ -92,6 +106,9 @@ export class AuthService {
             },
           },
         });
+        if (skipEmailVerification && inviter) {
+          await creditVerifiedReferral(tx, inviter.id);
+        }
         if (input.accountType === 'BUSINESS') {
           const workspaceName = input.workspaceName?.replace(/[\u0000-\u001f\u007f]/g, '').trim()
             || `${input.name.trim().replace(/[\u0000-\u001f\u007f]/g, '')}'s workspace`;
@@ -165,7 +182,7 @@ export class AuthService {
     }
   }
 
-  async verifyEmail(rawToken: string): Promise<void> {
+  async verifyEmail(rawToken: string, userAgent?: string) {
     const tokenHash = hashToken(rawToken);
     const record = await this.prisma.verificationToken.findUnique({ where: { tokenHash } });
     if (!record || record.expiresAt <= new Date()) throw new UnauthorizedException('Verification token is invalid or expired');
@@ -174,16 +191,26 @@ export class AuthService {
         where: { tokenHash, userId: record.userId, expiresAt: { gt: new Date() } },
       });
       if (!consumed.count) throw new UnauthorizedException('Verification token is invalid or expired');
-      await tx.user.update({ where: { id: record.userId }, data: { emailVerifiedAt: new Date() } });
+      const verifiedUser = await tx.user.update({
+        where: { id: record.userId },
+        data: { emailVerifiedAt: new Date() },
+      });
+      await creditVerifiedReferral(tx, verifiedUser?.referredByUserId);
       await tx.verificationToken.deleteMany({ where: { userId: record.userId } });
     });
+    const user = await this.prisma.user.findUnique({
+      where: { id: record.userId },
+      select: { id: true, email: true, name: true, role: true, emailVerifiedAt: true, accountStatus: true },
+    });
+    if (!user || !user.emailVerifiedAt) throw new UnauthorizedException('Verification token is invalid or expired');
+    return this.createSession(user, userAgent);
   }
 
-  async verifyEmailCode(emailInput: string, code: string): Promise<void> {
+  async verifyEmailCode(emailInput: string, code: string, userAgent?: string) {
     const email = emailInput.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
-      select: { id: true, emailVerifiedAt: true },
+      select: { id: true, email: true, name: true, role: true, emailVerifiedAt: true, accountStatus: true },
     });
     if (!user || user.emailVerifiedAt) {
       throw new UnauthorizedException('Verification code is invalid or expired');
@@ -213,12 +240,17 @@ export class AuthService {
         where: { id: record.id, expiresAt: { gt: now }, failedAttempts: { lt: 5 } },
       });
       if (!consumed.count) return false;
-      await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: now } });
+      const verifiedUser = await tx.user.update({
+        where: { id: user.id },
+        data: { emailVerifiedAt: now },
+      });
+      await creditVerifiedReferral(tx, verifiedUser?.referredByUserId);
       await tx.verificationToken.deleteMany({ where: { userId: user.id } });
       return true;
     });
 
     if (!verified) throw new UnauthorizedException('Verification code is invalid or expired');
+    return this.createSession({ ...user, emailVerifiedAt: now }, userAgent);
   }
 
   async login(emailInput: string, password: string, userAgent?: string) {
@@ -237,6 +269,20 @@ export class AuthService {
     if (!user.emailVerifiedAt && !this.mailer.isLocalConsoleMode()) {
       throw new ForbiddenException('Verify your email before signing in');
     }
+    return this.createSession(user, userAgent);
+  }
+
+  private async createSession(
+    user: {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      emailVerifiedAt: Date | null;
+      accountStatus: UserAccountStatus;
+    },
+    userAgent?: string,
+  ) {
     const rawToken = createOpaqueToken();
     const ttlDays = Number(process.env.SESSION_TTL_DAYS ?? 30);
     const expiresAt = new Date(Date.now() + ttlDays * 86_400_000);
@@ -418,9 +464,10 @@ export class AuthService {
 
   async getSubscription(userId: string) {
     const subscription = await this.prisma.subscription.findUniqueOrThrow({ where: { userId } });
-    const entitlements = await this.plans.getEntitlements(subscription.plan);
+    const plan = await this.plans.currentPlan(subscription);
+    const entitlements = await this.plans.getEntitlements(plan);
     return {
-      plan: subscription.plan.toLowerCase(),
+      plan: plan.toLowerCase(),
       currentPeriodStart: subscription.currentPeriodStart,
       currentPeriodEnd: subscription.currentPeriodEnd,
       autoRenew: false,
@@ -429,6 +476,7 @@ export class AuthService {
         usedBytes: subscription.storageUsedBytes.toString(),
         reservedBytes: subscription.storageReservedBytes.toString(),
         limitBytes: entitlements.storageLimitBytes.toString(),
+        maxUploadBytes: entitlements.maxUploadBytes.toString(),
         availableBytes: (
           entitlements.storageLimitBytes
           - subscription.storageUsedBytes

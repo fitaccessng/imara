@@ -28,6 +28,7 @@ interface FolderZipToolsProps {
   canDownload: boolean;
   canExtract: boolean;
   canCreateFolders: boolean;
+  maxUploadBytes: number;
   onComplete: () => Promise<void>;
 }
 
@@ -115,6 +116,7 @@ export function FolderZipTools({
   canDownload,
   canExtract,
   canCreateFolders,
+  maxUploadBytes,
   onComplete,
 }: FolderZipToolsProps) {
   const [busy, setBusy] = useState(false);
@@ -209,7 +211,7 @@ export function FolderZipTools({
 
   async function extractArchive(file: File) {
     if (file.size > MAX_ARCHIVE_INPUT_BYTES) {
-      throw new Error("ZIP files must be 25 MB or smaller.");
+      throw new Error("ZIP archives are limited to 25 MiB for browser-based extraction.");
     }
     const { default: JSZip } = await import("jszip");
     const archive = await JSZip.loadAsync(file);
@@ -307,8 +309,8 @@ export function FolderZipTools({
       if (!name) continue;
       try {
         const parentId = await ensureFolder(segments.slice(0, -1));
-        if (size > MAX_ARCHIVE_INPUT_BYTES) {
-          throw new Error(`${name} exceeds the 25 MB per-file upload limit.`);
+        if (size > maxUploadBytes) {
+          throw new Error(`${name} exceeds your plan’s ${Math.round(maxUploadBytes / 1024 ** 2)} MiB per-file upload limit.`);
         }
         const blob = await entry.async("blob");
         const body = new FormData();
@@ -346,7 +348,7 @@ export function FolderZipTools({
         (metadata) => setStatus(`Compressing ZIP… ${Math.round(metadata.percent)}%`),
       );
       if (blob.size > MAX_ARCHIVE_INPUT_BYTES) {
-        throw new Error("The ZIP exceeds the 25 MB per-file upload limit.");
+        throw new Error("This ZIP is too large to prepare in the browser (25 MiB maximum).");
       }
 
       const contents = await getContents(folderId);

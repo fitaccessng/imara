@@ -1,9 +1,12 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { constants } from 'node:fs';
-import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { access, copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+
+type StorageUpload = Buffer | { buffer?: Buffer; path?: string; size: number };
 
 @Injectable()
 export class ObjectStorageService {
@@ -76,7 +79,7 @@ export class ObjectStorageService {
     return `/objects/${segments.map(encodeURIComponent).join('/')}`;
   }
 
-  private async requestHivePod(pathname: string, init: RequestInit = {}): Promise<Response> {
+  private async requestHivePod(pathname: string, init: RequestInit = {}, timeoutMs = 120_000): Promise<Response> {
     const { baseUrl, token } = this.hivePodConfiguration();
     try {
       return await fetch(`${baseUrl}${pathname}`, {
@@ -85,7 +88,7 @@ export class ObjectStorageService {
           ...init.headers,
           Authorization: `Bearer ${token}`,
         },
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       throw new ServiceUnavailableException('HivePod file storage is temporarily unavailable.');
@@ -146,16 +149,33 @@ export class ObjectStorageService {
     return this.client;
   }
 
-  async put(key: string, body: Buffer, contentType: string): Promise<void> {
+  async put(key: string, body: StorageUpload, contentType: string): Promise<void> {
+    const buffer = Buffer.isBuffer(body) ? body : body.buffer;
+    const sourcePath = Buffer.isBuffer(body) ? undefined : body.path;
+    const size = Buffer.isBuffer(body) ? body.length : body.size;
+    if (!Number.isSafeInteger(size) || size < 1 || (!buffer && !sourcePath)) {
+      throw new BadRequestException('The uploaded file is invalid.');
+    }
+    if (sourcePath) {
+      try {
+        const info = await stat(sourcePath);
+        if (!info.isFile() || info.size !== size) throw new Error('Upload file changed');
+      } catch {
+        throw new BadRequestException('The uploaded file size is invalid.');
+      }
+    }
     if (this.driver() === 'hivepod') {
       const response = await this.requestHivePod(this.objectPath(key), {
         method: 'PUT',
         headers: {
           'Content-Type': contentType,
-          'Content-Length': String(body.length),
+          'Content-Length': String(size),
         },
-        body: new Uint8Array(body),
-      });
+        body: buffer
+          ? new Uint8Array(buffer)
+          : Readable.toWeb(createReadStream(sourcePath!)) as ReadableStream,
+        ...(buffer ? {} : { duplex: 'half' }),
+      } as RequestInit, 30 * 60 * 1000);
       if (!response.ok) throw new ServiceUnavailableException('HivePod file storage could not save the file.');
       return;
     }
@@ -164,14 +184,15 @@ export class ObjectStorageService {
       await this.assertDirectoryAvailable(directory);
       const filePath = this.localPath(key);
       await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, body);
+      if (buffer) await writeFile(filePath, buffer);
+      else await copyFile(sourcePath!, filePath);
       return;
     }
     await this.getClient().send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
-      Body: body,
-      ContentLength: body.length,
+      Body: buffer ?? createReadStream(sourcePath!),
+      ContentLength: size,
       ContentType: contentType,
     }));
   }

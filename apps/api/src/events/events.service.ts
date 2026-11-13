@@ -13,7 +13,13 @@ import { hashPassword, verifyPassword } from '../auth/password';
 import { hashToken } from '../auth/token';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
-import { getMaxUploadBytes, StorageService, type UploadInput } from '../storage/storage.service';
+import {
+  getMaxUploadBytes,
+  isUploadInput,
+  readUploadPrefix,
+  StorageService,
+  type UploadInput,
+} from '../storage/storage.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { assertPlanCapacity } from '../subscriptions/plan-entitlements';
 import { CreateEventDto, GallerySettingDto, UpdateEventDto } from './events.dto';
@@ -35,10 +41,10 @@ const EVENT_SELECT = {
 } satisfies Prisma.EventSelect;
 type EventSummary = Prisma.EventGetPayload<{ select: typeof EVENT_SELECT }>;
 
-export function isSupportedMedia(file: UploadInput): boolean {
-  if (!file || !Buffer.isBuffer(file.buffer) || !Number.isSafeInteger(file.size)
-    || file.size < 1 || file.size !== file.buffer.length || file.size > getMaxUploadBytes()) return false;
-  const b = file.buffer;
+export async function isSupportedMedia(file: UploadInput): Promise<boolean> {
+  if (!isUploadInput(file) || !Number.isSafeInteger(file.size)
+    || file.size < 1 || file.size > getMaxUploadBytes()) return false;
+  const b = await readUploadPrefix(file);
   const mimeType = file.mimetype.split(';', 1)[0].trim().toLowerCase();
   switch (mimeType) {
     case 'image/jpeg':
@@ -238,7 +244,7 @@ export class EventsService {
   private async activeCaptureEvent(token: string) {
     const event = await this.prisma.event.findFirst({
       where: { captureTokenHash: hashToken(token), status: EventStatus.ACTIVE },
-      select: { id: true, name: true, date: true, description: true },
+      select: { id: true, ownerUserId: true, name: true, date: true, description: true },
     });
     if (!event) throw new NotFoundException('Event not found');
     return event;
@@ -246,14 +252,24 @@ export class EventsService {
 
   async captureInfo(token: string) {
     const event = await this.activeCaptureEvent(token);
-    return { id: event.id, name: event.name, date: event.date, description: event.description };
+    const subscription = await this.prisma.subscription.findUnique({ where: { userId: event.ownerUserId } });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+    const plan = await this.plans.currentPlan(subscription);
+    const entitlements = await this.plans.getEntitlements(plan);
+    return {
+      id: event.id,
+      name: event.name,
+      date: event.date,
+      description: event.description,
+      maxUploadBytes: entitlements.maxUploadBytes.toString(),
+    };
   }
 
   async captureUpload(token: string, file: UploadInput) {
     if (file && Number.isSafeInteger(file.size) && file.size > getMaxUploadBytes()) {
       throw new PayloadTooLargeException('File exceeds the upload size limit');
     }
-    if (!isSupportedMedia(file)) {
+    if (!await isSupportedMedia(file)) {
       throw new BadRequestException('Only valid JPEG, PNG, GIF, WebP, MP4, QuickTime, or WebM media is accepted');
     }
     const event = await this.activeCaptureEvent(token);

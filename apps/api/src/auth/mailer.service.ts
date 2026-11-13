@@ -2,6 +2,15 @@ import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from
 import * as nodemailer from 'nodemailer';
 import type { Readable } from 'node:stream';
 
+function escapeEmailText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Injectable()
 export class MailerService implements OnModuleDestroy {
   private readonly logger = new Logger(MailerService.name);
@@ -143,6 +152,30 @@ export class MailerService implements OnModuleDestroy {
     });
   }
 
+  async sendHtmlEmail(
+    to: string,
+    subject: string,
+    html: string,
+    preheader?: string | null,
+  ): Promise<void> {
+    if (!this.isSmtpConfigured()) {
+      throw new ServiceUnavailableException(
+        'SMTP email delivery is not configured for email composer.',
+      );
+    }
+    if (/[\r\n\u0000-\u001f\u007f]/.test(subject)) {
+      throw new ServiceUnavailableException('The email subject is invalid.');
+    }
+    await this.sendSmtpMail({
+      from: process.env.SMTP_FROM,
+      to,
+      subject,
+      html: preheader
+        ? `<div style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;max-height:0;max-width:0;overflow:hidden;mso-hide:all;">${escapeEmailText(preheader)}</div>${html}`
+        : html,
+    });
+  }
+
   async sendReminderEmail(to: string, title: string, body: string, reminderUrl: URL): Promise<void> {
     const safeTitle = title.replace(/[\r\n\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160);
     const safeBody = body.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
@@ -151,6 +184,27 @@ export class MailerService implements OnModuleDestroy {
       `IMARA reminder: ${safeTitle}`,
       `${safeBody ? `${safeBody}\n\n` : ''}Open your reminders: ${reminderUrl.toString()}`,
       reminderUrl,
+      true,
+    );
+  }
+
+  async sendCalendarEventReminderEmail(
+    to: string,
+    title: string,
+    body: string,
+    eventId: string,
+    workspaceId: string | null,
+  ): Promise<void> {
+    const url = new URL('/calendar', process.env.FRONTEND_URL ?? 'http://localhost:5173');
+    url.searchParams.set('eventId', eventId);
+    if (workspaceId) url.searchParams.set('workspaceId', workspaceId);
+    const safeTitle = title.replace(/[\r\n\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160);
+    const safeBody = body.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
+    await this.deliver(
+      to,
+      `IMARA calendar reminder: ${safeTitle}`,
+      `Your calendar event is coming up.${safeBody ? `\n\n${safeBody}` : ''}\n\nOpen the event: ${url.toString()}`,
+      url,
       true,
     );
   }

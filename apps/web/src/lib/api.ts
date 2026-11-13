@@ -9,6 +9,14 @@ function apiUrl(path: string) {
   return `${API_URL}${path}`;
 }
 
+function reportExpiredSession(path: string, status: number) {
+  if (status !== 401) return;
+  const publicAuthEndpoint = /^\/auth\/(?:login|register|verify-email(?:-code)?|resend-verification|forgot-password|reset-password(?:-code)?)$/.test(path);
+  if (!publicAuthEndpoint && typeof window !== "undefined") {
+    window.dispatchEvent(new Event("imara:session-expired"));
+  }
+}
+
 function responseErrorMessage(payload: unknown, status: number, fallback: string): string {
   if (status === 503) {
     return "IMARA is temporarily unavailable. Please try again shortly.";
@@ -88,6 +96,7 @@ export async function apiRequest<T>(
     }
   }
   if (!response.ok) {
+    reportExpiredSession(path, response.status);
     const message = responseErrorMessage(payload, response.status, "Something went wrong. Please try again.");
     throw new ApiError(message, response.status);
   }
@@ -98,6 +107,7 @@ export async function apiRequest<T>(
 export async function apiBlob(path: string, headers?: HeadersInit): Promise<Blob> {
   const response = await fetchApi(path, { headers });
   if (!response.ok) {
+    reportExpiredSession(path, response.status);
     let payload: unknown;
     const body = await response.text();
     if (body) {
@@ -120,6 +130,7 @@ export async function downloadFile(
 ): Promise<void> {
   const response = await fetchApi(path, { headers });
   if (!response.ok) {
+    reportExpiredSession(path, response.status);
     let payload: unknown;
     try {
       payload = await response.json() as unknown;
@@ -173,6 +184,7 @@ export interface DashboardSummary {
     plan: string;
     storage: {
       usedBytes: string;
+      reservedBytes: string;
       limitBytes: string;
       availableBytes: string;
     };

@@ -1,11 +1,12 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, CalendarDays, Clock3, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Clock3, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { apiRequest } from "../lib/api";
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
 import { WorkspaceSetupPrompt } from "../workspaces/WorkspaceSetupPrompt";
+import type { WorkspaceMember } from "../workspaces/types";
 import "./calendar.css";
 
 interface CalendarEvent {
@@ -17,6 +18,8 @@ interface CalendarEvent {
   allDay: boolean;
   createdByUserId: string;
   creator?: { id: string; name: string };
+  reminderMinutesBefore?: number | null;
+  taggedUsers?: { id: string; name: string; email?: string }[];
 }
 
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -50,6 +53,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
   const [startsAt, setStartsAt] = useState(() => initialTimes(dayKey(now)).startsAt);
   const [endsAt, setEndsAt] = useState(() => initialTimes(dayKey(now)).endsAt);
   const [allDay, setAllDay] = useState(false);
+  const [reminderMinutesBefore, setReminderMinutesBefore] = useState<number | null>(15);
+  const [taggedUserIds, setTaggedUserIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const eventsPath = shared
     ? `/workspaces/${workspaceId}/calendar/events`
@@ -59,6 +64,12 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     queryFn: () => apiRequest<CalendarEvent[]>(eventsPath),
     enabled: !shared || Boolean(workspaceId),
   });
+  const membersQuery = useQuery({
+    queryKey: ["workspace-calendar-members", workspaceId],
+    queryFn: () => apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`),
+    enabled: shared && Boolean(workspaceId) && formOpen,
+  });
+  const activeMembers = (membersQuery.data ?? []).filter((member) => member.status === "ACTIVE");
   const canEditAll = shared && (workspace?.role === "OWNER" || workspace?.role === "ADMIN");
   const events = eventsQuery.data ?? [];
   const monthDays = useMemo(() => {
@@ -97,6 +108,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
         startsAt: new Date(startsAt).toISOString(),
         endsAt: new Date(endsAt).toISOString(),
         allDay,
+        reminderMinutesBefore,
+        ...(shared ? { taggedUserIds } : {}),
       }),
     }),
     onSuccess: async () => {
@@ -117,6 +130,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     setTitle("");
     setDescription("");
     setAllDay(false);
+    setReminderMinutesBefore(15);
+    setTaggedUserIds([]);
     setError("");
   }
 
@@ -128,6 +143,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     setStartsAt(times.startsAt);
     setEndsAt(times.endsAt);
     setAllDay(false);
+    setReminderMinutesBefore(15);
+    setTaggedUserIds([]);
     setError("");
     setFormOpen(true);
   }
@@ -139,6 +156,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     setStartsAt(localInputValue(new Date(event.startsAt)));
     setEndsAt(localInputValue(new Date(event.endsAt)));
     setAllDay(event.allDay);
+    setReminderMinutesBefore(event.reminderMinutesBefore ?? null);
+    setTaggedUserIds(event.taggedUsers?.map((member) => member.id) ?? []);
     setError("");
     setFormOpen(true);
   }
@@ -238,6 +257,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
                     <strong>{event.title}</strong>
                     {event.description && <p>{event.description}</p>}
                     <span><Clock3 size={12} /> {event.allDay ? "All day" : `${timeLabel.format(new Date(event.startsAt))} – ${timeLabel.format(new Date(event.endsAt))}`}</span>
+                    {event.reminderMinutesBefore !== undefined && <small><Clock3 size={12} /> {event.reminderMinutesBefore === null ? "No reminder" : event.reminderMinutesBefore === 0 ? "Reminder at start" : `Reminder ${event.reminderMinutesBefore < 60 ? `${event.reminderMinutesBefore} min` : event.reminderMinutesBefore === 1440 ? "1 day" : `${event.reminderMinutesBefore / 60} hr`} before`}</small>}
+                    {event.taggedUsers && event.taggedUsers.length > 0 && <small><Users size={12} /> {event.taggedUsers.map((member) => member.name).join(", ")}</small>}
                     {shared && event.creator && <small>Added by {event.creator.name}</small>}
                     {canManage && <div className="calendar-event-actions">
                       <button type="button" onClick={() => openEdit(event)}><Pencil size={13} /> Edit</button>
@@ -262,6 +283,37 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
               <label>Starts<input type={allDay ? "date" : "datetime-local"} value={allDay ? startsAt.slice(0, 10) : startsAt} onChange={(event) => setStartsAt(allDay ? `${event.target.value}T00:00` : event.target.value)} required /></label>
               <label>Ends<input type={allDay ? "date" : "datetime-local"} value={allDay ? endsAt.slice(0, 10) : endsAt} onChange={(event) => setEndsAt(allDay ? `${event.target.value}T23:59` : event.target.value)} required /></label>
             </div>
+            <label>Send a reminder
+              <select className="calendar-reminder-select" value={reminderMinutesBefore ?? ""} onChange={(event) => setReminderMinutesBefore(event.target.value === "" ? null : Number(event.target.value))}>
+                <option value="">No reminder</option>
+                <option value={0}>At the time of the event</option>
+                <option value={5}>5 minutes before</option>
+                <option value={15}>15 minutes before</option>
+                <option value={30}>30 minutes before</option>
+                <option value={60}>1 hour before</option>
+                <option value={1440}>1 day before</option>
+              </select>
+            </label>
+            {shared && <fieldset className="calendar-member-picker">
+              <legend>Notify team members <span className="calendar-optional">OPTIONAL</span></legend>
+              <p>Tagged members will receive this reminder by email, in-app, and browser notification.</p>
+              {membersQuery.isLoading ? <span className="calendar-member-status">Loading workspace members…</span>
+                : membersQuery.isError ? <span className="calendar-form-error" role="alert">Workspace members couldn’t load. {membersQuery.error.message}</span>
+                  : activeMembers.length === 0 ? <span className="calendar-member-status">No active team members to tag.</span>
+                    : <div className="calendar-member-options">{activeMembers.map((member) => {
+                      const memberName = member.displayName?.trim() || member.user.name;
+                      return <label className="calendar-member-option" key={member.id}>
+                        <input
+                          type="checkbox"
+                          checked={taggedUserIds.includes(member.user.id)}
+                          onChange={(event) => setTaggedUserIds((current) => event.target.checked
+                            ? [...current, member.user.id]
+                            : current.filter((id) => id !== member.user.id))}
+                        />
+                        <span><strong>{memberName}</strong><small>{member.user.email}</small></span>
+                      </label>;
+                    })}</div>}
+            </fieldset>}
             {error && <p className="calendar-form-error" role="alert">{error}</p>}
             <footer><button type="button" className="calendar-cancel-button" disabled={saveEvent.isPending} onClick={closeForm}>Cancel</button><button type="submit" className="calendar-add-button" disabled={saveEvent.isPending}>{saveEvent.isPending ? "Saving…" : editing ? "Save changes" : "Add item"}</button></footer>
           </form>
