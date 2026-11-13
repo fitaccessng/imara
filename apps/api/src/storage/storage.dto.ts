@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsDefined, IsEnum, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { FileCategory } from '@prisma/client';
 
@@ -63,4 +63,18 @@ export class UpdateFileOrganizationDto {
   @IsString({ each: true })
   @MaxLength(40, { each: true })
   tags?: string[];
+}
+
+export class UpdateFileExpiryDto {
+  @ValidateIf((_object, value) => value !== null)
+  @IsDefined()
+  @IsDateString({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expiresAt must be an ISO date (YYYY-MM-DD) or null' })
+  expiresAt!: string | null;
+}
+
+export class SetOcrTextDto {
+  @IsString()
+  @MaxLength(100_000)
+  text!: string;
 }

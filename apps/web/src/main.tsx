@@ -6,6 +6,11 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { App } from "./App";
 import "./styles.css";
 
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+    .catch((error: unknown) => console.warn("IMARA offline shell registration failed.", error));
+}
+
 const STALE_ASSET_RELOAD_KEY = "imara:stale-asset-reload";
 try {
   if (window.sessionStorage.getItem(STALE_ASSET_RELOAD_KEY) === "true") {

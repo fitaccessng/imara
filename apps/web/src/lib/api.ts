@@ -165,6 +165,7 @@ export interface StoredFile {
   sizeBytes: string;
   folderId: string | null;
   createdAt: string;
+  expiresAt?: string | null;
   isFavorite?: boolean;
   deletedAt?: string | null;
   folderName?: string | null;

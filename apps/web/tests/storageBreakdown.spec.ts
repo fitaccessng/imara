@@ -20,6 +20,7 @@ describe("getStorageBreakdown", () => {
   describe("formatStoragePercent", () => {
     it("shows a real percentage for non-zero storage below one percent", () => {
       expect(formatStoragePercent(0.2)).toBe("0.2%");
+      expect(formatStoragePercent(0.04)).toBe("0.04%");
     });
 
     it("keeps compact percentages with one decimal place below ten percent", () => {

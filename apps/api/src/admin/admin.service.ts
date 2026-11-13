@@ -1134,16 +1134,32 @@ export class AdminService {
       where: { campaignId },
       _count: { _all: true },
     });
+    const errorGroups = await this.prisma.adminEmailCampaignDelivery.groupBy({
+      by: ['lastError'],
+      where: { campaignId, status: AdminEmailDeliveryStatus.FAILED },
+      _count: { _all: true },
+    });
+    const deliveryResults = await this.prisma.adminEmailCampaignDelivery.findMany({
+      where: { campaignId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        status: true,
+        lastError: true,
+        user: { select: { email: true } },
+      },
+    });
     const counts = {
       pendingCount: 0,
       sendingCount: 0,
-      sentCount: 0,
+      acceptedCount: 0,
       failedCount: 0,
     };
     for (const { status, _count } of groups) {
       if (status === AdminEmailDeliveryStatus.PENDING) counts.pendingCount = _count._all;
       if (status === AdminEmailDeliveryStatus.SENDING) counts.sendingCount = _count._all;
-      if (status === AdminEmailDeliveryStatus.SENT) counts.sentCount = _count._all;
+      if (status === AdminEmailDeliveryStatus.SENT) {
+        counts.acceptedCount += _count._all;
+      }
       if (status === AdminEmailDeliveryStatus.FAILED) counts.failedCount = _count._all;
     }
     await this.auditRead(request, 'admin.email-composer.status.read', 'email-campaign', {
@@ -1159,12 +1175,18 @@ export class AdminService {
         : counts.failedCount > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED',
       recipientCount: campaign._count.deliveries,
       ...counts,
-      errors: counts.failedCount
-        ? [{
-          count: counts.failedCount,
-          message: 'Email delivery failed for these recipients; identities are omitted.',
-        }]
-        : [],
+      deliveryEvidence: 'SMTP_ACCEPTED means the SMTP server accepted the message; recipient delivery and inbox placement are not confirmed.',
+      results: deliveryResults.map(({ status, lastError, user }) => ({
+        email: user.email,
+        status: status === AdminEmailDeliveryStatus.SENT ? 'SMTP_ACCEPTED' : status,
+        error: lastError,
+      })),
+      errors: errorGroups
+        .filter(({ lastError }) => Boolean(lastError))
+        .map(({ lastError, _count }) => ({
+          count: _count._all,
+          message: lastError!,
+        })),
     };
   }
 

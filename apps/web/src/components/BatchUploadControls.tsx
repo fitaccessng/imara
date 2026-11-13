@@ -48,6 +48,7 @@ export function BatchUploadControls({
   onBusyChange,
 }: BatchUploadControlsProps) {
   const directoryInput = useRef<HTMLInputElement>(null);
+  const filesInput = useRef<HTMLInputElement>(null);
   const abortController = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -57,6 +58,7 @@ export function BatchUploadControls({
   const [batchSize, setBatchSize] = useState(0);
   const [failures, setFailures] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [draggingFiles, setDraggingFiles] = useState(false);
 
   useEffect(() => () => abortController.current?.abort(), []);
 
@@ -209,20 +211,39 @@ export function BatchUploadControls({
 
   const isDisabled = disabled || busy;
   return <div className="batch-upload-controls">
-    <label className={`button button-outline batch-upload-button ${isDisabled ? "button-disabled" : ""}`}>
-      <Upload size={15} />{busy ? "Uploading…" : "Upload files"}
-      <input type="file" multiple disabled={isDisabled} onChange={(event) => {
+    <button className={`button button-outline batch-upload-button ${isDisabled ? "button-disabled" : ""}`} type="button" disabled={isDisabled} onClick={() => filesInput.current?.click()}>
+      <Upload size={15} />{busy ? "Uploading…" : "Import files"}
+    </button>
+    <input ref={filesInput} className="batch-upload-hidden-input" type="file" multiple disabled={isDisabled} onChange={(event) => {
         void processFiles(event.currentTarget.files);
         event.currentTarget.value = "";
       }} />
-    </label>
     <label className={`button button-outline batch-upload-button ${isDisabled || !canCreateFolders ? "button-disabled" : ""}`} title={!canCreateFolders ? "You need permission to create folders here." : "Upload a folder and preserve its subfolders"}>
-      <FolderUp size={15} />Upload folder
+      <FolderUp size={15} />Import folder
       <input ref={directoryInput} type="file" multiple disabled={isDisabled || !canCreateFolders} onChange={(event) => {
         void processFiles(event.currentTarget.files);
         event.currentTarget.value = "";
       }} />
     </label>
+    <div
+      className={`batch-upload-drop-target${draggingFiles ? " is-dragging" : ""}${isDisabled ? " is-disabled" : ""}`}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        if (!isDisabled) setDraggingFiles(true);
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) setDraggingFiles(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDraggingFiles(false);
+        if (!isDisabled) void processFiles(event.dataTransfer.files);
+      }}
+      aria-live="polite"
+    >
+      {draggingFiles ? "Drop to import" : "or drop files here"}
+    </div>
     {progress && !dialogOpen && <p className="batch-upload-inline-status" role={failures.length ? "alert" : "status"}>{progress}</p>}
     {dialogOpen && <div className="upload-progress-backdrop">
       <section className="upload-progress-dialog" role="dialog" aria-modal="true" aria-labelledby="upload-progress-title" aria-describedby="upload-progress-description">

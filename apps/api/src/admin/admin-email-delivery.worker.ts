@@ -6,6 +6,27 @@ import { PrismaService } from '../prisma/prisma.service';
 const BATCH_SIZE = 25;
 const STALE_DELIVERY_MS = 15 * 60 * 1000;
 
+function safeDeliveryError(error: unknown, recipientRejected = false): string {
+  const details = error && typeof error === 'object'
+    ? error as { code?: unknown; responseCode?: unknown }
+    : {};
+  const responseCode = typeof details.responseCode === 'number'
+    && Number.isInteger(details.responseCode)
+    && details.responseCode >= 400
+    && details.responseCode <= 599
+    ? ` (SMTP ${details.responseCode})`
+    : '';
+  if (recipientRejected) return `SMTP server rejected recipient${responseCode}`;
+  const safeCodes = new Set([
+    'EAUTH', 'ECONNECTION', 'ECONNRESET', 'ETIMEDOUT', 'ESOCKET',
+    'EENVELOPE', 'ESMTP', 'EAI_AGAIN', 'ENOTFOUND',
+  ]);
+  const code = typeof details.code === 'string' && safeCodes.has(details.code)
+    ? ` (${details.code})`
+    : '';
+  return `SMTP send failed${responseCode}${code}`;
+}
+
 @Injectable()
 export class AdminEmailDeliveryWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AdminEmailDeliveryWorker.name);
@@ -67,27 +88,41 @@ export class AdminEmailDeliveryWorker implements OnModuleInit, OnModuleDestroy {
         if (!claimed.count) continue;
 
         try {
-          await this.mailer.sendHtmlEmail(
+          const result = await this.mailer.sendHtmlEmail(
             delivery.user.email,
             delivery.campaign.subject,
             delivery.campaign.html,
             delivery.campaign.preheader,
           );
+          if (!result.accepted) {
+            await this.prisma.adminEmailCampaignDelivery.update({
+              where: { id: delivery.id },
+              data: {
+                status: AdminEmailDeliveryStatus.FAILED,
+                lastError: safeDeliveryError(
+                  { responseCode: result.responseCode },
+                  true,
+                ),
+              },
+            });
+            this.logger.warn(`Admin email delivery was rejected for record ${delivery.id}`);
+            continue;
+          }
           await this.prisma.adminEmailCampaignDelivery.update({
             where: { id: delivery.id },
             data: {
               status: AdminEmailDeliveryStatus.SENT,
-              sentAt: new Date(),
+              smtpAcceptedAt: new Date(),
               lastError: null,
             },
           });
-        } catch {
+        } catch (error) {
           await this.prisma.adminEmailCampaignDelivery.update({
             where: { id: delivery.id },
             data: {
               status: AdminEmailDeliveryStatus.FAILED,
               lastError: this.mailer.isSmtpConfigured()
-                ? 'Email delivery failed'
+                ? safeDeliveryError(error)
                 : 'SMTP is not configured',
             },
           });

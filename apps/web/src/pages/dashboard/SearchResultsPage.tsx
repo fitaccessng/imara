@@ -8,7 +8,7 @@ import { PageShell } from "../PageShell";
 interface SearchResults {
   query: string;
   folders: UserFolder[];
-  files: StoredFile[];
+  files: Array<StoredFile & { matchedBy?: "name" | "content" }>;
 }
 
 function formatBytes(bytes: number) {
@@ -81,7 +81,7 @@ export function SearchResultsPage() {
               {files.map((file) => (
                 <article className="search-result-row" key={`file-${file.id}`}>
                   <span className="search-result-icon"><FileText size={17} /></span>
-                  <span className="search-result-main"><strong>{file.name}</strong><small>{file.mimeType} · {formatBytes(Number(file.sizeBytes))}</small></span>
+                  <span className="search-result-main"><strong>{file.name}</strong><small>{file.mimeType} · {formatBytes(Number(file.sizeBytes))}{file.matchedBy === "content" && <em className="search-content-match">Matched document text</em>}</small></span>
                   <button className="icon-button" aria-label={`Download ${file.name}`} onClick={() => void handleDownload(file)}><Download size={16} /></button>
                 </article>
               ))}

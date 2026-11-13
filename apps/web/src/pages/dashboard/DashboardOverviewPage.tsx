@@ -1,8 +1,7 @@
-
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
-  Cloud,
   File,
   FileText,
   Folder,
@@ -13,9 +12,9 @@ import {
   Upload,
   Users,
 } from "lucide-react";
+import { apiRequest, type DashboardSummary } from "../../lib/api";
 import { PageShell } from "../PageShell";
-
-const BRAND = "#20AD43";
+import { formatStorageBytes, StorageOverviewCard } from "./StorageOverviewCard";
 
 const stats = [
   {
@@ -50,13 +49,6 @@ const stats = [
     iconBg: "bg-green-50",
     iconColor: "text-green-600",
   },
-];
-
-const fileTypes = [
-  { label: "Documents", size: "0 GB", color: "bg-blue-500", width: "0%" },
-  { label: "Images", size: "0 GB", color: "bg-purple-500", width: "0%" },
-  { label: "Spreadsheets", size: "0 GB", color: "bg-amber-500", width: "0%" },
-  { label: "Other files", size: "0 GB", color: "bg-slate-400", width: "0%" },
 ];
 
 const recentFiles = [
@@ -135,6 +127,12 @@ function EmptyState({
 }
 
 export function DashboardOverviewPage() {
+  const storageQuery = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: () => apiRequest<DashboardSummary>("/dashboard/summary"),
+    refetchInterval: 30_000,
+  });
+
   return (
     <PageShell
       eyebrow="Workspace"
@@ -196,6 +194,13 @@ export function DashboardOverviewPage() {
           <div className="grid min-w-0 grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
             {stats.map((stat) => {
               const Icon = stat.icon;
+              const value = stat.label === "Storage used"
+                ? storageQuery.data
+                  ? formatStorageBytes(Number(storageQuery.data.subscription.storage.usedBytes))
+                  : storageQuery.isLoading
+                    ? "Loading"
+                    : "—"
+                : stat.value;
 
               return (
                 <div
@@ -223,7 +228,7 @@ export function DashboardOverviewPage() {
                   </p>
 
                   <p className="mt-1 break-words text-2xl font-bold tracking-tight text-[#172B3A]">
-                    {stat.value}
+                    {value}
                   </p>
 
                   <p className="mt-2 break-words text-[11px] leading-5 text-[#A0AEC0] sm:text-xs">
@@ -237,131 +242,26 @@ export function DashboardOverviewPage() {
 
         {/* Storage overview */}
         <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
-          <div className="min-w-0 rounded-2xl border border-[#E5EAF0] bg-white p-4 sm:p-5 lg:p-6 xl:col-span-3">
-            <SectionHeading
-              title="Storage overview"
-              description="Monitor how your storage space is being used."
-              action={
-                <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#F0F7F2] px-2.5 py-1.5 text-[11px] font-semibold text-[#168B37] sm:px-3 sm:text-xs">
-                  <Cloud size={14} />
-                  Cloud storage
+          <div className="min-w-0 xl:col-span-5">
+              {storageQuery.isLoading ? (
+                <div className="h-72 animate-pulse rounded-2xl border border-[#E5EAF0] bg-white" aria-label="Loading storage overview" />
+              ) : storageQuery.isError || !storageQuery.data ? (
+                <div className="flex min-h-40 flex-col items-start justify-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900" role="alert">
+                  <p>Storage details couldn’t load. Check your connection and try again.</p>
+                  <button
+                    type="button"
+                    className="font-semibold underline underline-offset-2"
+                    onClick={() => void storageQuery.refetch()}
+                  >
+                    Retry
+                  </button>
                 </div>
-              }
-            />
-
-            <div className="flex min-w-0 flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-6">
-              <div className="relative h-36 w-36 shrink-0 sm:h-40 sm:w-40">
-                <svg
-                  viewBox="0 0 160 160"
-                  className="h-full w-full -rotate-90"
-                  role="img"
-                  aria-label="Storage usage: zero percent"
-                >
-                  <circle
-                    cx="80"
-                    cy="80"
-                    r="66"
-                    fill="none"
-                    stroke="#EDF1F5"
-                    strokeWidth="13"
-                  />
-
-                  <circle
-                    cx="80"
-                    cy="80"
-                    r="66"
-                    fill="none"
-                    stroke={BRAND}
-                    strokeWidth="13"
-                    strokeLinecap="round"
-                    strokeDasharray="0 415"
-                  />
-                </svg>
-
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <p className="text-2xl font-bold text-[#172B3A]">0%</p>
-                  <p className="mt-0.5 text-[11px] text-[#718096]">Used</p>
-                </div>
-              </div>
-
-              <div className="w-full min-w-0 flex-1">
-                <p className="text-xs text-[#718096] sm:text-sm">
-                  Available storage
-                </p>
-
-                <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-2xl font-bold tracking-tight text-[#172B3A] sm:text-3xl">
-                    5 GB
-                  </span>
-                  <span className="text-xs text-[#A0AEC0]">
-                    total capacity
-                  </span>
-                </div>
-
-                <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-[#EDF1F5]">
-                  <div className="h-full w-0 rounded-full bg-[#20AD43]" />
-                </div>
-
-                <div className="mt-3 flex flex-wrap justify-between gap-2 text-xs">
-                  <span className="text-[#718096]">0 GB used</span>
-                  <span className="font-semibold text-[#172B3A]">
-                    5 GB free
-                  </span>
-                </div>
-
-                <div className="mt-4 flex min-w-0 items-start gap-2 rounded-xl bg-[#F7F9FC] p-3">
-                  <ShieldCheck
-                    size={17}
-                    className="mt-0.5 shrink-0 text-[#20AD43]"
-                  />
-                  <p className="min-w-0 text-xs leading-5 text-[#718096]">
-                    Your documents are stored in your secure cloud workspace.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* File type breakdown */}
-          <div className="min-w-0 rounded-2xl border border-[#E5EAF0] bg-white p-4 sm:p-5 lg:p-6 xl:col-span-2">
-            <SectionHeading
-              title="Storage by file type"
-              description="See what makes up your storage."
-            />
-
-            <div className="space-y-5">
-              {fileTypes.map((item) => (
-                <div key={item.label} className="min-w-0">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span
-                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${item.color}`}
-                      />
-                      <span className="truncate text-xs font-medium text-[#4A5568] sm:text-sm">
-                        {item.label}
-                      </span>
-                    </div>
-
-                    <span className="shrink-0 text-xs font-semibold text-[#718096]">
-                      {item.size}
-                    </span>
-                  </div>
-
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#F0F2F5]">
-                    <div
-                      className={`h-full rounded-full ${item.color}`}
-                      style={{ width: item.width }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 rounded-xl border border-dashed border-[#DCE3EA] p-3 text-center">
-              <p className="text-xs leading-5 text-[#718096]">
-                Upload files to see your storage breakdown.
-              </p>
-            </div>
+              ) : (
+                <StorageOverviewCard
+                  storage={storageQuery.data.subscription.storage}
+                  plan={storageQuery.data.subscription.plan}
+                />
+              )}
           </div>
         </section>
 

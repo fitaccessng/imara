@@ -8,8 +8,8 @@ import {
   Compass,
   FileText,
   FolderPlus,
-  HardDrive,
   LockKeyhole,
+  NotebookPen,
   ShieldCheck,
   Sparkles,
   Upload,
@@ -17,20 +17,17 @@ import {
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError, apiRequest, type DashboardSummary } from "../lib/api";
-import { formatStoragePercent, getStorageBreakdown } from "./storageBreakdown";
+import { StorageOverviewCard } from "./dashboard/StorageOverviewCard";
 
-function formatBytes(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes < 1) return "0 bytes";
-
-  const units = ["Bytes", "KB", "MB", "GB", "TB"];
-  const index = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1
-  );
-
-  const value = bytes / 1024 ** index;
-
-  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+interface WeeklyInsights {
+  period: { startsAt: string; endsAt: string; durationDays: number };
+  filesCreated: number;
+  activeFileRequests: number;
+  upcomingExpiry: {
+    supported: boolean;
+    items: Array<{ id: string; name: string; expiresAt: string }>;
+    reason?: string;
+  };
 }
 
 function getGreeting() {
@@ -41,8 +38,9 @@ function getGreeting() {
   return "Good evening";
 }
 
-function getPlanName(plan: string) {
-  return plan.charAt(0).toUpperCase() + plan.slice(1);
+function formatInsightDate(value: string) {
+  const date = new Date(value.length === 10 ? `${value}T12:00:00` : value);
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
 function SectionTitle({
@@ -188,6 +186,12 @@ export function DashboardPage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["dashboard-summary"],
     queryFn: () => apiRequest<DashboardSummary>("/dashboard/summary"),
+    refetchInterval: 30_000,
+  });
+  const insightsQuery = useQuery({
+    queryKey: ["weekly-insights"],
+    queryFn: () => apiRequest<WeeklyInsights>("/insights/weekly"),
+    refetchInterval: 60_000,
   });
 
   if (isLoading) {
@@ -211,34 +215,8 @@ export function DashboardPage() {
     );
   }
 
-  const limit = Number(data.subscription.storage.limitBytes);
-  const used = Number(data.subscription.storage.usedBytes);
-  const reserved = Number(data.subscription.storage.reservedBytes);
-  const available = Number(data.subscription.storage.availableBytes);
-
-  if (
-    ![limit, used, reserved, available].every(
-      (value) => Number.isSafeInteger(value) && value >= 0
-    )
-  ) {
-    return (
-      <ErrorState
-        message="Your account returned invalid storage information. Please try again later."
-        onRetry={() => void refetch()}
-      />
-    );
-  }
-
-  const storageBreakdown = getStorageBreakdown(used, reserved, available);
-  const percent = formatStoragePercent(storageBreakdown.usedPercent);
-  const chartCircumference = 2 * Math.PI * 68;
-  const usedArc = (storageBreakdown.usedPercent / 100) * chartCircumference;
-  const reservedArc = (storageBreakdown.reservedPercent / 100) * chartCircumference;
-
   const firstName =
     data.user.name.trim().split(/\s+/)[0] || data.user.name;
-
-  const planName = getPlanName(data.subscription.plan);
 
   const today = new Intl.DateTimeFormat("en", {
     weekday: "long",
@@ -302,128 +280,11 @@ export function DashboardPage() {
       <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
 
         {/* Storage card */}
-        <div data-tour="storage" className="relative min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-5 shadow-[0_2px_12px_rgba(16,43,70,0.025)] sm:p-6 xl:col-span-2">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full border-[30px] border-[#20AD43]/[0.035]" />
-
-          <div className="relative flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#718096]">
-                Storage overview
-              </p>
-              <h2 className="mt-1 text-lg font-bold text-[#172B3A]">
-                Your storage
-              </h2>
-            </div>
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F0F7F2]">
-              <HardDrive size={19} className="text-[#20AD43]" />
-            </div>
-          </div>
-
-          <div className="relative mt-7 flex flex-col items-center gap-6 sm:flex-row sm:justify-center lg:justify-start">
-            <div
-              className="relative h-40 w-40 shrink-0"
-              role="img"
-              aria-label={`${percent} used, ${formatStoragePercent(storageBreakdown.reservedPercent)} reserved, ${formatStoragePercent(storageBreakdown.availablePercent)} available`}
-            >
-              <svg className="h-full w-full -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
-                <circle cx="80" cy="80" r="68" fill="none" stroke="#EDF1F5" strokeWidth="18" />
-                {reservedArc > 0 && (
-                  <circle
-                    cx="80"
-                    cy="80"
-                    r="68"
-                    fill="none"
-                    stroke="#F6AD55"
-                    strokeWidth="18"
-                    strokeDasharray={`${reservedArc} ${chartCircumference - reservedArc}`}
-                    strokeDashoffset={-usedArc}
-                  />
-                )}
-                {usedArc > 0 && (
-                  <circle
-                    cx="80"
-                    cy="80"
-                    r="68"
-                    fill="none"
-                    stroke="#20AD43"
-                    strokeWidth="18"
-                    strokeDasharray={`${usedArc} ${chartCircumference - usedArc}`}
-                  />
-                )}
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-3xl font-bold tracking-tight text-[#168B37]">
-                  {percent}
-                </span>
-              </div>
-            </div>
-
-            {/* Storage details */}
-            <div className="w-full min-w-0 flex-1">
-              <p className="text-xs text-[#718096]">Currently using</p>
-
-              <p className="mt-1 break-words text-2xl font-bold tracking-tight text-[#172B3A] sm:text-3xl">
-                {formatBytes(used)}
-              </p>
-
-              <p className="mt-1 text-xs text-[#718096]">
-                of {formatBytes(limit)}
-              </p>
-
-              <div className="mt-5 space-y-3">
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <span className="flex items-center gap-2 text-[#718096]">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#20AD43]" />
-                    Used
-                  </span>
-                  <strong className="text-right text-[#172B3A]">
-                    {formatBytes(used)}
-                  </strong>
-                </div>
-
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <span className="flex items-center gap-2 text-[#718096]">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#E5EAF0]" />
-                    Available
-                  </span>
-                  <strong className="text-right text-[#172B3A]">
-                    {formatBytes(available)}
-                  </strong>
-                </div>
-
-                {reserved > 0 && (
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="flex items-center gap-2 text-[#718096]">
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#F6AD55]" />
-                      Reserved
-                    </span>
-                    <strong className="text-right text-[#172B3A]">
-                      {formatBytes(reserved)}
-                    </strong>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="relative mt-7 border-t border-[#EDF1F5] pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex items-center gap-2 rounded-lg bg-[#F0F7F2] px-3 py-2">
-                <span className="h-2 w-2 rounded-full bg-[#20AD43]" />
-                <span className="text-xs font-bold text-[#168B37]">
-                  {planName} plan
-                </span>
-              </div>
-
-              <Link
-                to="/subscription"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[#718096] transition hover:text-[#20AD43]"
-              >
-                Manage plan <ArrowRight size={14} />
-              </Link>
-            </div>
-          </div>
+        <div data-tour="storage" className="min-w-0 xl:col-span-2">
+          <StorageOverviewCard
+            storage={data.subscription.storage}
+            plan={data.subscription.plan}
+          />
         </div>
 
         {/* Welcome card */}
@@ -537,6 +398,54 @@ export function DashboardPage() {
             <ArrowRight size={15} />
           </Link>
         </aside>
+      </section>
+
+      <section className="rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6">
+        <SectionTitle
+          eyebrow="YOUR WEEK"
+          title="Organisation insights"
+          action={
+            <Link to="/notes" className="inline-flex items-center gap-1 text-xs font-semibold text-[#20AD43] hover:text-[#168B37]">
+              <NotebookPen size={14} /> Open Notes
+            </Link>
+          }
+        />
+        {insightsQuery.isPending ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[0, 1, 2].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
+          </div>
+        ) : insightsQuery.isError ? (
+          <div className="rounded-xl bg-[#F7F9FC] p-4 text-sm text-[#718096]" role="status">
+            <p>{insightsQuery.error instanceof Error ? insightsQuery.error.message : "Weekly insights could not be loaded."}</p>
+            <button type="button" onClick={() => void insightsQuery.refetch()} className="mt-2 font-semibold text-[#168B37]">Try again</button>
+          </div>
+        ) : insightsQuery.data ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-[#F7F9FC] p-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#718096]">Files added · 7 days</span>
+              <strong className="mt-2 block text-2xl font-bold text-[#172B3A]">{insightsQuery.data.filesCreated}</strong>
+              <span className="mt-1 block text-xs text-[#718096]">New personal documents</span>
+            </div>
+            <Link to="/file-requests" className="rounded-xl bg-[#F7F9FC] p-4 transition hover:bg-[#EFF8F1]">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#718096]">Open file requests</span>
+              <strong className="mt-2 block text-2xl font-bold text-[#172B3A]">{insightsQuery.data.activeFileRequests}</strong>
+              <span className="mt-1 block text-xs text-[#718096]">Live upload request links</span>
+            </Link>
+            <div className="rounded-xl bg-[#F7F9FC] p-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#718096]">Upcoming expiry</span>
+              {insightsQuery.data.upcomingExpiry.supported && insightsQuery.data.upcomingExpiry.items.length ? (
+                <ul className="mt-2 space-y-1">
+                  {insightsQuery.data.upcomingExpiry.items.slice(0, 2).map((item) => (
+                    <li key={item.id} className="truncate text-sm font-semibold text-[#172B3A]">{item.name} · {formatInsightDate(item.expiresAt)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm font-semibold text-[#172B3A]">{insightsQuery.data.upcomingExpiry.supported ? "None in the next 30 days" : "Not tracked yet"}</p>
+              )}
+              <span className="mt-1 block text-xs text-[#718096]">{insightsQuery.data.upcomingExpiry.supported ? <Link to="/files" className="font-semibold text-[#168B37] hover:underline">Manage expiry dates in your files</Link> : insightsQuery.data.upcomingExpiry.reason}</span>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {/* Storage note */}

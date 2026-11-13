@@ -9,6 +9,7 @@ import {
   Patch,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Res,
   UploadedFile,
@@ -20,7 +21,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { CreateFolderDto, MoveFolderDto, RenameFolderDto, ReplaceFileContentDto, SearchFilesDto, UpdateFavoriteDto, UpdateFileOrganizationDto, UploadFileDto } from './storage.dto';
+import { CreateFolderDto, MoveFolderDto, RenameFolderDto, ReplaceFileContentDto, SearchFilesDto, SetOcrTextDto, UpdateFavoriteDto, UpdateFileExpiryDto, UpdateFileOrganizationDto, UploadFileDto } from './storage.dto';
 import { StorageService, type UploadInput } from './storage.service';
 import { TempUploadInterceptor } from './temp-upload.interceptor';
 
@@ -69,6 +70,24 @@ export class StorageController {
     @Body() dto: UpdateFileOrganizationDto,
   ) {
     return this.storage.updateOrganization(req.auth.userId, id, dto);
+  }
+
+  @Patch('files/:id/expiry')
+  updateExpiry(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateFileExpiryDto,
+  ) {
+    return this.storage.updateExpiry(req.auth.userId, id, dto.expiresAt);
+  }
+
+  @Put('files/:id/ocr-text')
+  setOcrText(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: SetOcrTextDto,
+  ) {
+    return this.storage.setOcrText(req.auth.userId, id, dto.text);
   }
 
   @Get('files/trash')

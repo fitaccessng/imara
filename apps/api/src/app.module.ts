@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
 import { FileSharesModule } from './storage/file-shares.module';
+import { FileRequestsModule } from './storage/file-requests.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { EventsModule } from './events/events.module';
 import { AdminModule } from './admin/admin.module';
@@ -18,6 +19,8 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { SignaturesModule } from './signatures/signatures.module';
 import { ReferralsModule } from './referrals/referrals.module';
+import { NotesModule } from './notes/notes.module';
+import { InsightsModule } from './insights/insights.module';
 import { HealthController } from './health.controller';
 import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
 
@@ -33,6 +36,7 @@ import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
     AuthModule,
     StorageModule,
     FileSharesModule,
+    FileRequestsModule,
     WorkspacesModule,
     EventsModule,
     AdminModule,
@@ -43,6 +47,8 @@ import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
     RemindersModule,
     SignaturesModule,
     ReferralsModule,
+    NotesModule,
+    InsightsModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -80,13 +80,36 @@ describe('MailerService local console delivery', () => {
     process.env.SMTP_PASSWORD = 'smtp-password';
     process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
     const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    const smtpError = new Error('SMTP authentication failed');
+    const smtpError = Object.assign(new Error('SMTP authentication failed'), {
+      code: 'EAUTH',
+      responseCode: 535,
+    });
     const sendMail = jest.fn().mockRejectedValue(smtpError);
     jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
 
     await expect(mailer.sendVerificationCode('person@example.com', '123456')).rejects.toBe(smtpError);
 
-    expect(errorSpy).toHaveBeenCalledWith('SMTP delivery failed: SMTP authentication failed');
+    expect(errorSpy).toHaveBeenCalledWith('SMTP delivery failed (EAUTH) [SMTP 535]');
+    expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining('authentication failed'));
+  });
+
+  it('reports whether SMTP accepted or rejected the configured recipient', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.EMAIL_DELIVERY = 'smtp';
+    process.env.SMTP_HOST = 'smtp.example.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
+    const sendMail = jest.fn()
+      .mockResolvedValueOnce({ accepted: ['person@example.com'], rejected: [], responseCode: 250 })
+      .mockResolvedValueOnce({ accepted: [], rejected: ['person@example.com'], responseCode: 550 });
+    jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
+
+    await expect(mailer.sendHtmlEmail('person@example.com', 'Update', '<p>Hello</p>'))
+      .resolves.toEqual({ accepted: true, responseCode: 250 });
+    await expect(mailer.sendHtmlEmail('person@example.com', 'Update', '<p>Hello</p>'))
+      .resolves.toEqual({ accepted: false, responseCode: 550 });
   });
 
   it('sends password reset codes over SMTP', async () => {

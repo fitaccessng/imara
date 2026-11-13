@@ -19,7 +19,7 @@ const publicLinks = [
   { href: "/help", label: "Help" },
 ];
 
-const appPath = /^\/(dashboard|files|folders|workspace|settings|scanner|shares|billing|admin|search|recent|starred|trash|notifications)(\/|$)/;
+const appPath = /^\/(dashboard|files|folders|workspace|settings|scanner|shares|billing|admin|search|recent|starred|trash|notifications|offline-files|document-tools|notes)(\/|$)/;
 
 export function PageShell({ title, description, eyebrow = "IMARA", children }: PageShellProps) {
   const { pathname } = useLocation();

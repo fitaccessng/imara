@@ -21,7 +21,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { assertSameFileExtension, StorageService } from './storage.service';
+import { assertSameFileExtension, parseUploadDirectoryPath, StorageService } from './storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from './object-storage.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
@@ -37,13 +37,26 @@ describe('replacement file extension validation', () => {
   });
 });
 
+describe('folder-relative upload paths', () => {
+  it('extracts nested directory names and rejects traversal or absolute paths', () => {
+    expect(parseUploadDirectoryPath('Trip 2026/Day 1/photo.jpg')).toEqual(['Trip 2026', 'Day 1']);
+    expect(parseUploadDirectoryPath('photo.jpg')).toEqual([]);
+    expect(() => parseUploadDirectoryPath('../private/photo.jpg')).toThrow('folder-relative path is invalid');
+    expect(() => parseUploadDirectoryPath('/private/photo.jpg')).toThrow('folder-relative path is invalid');
+    expect(() => parseUploadDirectoryPath('C:/private/photo.jpg')).toThrow('folder-relative path is invalid');
+  });
+});
+
 describe('StorageService quota-safe uploads', () => {
   const fileRow = {
     id: 'file-id',
     userId: 'owner-id',
+    fileRequestId: null,
     objectKey: 'owner-id/random-key',
     originalName: 'pending',
     mimeType: 'application/octet-stream',
+    ocrText: null,
+    expiryDate: null,
     sizeBytes: 12n,
     folderId: null,
     workspaceId: null,
@@ -67,6 +80,7 @@ describe('StorageService quota-safe uploads', () => {
     },
     folder: {
       findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'created-folder-id' }),
       count: jest.fn().mockResolvedValue(0),
       delete: jest.fn().mockResolvedValue({}),
       update: jest.fn().mockResolvedValue({
@@ -177,6 +191,7 @@ describe('StorageService quota-safe uploads', () => {
     transactionClient.event.findFirst.mockResolvedValue({ id: 'event-id' });
     transactionClient.event.updateMany.mockResolvedValue({ count: 1 });
     transactionClient.folder.findFirst.mockResolvedValue(null);
+    transactionClient.folder.create.mockResolvedValue({ id: 'created-folder-id' });
     transactionClient.folder.update.mockResolvedValue({
       id: 'folder-id',
       name: 'Reports',
@@ -217,6 +232,7 @@ describe('StorageService quota-safe uploads', () => {
     const file = {
       id: 'file-id',
       originalName: 'tax-return.pdf',
+      ocrText: null,
       mimeType: 'application/pdf',
       sizeBytes: 120n,
       folderId: 'folder-id',
@@ -235,6 +251,7 @@ describe('StorageService quota-safe uploads', () => {
         sizeBytes: '120',
         folderId: 'folder-id',
         createdAt: file.createdAt,
+        matchedBy: 'name',
       }],
     });
     expect(folderFindMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -246,10 +263,66 @@ describe('StorageService quota-safe uploads', () => {
         userId: 'owner-id',
         workspaceId: null,
         status: StoredFileStatus.READY,
-        originalName: { contains: 'tax', mode: 'insensitive' },
+        deletedAt: null,
+        OR: [
+          { originalName: { contains: 'tax', mode: 'insensitive' } },
+          { ocrText: { contains: 'tax', mode: 'insensitive' } },
+        ],
       }),
       take: 50,
     }));
+  });
+
+  it('stores OCR text only for an owned, personal, ready, non-deleted file', async () => {
+    jest.mocked(prisma.storedFile.updateMany).mockResolvedValueOnce({ count: 1 });
+
+    await expect(service.setOcrText('owner-id', 'file-id', 'Invoice number 123'))
+      .resolves.toEqual({ id: 'file-id', characterCount: 18 });
+
+    expect(prisma.storedFile.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'file-id',
+        userId: 'owner-id',
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      },
+      data: { ocrText: 'Invoice number 123' },
+    });
+  });
+
+  it('does not disclose files that are not owned, personal, ready, and active', async () => {
+    jest.mocked(prisma.storedFile.updateMany).mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.setOcrText('another-user', 'file-id', 'private text'))
+      .rejects.toThrow('File not found');
+    expect(prisma.storedFile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        userId: 'another-user',
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      }),
+    }));
+  });
+
+  it('returns a content match marker without returning the OCR text', async () => {
+    const secretOcr = 'OCR text with private invoice number 123456';
+    storedFileFindMany.mockResolvedValue([{
+      id: 'content-file',
+      originalName: 'scan.pdf',
+      ocrText: secretOcr,
+      mimeType: 'application/pdf',
+      sizeBytes: 120n,
+      folderId: null,
+      createdAt: new Date(),
+    }]);
+
+    const result = await service.search('owner-id', 'invoice number');
+
+    expect(result.files).toEqual([expect.objectContaining({ name: 'scan.pdf', matchedBy: 'content' })]);
+    expect(JSON.stringify(result)).not.toContain(secretOcr);
+    expect(JSON.stringify(result)).not.toContain('private invoice number');
   });
 
   it('moves a folder to a validated parent', async () => {
@@ -301,6 +374,31 @@ describe('StorageService quota-safe uploads', () => {
     expect(finalizedData?.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(result).toEqual(expect.objectContaining({ id: 'file-id', name: 'passport.pdf', sizeBytes: '12' }));
     expect(result).not.toHaveProperty('objectKey');
+  });
+
+  it('creates nested owner folders from a validated relative path in the storage reservation', async () => {
+    transactionClient.folder.create
+      .mockResolvedValueOnce({ id: 'trip-folder-id' })
+      .mockResolvedValueOnce({ id: 'day-folder-id' });
+
+    await service.upload('owner-id', {
+      buffer: Buffer.alloc(12),
+      originalname: 'photo.jpg',
+      mimetype: 'image/jpeg',
+      size: 12,
+    }, undefined, undefined, undefined, 'Trip 2026/Day 1/photo.jpg');
+
+    expect(transactionClient.folder.create).toHaveBeenNthCalledWith(1, {
+      data: { userId: 'owner-id', workspaceId: null, parentFolderId: null, name: 'Trip 2026' },
+      select: { id: true },
+    });
+    expect(transactionClient.folder.create).toHaveBeenNthCalledWith(2, {
+      data: { userId: 'owner-id', workspaceId: null, parentFolderId: 'trip-folder-id', name: 'Day 1' },
+      select: { id: true },
+    });
+    expect(transactionClient.storedFile.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ folderId: 'day-folder-id' }),
+    }));
   });
 
   it('hashes and streams disk-backed uploads without requiring a memory buffer', async () => {

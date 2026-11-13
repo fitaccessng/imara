@@ -48,8 +48,14 @@ interface CampaignStatus {
   recipientCount: number;
   pendingCount: number;
   sendingCount: number;
-  sentCount: number;
+  acceptedCount: number;
   failedCount: number;
+  deliveryEvidence: string;
+  results: Array<{
+    email: string;
+    status: "PENDING" | "SENDING" | "SMTP_ACCEPTED" | "FAILED";
+    error: string | null;
+  }>;
   errors: Array<{ count: number; message: string }>;
 }
 
@@ -216,13 +222,40 @@ export function AdminEmailComposerPage() {
                 <i /> {campaignQuery.data.status.replace(/_/g, " ")}
               </span>
               <div className="email-studio-delivery-counts">
-                <span><strong>{formatNumber(campaignQuery.data.sentCount)}</strong><small>Sent</small></span>
+                <span><strong>{formatNumber(campaignQuery.data.acceptedCount)}</strong><small>Accepted by SMTP</small></span>
                 <span><strong>{formatNumber(campaignQuery.data.pendingCount + campaignQuery.data.sendingCount)}</strong><small>In queue</small></span>
                 <span><strong>{formatNumber(campaignQuery.data.failedCount)}</strong><small>Failed</small></span>
               </div>
               {campaignQuery.data.errors.map((item, index) => <p className="email-studio-campaign-error" role="status" key={`${item.count}-${index}`}>{item.message} ({formatNumber(item.count)}).</p>)}
+              <p className="email-studio-hint">{campaignQuery.data.deliveryEvidence} These counts do not confirm that an individual recipient received or saw the email.</p>
+              <details className="email-studio-recipient-results">
+                <summary>Recipient results ({formatNumber(campaignQuery.data.results.length)})</summary>
+                <ul>
+                  {campaignQuery.data.results.map((result, index) => <li key={`${result.email}-${index}`}>
+                    <span>{result.email}</span>
+                    <strong className={result.status === "FAILED" ? "has-failures" : ""}>
+                      {result.status === "SMTP_ACCEPTED" ? "Accepted by SMTP" : result.status === "PENDING" ? "Queued" : result.status === "SENDING" ? "Sending" : "Failed"}
+                    </strong>
+                    {result.error && <small>{result.error}</small>}
+                  </li>)}
+                </ul>
+              </details>
             </>}
       </section>}
+
+      <section className="admin-panel email-studio-deliverability" aria-labelledby="email-deliverability-heading">
+        <div className="admin-panel-heading">
+          <div><span className="admin-eyebrow">SENDER HEALTH</span><h2 id="email-deliverability-heading">Deliverability checks</h2></div>
+        </div>
+        <p>Inbox placement and spam filtering are controlled by recipient providers and cannot be guaranteed by this studio.</p>
+        <ul>
+          <li>Use a sender address on a domain verified with your SMTP provider.</li>
+          <li>Publish the provider’s required SPF and DKIM DNS records, and configure DMARC for that domain.</li>
+          <li>Align the authenticated sender domain with the visible From domain; check your provider’s logs for deferrals, bounces, and reputation issues.</li>
+          <li>Send a test to inboxes you control and inspect the message’s authentication results and spam folder.</li>
+        </ul>
+        <p className="email-studio-hint">This application does not currently receive bounce, delivery, or spam-complaint webhooks, so it cannot report those outcomes.</p>
+      </section>
 
       <form className="email-studio-layout" onSubmit={submit}>
         <div className="email-studio-main">

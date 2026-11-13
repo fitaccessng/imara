@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileText, LoaderCircle, Printer, Save, Upload, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { CalendarClock, Download, FileText, LoaderCircle, Printer, Save, Upload, X, CloudDownload, Check, ScanText } from "lucide-react";
 import { apiBlob, apiRequest } from "../lib/api";
 import { OfficePreviewEditor } from "./OfficePreviewEditor";
+import { saveOfflineFile } from "../offline/offlineFiles";
+import { useAuth } from "../auth/AuthProvider";
+import { extractDocumentText, type OcrProgress } from "../document-tools/ocr";
 
 export interface ViewableFile {
   id: string;
   name: string;
   mimeType: string;
+  expiresAt?: string | null;
 }
 
 interface FileViewerModalProps {
@@ -19,6 +23,7 @@ interface FileViewerModalProps {
   canDownload: boolean;
   onDownload: () => void;
   maxUploadBytes?: number;
+  manageExpiry?: boolean;
 }
 
 function isEditableText(file: ViewableFile) {
@@ -34,7 +39,8 @@ function isOfficeDocument(file: ViewableFile) {
   return ["csv", "doc", "docx", "pdf", "ppt", "pptx", "xls", "xlsx"].includes(extension ?? "");
 }
 
-export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes }: FileViewerModalProps) {
+export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes, manageExpiry = false }: FileViewerModalProps) {
+  const { user } = useAuth();
   const [blob, setBlob] = useState<Blob | null>(null);
   const [text, setText] = useState("");
   const [savedText, setSavedText] = useState("");
@@ -44,6 +50,16 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
   const [replacement, setReplacement] = useState<File | null>(null);
   const [replacementError, setReplacementError] = useState("");
   const [officeDirty, setOfficeDirty] = useState(false);
+  const [savingOffline, setSavingOffline] = useState(false);
+  const [offlineSaved, setOfflineSaved] = useState(false);
+  const [offlineError, setOfflineError] = useState("");
+  const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null);
+  const [ocrError, setOcrError] = useState("");
+  const [ocrComplete, setOcrComplete] = useState(false);
+  const [expiryDate, setExpiryDate] = useState(file.expiresAt?.slice(0, 10) ?? "");
+  const [expiryError, setExpiryError] = useState("");
+  const [expiryFeedback, setExpiryFeedback] = useState("");
+  const [savingExpiry, setSavingExpiry] = useState(false);
   const uploadController = useRef<AbortController | null>(null);
   const officeDocument = isOfficeDocument(file);
   const editableText = canEdit && isEditableText(file);
@@ -87,6 +103,17 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
     if (objectUrl) URL.revokeObjectURL(objectUrl);
   }, [objectUrl]);
 
+  useEffect(() => {
+    setOfflineSaved(false);
+    setOfflineError("");
+    setOcrProgress(null);
+    setOcrError("");
+    setOcrComplete(false);
+    setExpiryDate(file.expiresAt?.slice(0, 10) ?? "");
+    setExpiryError("");
+    setExpiryFeedback("");
+  }, [file.id]);
+
   async function save() {
     setSaving(true);
     setError("");
@@ -112,6 +139,51 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
     } finally {
       uploadController.current = null;
       setSaving(false);
+    }
+  }
+
+  async function saveForOffline() {
+    if (!blob || savingOffline) return;
+    if (!user) {
+      setOfflineError("Sign in to save this document for offline access.");
+      return;
+    }
+    setSavingOffline(true);
+    setOfflineError("");
+    try {
+      await saveOfflineFile({
+        id: file.id,
+        userId: user?.id ?? "",
+        name: file.name,
+        mimeType: file.mimeType,
+        sizeBytes: blob.size,
+        blob,
+      });
+      setOfflineSaved(true);
+    } catch (reason) {
+      setOfflineError(reason instanceof Error ? reason.message : "This file couldn’t be saved for offline use.");
+    } finally {
+      setSavingOffline(false);
+    }
+  }
+
+  async function indexDocumentText() {
+    if (!blob || !user || ocrProgress) return;
+    setOcrError("");
+    setOcrComplete(false);
+    setOcrProgress({ label: "Preparing text recognition…", percent: 0 });
+    try {
+      const sourceFile = new File([blob], file.name, { type: file.mimeType || blob.type });
+      const extractedText = await extractDocumentText(sourceFile, setOcrProgress);
+      await apiRequest(`/files/${file.id}/ocr-text`, {
+        method: "PUT",
+        body: JSON.stringify({ text: extractedText }),
+      });
+      setOcrComplete(true);
+      setOcrProgress(null);
+    } catch (reason) {
+      setOcrProgress(null);
+      setOcrError(reason instanceof Error ? reason.message : "Text recognition could not be completed.");
     }
   }
 
@@ -158,6 +230,25 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
     }
   }
 
+  async function saveExpiry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingExpiry(true);
+    setExpiryError("");
+    setExpiryFeedback("");
+    try {
+      await apiRequest(`/files/${encodeURIComponent(file.id)}/expiry`, {
+        method: "PATCH",
+        body: JSON.stringify({ expiresAt: expiryDate || null }),
+      });
+      await onSaved();
+      setExpiryFeedback(expiryDate ? "Expiry date saved." : "Expiry date removed.");
+    } catch (reason) {
+      setExpiryError(reason instanceof Error ? reason.message : "The expiry date could not be saved.");
+    } finally {
+      setSavingExpiry(false);
+    }
+  }
+
   const image = file.mimeType.startsWith("image/");
   const pdf = file.mimeType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   const audio = file.mimeType.startsWith("audio/");
@@ -188,11 +279,25 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
               <label className="button button-outline" htmlFor={`replace-${file.id}`}><Upload size={15} />Upload edited version</label>
             </>}
             {canDownload && <button className="button button-outline" onClick={onDownload}><Download size={15} /> Download</button>}
+            {canDownload && blob && <button className="button button-outline" type="button" disabled={savingOffline} onClick={() => void saveForOffline()}>{offlineSaved ? <Check size={15} /> : <CloudDownload size={15} />}{savingOffline ? "Saving offline…" : offlineSaved ? "Saved offline" : "Save offline"}</button>}
+            {canDownload && blob && (file.mimeType.startsWith("image/") || file.mimeType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) && <button className="button button-outline" type="button" disabled={Boolean(ocrProgress) || !user} onClick={() => void indexDocumentText()}>{ocrComplete ? <Check size={15} /> : ocrProgress ? <LoaderCircle size={15} className="file-viewer-spinner" /> : <ScanText size={15} />}{ocrProgress ? `${ocrProgress.percent}%` : ocrComplete ? "Searchable" : "Make searchable"}</button>}
             {canDownload && blob && <button className="button button-outline" type="button" onClick={() => window.print()}><Printer size={15} /> Print</button>}
             <button className="icon-button" aria-label="Close file preview" onClick={requestClose} disabled={saving}><X size={18} /></button>
           </div>
         </header>
         {error && <p className="form-alert file-viewer-error" role="alert">{error}</p>}
+        {offlineError && <p className="form-alert file-viewer-error" role="alert">{offlineError}</p>}
+        {ocrProgress && <div className="file-ocr-progress" role="status"><span>{ocrProgress.label}</span><div><i style={{ width: `${ocrProgress.percent}%` }} /></div><small>Document processing happens on this device. Extracted text will be stored in IMARA so you can search it across devices.</small></div>}
+        {ocrComplete && <p className="file-ocr-success" role="status"><Check size={14} />Text recognised. You can now find this file by searching its contents.</p>}
+        {ocrError && <p className="form-alert file-viewer-error" role="alert">{ocrError}</p>}
+        {manageExpiry && <form className="file-expiry-editor" onSubmit={(event) => void saveExpiry(event)}>
+          <label htmlFor={`file-expiry-${file.id}`}><CalendarClock size={16} /><span><strong>Document expiry</strong><small>Optional reminder date. IMARA won’t infer dates from the document.</small></span></label>
+          <input id={`file-expiry-${file.id}`} type="date" value={expiryDate} onChange={(event) => { setExpiryDate(event.target.value); setExpiryFeedback(""); }} />
+          <button type="submit" className="button button-outline" disabled={savingExpiry || expiryDate === (file.expiresAt?.slice(0, 10) ?? "")}>{savingExpiry ? "Saving…" : "Save date"}</button>
+          {expiryDate && <button type="button" className="file-expiry-clear" disabled={savingExpiry} onClick={() => { setExpiryDate(""); setExpiryFeedback(""); }}>Clear</button>}
+          {expiryError && <span className="file-expiry-feedback file-expiry-error" role="alert">{expiryError}</span>}
+          {expiryFeedback && <span className="file-expiry-feedback" role="status">{expiryFeedback}</span>}
+        </form>}
         <div className="file-viewer-content">
           {loading ? <div className="file-viewer-state"><LoaderCircle size={20} className="file-viewer-spinner" />Opening file…</div>
             : officeDocument && blob ? <OfficePreviewEditor

@@ -57,13 +57,21 @@ export class MailerService implements OnModuleDestroy {
     return this.smtpTransporter;
   }
 
-  private async sendSmtpMail(message: nodemailer.SendMailOptions): Promise<void> {
+  private async sendSmtpMail(message: nodemailer.SendMailOptions) {
     try {
-      await this.transporter().sendMail(message);
+      return await this.transporter().sendMail(message);
     } catch (error) {
-      this.logger.error(
-        `SMTP delivery failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const details = error && typeof error === 'object'
+        ? error as { code?: unknown; responseCode?: unknown }
+        : {};
+      const safeCode = typeof details.code === 'string' && /^[A-Z0-9_-]{1,32}$/i.test(details.code)
+        ? ` (${details.code})`
+        : '';
+      const responseCode = typeof details.responseCode === 'number'
+        && Number.isInteger(details.responseCode)
+        ? ` [SMTP ${details.responseCode}]`
+        : '';
+      this.logger.error(`SMTP delivery failed${safeCode}${responseCode}`);
       throw error;
     }
   }
@@ -157,7 +165,7 @@ export class MailerService implements OnModuleDestroy {
     subject: string,
     html: string,
     preheader?: string | null,
-  ): Promise<void> {
+  ): Promise<{ accepted: boolean; responseCode?: number }> {
     if (!this.isSmtpConfigured()) {
       throw new ServiceUnavailableException(
         'SMTP email delivery is not configured for email composer.',
@@ -166,7 +174,7 @@ export class MailerService implements OnModuleDestroy {
     if (/[\r\n\u0000-\u001f\u007f]/.test(subject)) {
       throw new ServiceUnavailableException('The email subject is invalid.');
     }
-    await this.sendSmtpMail({
+    const result = await this.sendSmtpMail({
       from: process.env.SMTP_FROM,
       to,
       subject,
@@ -174,6 +182,20 @@ export class MailerService implements OnModuleDestroy {
         ? `<div style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;max-height:0;max-width:0;overflow:hidden;mso-hide:all;">${escapeEmailText(preheader)}</div>${html}`
         : html,
     });
+    const normalizedTo = to.toLowerCase();
+    const acceptedRecipients: unknown[] = Array.isArray(result.accepted) ? result.accepted : [];
+    const accepted = acceptedRecipients.some((recipient) => {
+      const address = typeof recipient === 'string'
+        ? recipient
+        : recipient && typeof recipient === 'object' && 'address' in recipient
+          ? String((recipient as { address: unknown }).address)
+          : '';
+      return address.toLowerCase() === normalizedTo;
+    });
+    return {
+      accepted,
+      ...(typeof result.responseCode === 'number' ? { responseCode: result.responseCode } : {}),
+    };
   }
 
   async sendReminderEmail(to: string, title: string, body: string, reminderUrl: URL): Promise<void> {

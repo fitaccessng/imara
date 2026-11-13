@@ -43,6 +43,51 @@ creates a migration; commit the generated migration, then use
 `npm run prisma:seed -w @imara/api` only checks the connection; no demo user or
 credentials are created.
 
+## File requests
+
+Authenticated clients can create a shareable upload request with
+`POST /api/v1/file-requests` and list requests with `GET /api/v1/file-requests`.
+Creation accepts `{title, message?, destinationFolderId?}` and returns the
+one-time bearer `token`; only its hash is stored, so list responses do not
+reveal tokens. `DELETE /api/v1/file-requests/:id` revokes a request.
+
+Recipients can read `GET /api/v1/file-requests/public/:token` and upload one
+file per `POST /api/v1/file-requests/public/:token/uploads`. Send multipart
+field `file`. Folder selection is supported by sending each file separately
+and optionally including its `File.webkitRelativePath` in the multipart
+`relativePath` field. The path is treated as relative to the request’s chosen
+destination folder, including its top-level directory; missing `relativePath`
+saves directly into the destination. Absolute paths, traversal segments,
+control characters, paths over 2,048 characters, and paths deeper than 20
+directories are rejected. The API creates/reuses personal folders for valid
+path segments. Uploads use the request creator’s per-file plan limit and
+storage quota.
+
+## Personal notes and weekly insights
+
+Personal notes are private to the authenticated user:
+
+- `GET /api/v1/notes?search=...` lists notes and optionally searches titles and bodies.
+- `POST /api/v1/notes` creates a note with `{title, body}`.
+- `GET /api/v1/notes/:id`, `PATCH /api/v1/notes/:id`, and `DELETE /api/v1/notes/:id`
+  read, update, and delete an owned note.
+- `GET /api/v1/insights/weekly` reports personal files created in the rolling
+  seven-day window, unrevoked file-request links, and ready personal files
+  expiring today through 30 days from today.
+- `PATCH /api/v1/files/:id/expiry` accepts `{ "expiresAt": "YYYY-MM-DD" }`
+  or `{ "expiresAt": null }` to clear the user-managed date. The date is a
+  plain UTC calendar day, and the same date-only `expiresAt` value is returned
+  in file listings. The file must be
+  owned by the caller and be a ready, nondeleted personal file; workspace,
+  event, and file-request uploads are not eligible. Expiry dates are never
+  inferred from OCR.
+
+The weekly insights response marks upcoming expiry dates as supported and
+returns matching personal files in ascending expiry order. SMTP campaign
+acceptance is likewise not proof of recipient delivery or inbox placement;
+the email studio reports `SMTP_ACCEPTED` only when the SMTP server accepts
+the recipient.
+
 ## Platform administrator access
 
 There is no public administrator registration URL. An operator can create a
@@ -114,7 +159,7 @@ decimal strings.
 | GET | `/api/v1/admin/payments` | Paginated payment attempts and server-verified successful receipts, summarized by currency |
 | GET | `/api/v1/admin/storage-inventory` | Ready-file count/bytes, largest uploader accounts/workspaces, and MIME-type aggregates; no filenames |
 | GET | `/api/v1/admin/upload-monitoring` | Persisted upload/deletion states, stale operation count, source counts (including scan uploads), and MIME-type aggregates |
-| GET | `/api/v1/admin/system-health` | Live database, configured object-storage driver and SMTP checks; reports backup/OCR/malware scanning as not integrated |
+| GET | `/api/v1/admin/system-health` | Live database, configured object-storage driver and SMTP checks; reports external backup/OCR/malware-scanning integrations |
 | GET | `/api/v1/admin/announcements` | Paginated announcement history with audience, recipients, and email delivery counts |
 | POST | `/api/v1/admin/announcements` | Creates audited in-app deliveries for active customers and optionally queues SMTP emails by plan audience |
 | POST | `/api/v1/admin/announcements/:id/retry-email` | Re-queues failed SMTP deliveries for an announcement and writes an audit record |
@@ -133,11 +178,14 @@ event-media values include ready event-linked files. Announcement delivery is
 persisted per active customer; in-app messages are available at
 `GET /api/v1/announcements` and can be marked read at
 `POST /api/v1/announcements/:id/read`. Optional SMTP delivery is processed from
-a database-backed queue in batches and exposes pending/sent/failed status. A
-crash after an SMTP provider accepts a message but before its status is saved
-can result in a duplicate on recovery; SMTP cannot provide exactly-once
-delivery. Failed messages are not retried automatically; an authorised admin
-can explicitly queue failed deliveries again.
+a database-backed queue in batches and exposes pending, SMTP-accepted, and
+failed status. A crash after an SMTP provider accepts a message but before its
+status is saved can result in a duplicate on recovery; SMTP cannot provide
+exactly-once delivery. `SMTP_ACCEPTED` records provider acceptance only and
+does not confirm delivery, inbox placement, or that a recipient saw the email.
+Failed messages are not retried automatically; an authorised admin can
+explicitly queue failed deliveries again. Bounce, delivery, and spam-complaint
+webhooks are not integrated.
 
 Customers can create tickets at `POST /api/v1/support/tickets`, list their own
 requests at `GET /api/v1/support/tickets`, view their public conversation at
@@ -150,8 +198,10 @@ Upload monitoring uses persisted file state and the upload source marker. It
 does not invent historical failures or processing outcomes. The health page
 performs live database and object-store checks plus SMTP configuration
 verification; it never exposes credentials. IMARA does not currently have a
-backup, OCR, document-conversion, or malware-scanning integration, so these are
-reported as not integrated. Editable runtime platform settings are not implemented.
+backup, external OCR, or malware-scanning integration, so these are reported as
+not integrated. Browser-side OCR and document conversion are available in the
+web app; conversion may preserve text without preserving original layout.
+Editable runtime platform settings are not implemented.
 Bachs hosted checkout and signed webhook verification are integrated; the admin
 payment views report persisted, provider-confirmed one-time receipts by currency.
 Refund processing, provider-fee reconciliation, and automatic renewal are not
@@ -323,6 +373,7 @@ stricter per-route limits).
 | GET | `/api/v1/files?folderId=<uuid>` | Authenticated → `{folderId,folders,files}` for root or one owned folder; omit `folderId` for root |
 | POST | `/api/v1/files` | Authenticated multipart form with `file` and optional UUID `folderId` → 201 file metadata |
 | GET | `/api/v1/files/:id/download` | Authenticated attachment download; ownership checked |
+| PATCH | `/api/v1/files/:id/expiry` | Authenticated `{expiresAt:"YYYY-MM-DD"}` or `{expiresAt:null}` for an owned personal file |
 | PATCH | `/api/v1/files/:id/content` | Authenticated multipart edited file; extension and quota checked |
 | PATCH | `/api/v1/workspaces/:workspaceId/files/:fileId/content` | Workspace edit permission, extension, and quota checked |
 | DELETE | `/api/v1/files/:id` | Authenticated, owned file → 204; releases used quota |

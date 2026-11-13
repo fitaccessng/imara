@@ -137,15 +137,28 @@ describe('AdminService email composer', () => {
           id: 'campaign-id',
           subject: 'Update',
           createdAt: new Date('2026-11-12T00:00:00Z'),
-          _count: { deliveries: 4 },
+          _count: { deliveries: 5 },
         }),
       },
       adminEmailCampaignDelivery: {
-        groupBy: jest.fn().mockResolvedValue([
-          { status: 'SENT', _count: { _all: 2 } },
-          { status: 'FAILED', _count: { _all: 1 } },
-          { status: 'PENDING', _count: { _all: 1 } },
+        findMany: jest.fn().mockResolvedValue([
+          { status: 'SENT', lastError: null, user: { email: 'accepted@example.test' } },
+          { status: 'SENT', lastError: null, user: { email: 'legacy-accepted@example.test' } },
+          {
+            status: 'FAILED',
+            lastError: 'SMTP server rejected recipient (SMTP 550)',
+            user: { email: 'rejected@example.test' },
+          },
         ]),
+        groupBy: jest.fn()
+          .mockResolvedValueOnce([
+            { status: 'SENT', _count: { _all: 3 } },
+            { status: 'FAILED', _count: { _all: 1 } },
+            { status: 'PENDING', _count: { _all: 1 } },
+          ])
+          .mockResolvedValueOnce([
+            { lastError: 'SMTP server rejected recipient (SMTP 550)', _count: { _all: 1 } },
+          ]),
       },
       platformAdminAuditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-id' }) },
     };
@@ -154,15 +167,39 @@ describe('AdminService email composer', () => {
     await expect(service.emailComposerCampaignStatus('campaign-id', request())).resolves.toMatchObject({
       campaignId: 'campaign-id',
       status: 'QUEUED',
-      recipientCount: 4,
+      recipientCount: 5,
       pendingCount: 1,
       sendingCount: 0,
-      sentCount: 2,
+      acceptedCount: 3,
       failedCount: 1,
       errors: [{
         count: 1,
-        message: 'Email delivery failed for these recipients; identities are omitted.',
+        message: 'SMTP server rejected recipient (SMTP 550)',
       }],
+      results: [
+        { email: 'accepted@example.test', status: 'SMTP_ACCEPTED', error: null },
+        { email: 'legacy-accepted@example.test', status: 'SMTP_ACCEPTED', error: null },
+        {
+          email: 'rejected@example.test',
+          status: 'FAILED',
+          error: 'SMTP server rejected recipient (SMTP 550)',
+        },
+      ],
+      deliveryEvidence: expect.stringContaining('SMTP server accepted'),
+    });
+    expect(prisma.adminEmailCampaignDelivery.findMany).toHaveBeenCalledWith({
+      where: { campaignId: 'campaign-id' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        status: true,
+        lastError: true,
+        user: { select: { email: true } },
+      },
+    });
+    expect(prisma.adminEmailCampaignDelivery.groupBy).toHaveBeenNthCalledWith(2, {
+      by: ['lastError'],
+      where: { campaignId: 'campaign-id', status: 'FAILED' },
+      _count: { _all: true },
     });
   });
 

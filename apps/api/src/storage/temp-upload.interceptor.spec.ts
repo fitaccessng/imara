@@ -4,6 +4,7 @@ jest.mock('@nestjs/common', () => ({
   Injectable: () => (target: unknown) => target,
   Logger: class Logger {},
   mixin: (target: unknown) => target,
+  NotFoundException: class NotFoundException extends Error {},
   PayloadTooLargeException: class PayloadTooLargeException extends Error {},
   ServiceUnavailableException: class ServiceUnavailableException extends Error {},
 }));
@@ -53,5 +54,30 @@ describe('temporary upload plan resolution', () => {
       select: { ownerUserId: true },
     });
     expect(subscriptionFindUnique).toHaveBeenCalledWith({ where: { userId: 'event-owner-id' } });
+  });
+
+  it("uses the file request creator's plan and rejects invalid requests before parsing", async () => {
+    const token = 'r'.repeat(43);
+    const fileRequestFindFirst = jest.fn().mockResolvedValue({ creatorUserId: 'owner-id' });
+    const subscriptionFindUnique = jest.fn().mockResolvedValue({ plan: Plan.BUSINESS });
+    const currentPlan = jest.fn().mockResolvedValue(Plan.BUSINESS);
+    const interceptor = new interceptorType(
+      { fileRequest: { findFirst: fileRequestFindFirst }, subscription: { findUnique: subscriptionFindUnique } } as never,
+      { currentPlan } as never,
+    );
+
+    await expect(interceptor.requestPlan({ params: { fileRequestToken: token } }))
+      .resolves.toBe(Plan.BUSINESS);
+    expect(fileRequestFindFirst).toHaveBeenCalledWith({
+      where: {
+        tokenHash: hashToken(token),
+        revokedAt: null,
+        creator: { accountStatus: 'ACTIVE' },
+      },
+      select: { creatorUserId: true },
+    });
+
+    await expect(interceptor.requestPlan({ params: { fileRequestToken: 'invalid' } }))
+      .rejects.toThrow('File request not found');
   });
 });

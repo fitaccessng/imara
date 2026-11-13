@@ -15,11 +15,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from './object-storage.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { getPlanLimitMessage } from '../subscriptions/plan-entitlements';
-import { UpdateFileOrganizationDto } from './storage.dto';
+import { UpdateFileExpiryDto, UpdateFileOrganizationDto } from './storage.dto';
 import { assertPlanFileSize } from '../subscriptions/plan-entitlements';
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
 const HARD_MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const toDateOnly = (date: Date | null): string | null => date?.toISOString().slice(0, 10) ?? null;
 
 export interface UploadInput {
   buffer?: Buffer;
@@ -81,6 +82,34 @@ export function assertSameFileExtension(currentName: string, replacementName: st
 
 export function getMaxUploadBytes(): number {
   return HARD_MAX_UPLOAD_BYTES;
+}
+
+export function parseUploadDirectoryPath(relativePath?: string): string[] {
+  if (relativePath === undefined) return [];
+  if (
+    typeof relativePath !== 'string'
+    || relativePath.length === 0
+    || relativePath.length > 2048
+    || relativePath.startsWith('/')
+    || relativePath.includes('\\')
+    || /^[A-Za-z]:/.test(relativePath)
+    || /[\u0000-\u001f\u007f]/.test(relativePath)
+  ) {
+    throw new BadRequestException('The folder-relative path is invalid');
+  }
+  const segments = relativePath.split('/');
+  if (
+    segments.length > 21
+    || segments.some((segment) => !segment || segment === '.' || segment === '..')
+    || segments.at(-1)!.length > 255
+  ) {
+    throw new BadRequestException('The folder-relative path is invalid');
+  }
+  const directories = segments.slice(0, -1).map((segment) => segment.trim());
+  if (directories.some((name) => !name || name.length > 120)) {
+    throw new BadRequestException('A folder name in the uploaded path is invalid');
+  }
+  return directories;
 }
 
 function storageFailureContext(error: unknown): string {
@@ -208,6 +237,43 @@ export class StorageService {
     });
   }
 
+  async updateExpiry(userId: string, fileId: string, expiresAt: UpdateFileExpiryDto['expiresAt']) {
+    const updated = await this.prisma.storedFile.updateMany({
+      where: {
+        id: fileId,
+        userId,
+        workspaceId: null,
+        eventId: null,
+        fileRequestId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      },
+      data: {
+        expiryDate: expiresAt === null ? null : new Date(`${expiresAt}T00:00:00.000Z`),
+      },
+    });
+    if (!updated.count) throw new NotFoundException('File not found');
+    return {
+      id: fileId,
+      expiresAt,
+    };
+  }
+
+  async setOcrText(userId: string, fileId: string, text: string) {
+    const updated = await this.prisma.storedFile.updateMany({
+      where: {
+        id: fileId,
+        userId,
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+      },
+      data: { ocrText: text },
+    });
+    if (!updated.count) throw new NotFoundException('File not found');
+    return { id: fileId, characterCount: text.length };
+  }
+
   private async ownedFolder(userId: string, folderId?: string | null) {
     if (!folderId) return null;
     const folder = await this.prisma.folder.findFirst({ where: { id: folderId, userId, workspaceId: null }, select: { id: true } });
@@ -277,8 +343,13 @@ export class StorageService {
       this.prisma.storedFile.findMany({
         where: { userId, workspaceId: null, folderId: folderId ?? null, status: StoredFileStatus.READY, deletedAt: null },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true, isFavorite: true },
-      }).then((rows) => rows.map(({ originalName, ...file }) => ({ ...file, name: originalName, sizeBytes: file.sizeBytes.toString() }))),
+        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true, isFavorite: true, expiryDate: true },
+      }).then((rows) => rows.map(({ originalName, expiryDate, ...file }) => ({
+        ...file,
+        name: originalName,
+        sizeBytes: file.sizeBytes.toString(),
+        expiresAt: toDateOnly(expiryDate),
+      }))),
     ]);
     return { folderId: folderId ?? null, folders, files };
   }
@@ -299,15 +370,23 @@ export class StorageService {
           workspaceId: null,
           status: StoredFileStatus.READY,
           deletedAt: null,
-          originalName: { contains: term, mode: 'insensitive' },
+          OR: [
+            { originalName: { contains: term, mode: 'insensitive' } },
+            { ocrText: { contains: term, mode: 'insensitive' } },
+          ],
         },
         orderBy: { createdAt: 'desc' },
         take: 50,
         select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true, isFavorite: true },
-      }).then((rows) => rows.map(({ originalName, ...file }) => ({
-        ...file,
+      }).then((rows) => rows.map(({ id, originalName, mimeType, sizeBytes, folderId, createdAt, isFavorite }) => ({
+        id,
         name: originalName,
-        sizeBytes: file.sizeBytes.toString(),
+        mimeType,
+        sizeBytes: sizeBytes.toString(),
+        folderId,
+        createdAt,
+        isFavorite,
+        matchedBy: originalName.toLocaleLowerCase().includes(term.toLocaleLowerCase()) ? 'name' : 'content',
       }))),
     ]);
     return { query: term, folders, files };
@@ -524,6 +603,8 @@ export class StorageService {
     sizeBytes: bigint,
     folderId?: string,
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+    fileRequestId?: string,
+    directoryPath: string[] = [],
   ) {
     await this.cleanExpiredReservations(userId);
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -556,10 +637,25 @@ export class StorageService {
             data: { storageReservedBytes: { increment: sizeBytes } },
           });
           if (!reserved.count) throw new Error('STORAGE_RESERVATION_RACE');
+          let uploadFolderId = folderId ?? null;
+          for (const name of directoryPath) {
+            let folder = await tx.folder.findFirst({
+              where: { userId, workspaceId: null, parentFolderId: uploadFolderId, name },
+              select: { id: true },
+            });
+            if (!folder) {
+              folder = await tx.folder.create({
+                data: { userId, workspaceId: null, parentFolderId: uploadFolderId, name },
+                select: { id: true },
+              });
+            }
+            uploadFolderId = folder.id;
+          }
           return tx.storedFile.create({
             data: {
               userId,
-              folderId: folderId ?? null,
+              ...(fileRequestId && { fileRequestId }),
+              folderId: uploadFolderId,
               objectKey: `${userId}/${randomUUID()}`,
               originalName: 'pending',
               mimeType: 'application/octet-stream',
@@ -571,7 +667,10 @@ export class StorageService {
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       } catch (error) {
         if (error instanceof Error && error.message === 'STORAGE_RESERVATION_RACE') continue;
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') continue;
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError
+          && (error.code === 'P2034' || (directoryPath.length > 0 && error.code === 'P2002'))
+        ) continue;
         throw error;
       }
     }
@@ -595,6 +694,8 @@ export class StorageService {
     file: UploadInput,
     folderId?: string,
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+    fileRequestId?: string,
+    relativePath?: string,
   ) {
     if (!isUploadInput(file)) throw new BadRequestException('The uploaded file size is invalid');
     if (!Number.isSafeInteger(file.size)) {
@@ -602,13 +703,14 @@ export class StorageService {
     }
 
     if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
+    const directoryPath = parseUploadDirectoryPath(relativePath);
     const subscription = await this.prisma.subscription.findUnique({ where: { userId } });
     if (!subscription) throw new NotFoundException('Subscription not found');
     const plan = await this.plans.currentPlan(subscription);
     assertPlanFileSize(plan, file.size);
     await this.objects.assertConfigured();
     const sizeBytes = BigInt(file.size);
-    const reserved = await this.reserve(userId, sizeBytes, folderId, requiredFeature);
+    const reserved = await this.reserve(userId, sizeBytes, folderId, requiredFeature, fileRequestId, directoryPath);
     const name = this.safeName(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
     const category = this.categorizeFile(name, mimeType);

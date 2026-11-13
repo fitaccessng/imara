@@ -5,6 +5,7 @@ import {
   Logger,
   mixin,
   NestInterceptor,
+  NotFoundException,
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { EventStatus, Plan } from '@prisma/client';
@@ -94,6 +95,22 @@ export function TempUploadInterceptor() {
 
     async requestPlan(request: RequestWithUpload): Promise<Plan | null> {
       let userId = request.auth?.userId;
+      const fileRequestToken = request.params?.fileRequestToken;
+      if (!userId && typeof fileRequestToken === 'string') {
+        if (!/^[A-Za-z0-9_-]{43}$/.test(fileRequestToken)) {
+          throw new NotFoundException('File request not found');
+        }
+        const fileRequest = await this.prisma.fileRequest.findFirst({
+          where: {
+            tokenHash: hashToken(fileRequestToken),
+            revokedAt: null,
+            creator: { accountStatus: 'ACTIVE' },
+          },
+          select: { creatorUserId: true },
+        });
+        if (!fileRequest) throw new NotFoundException('File request not found');
+        userId = fileRequest.creatorUserId;
+      }
       const captureToken = request.params?.token;
       if (!userId && typeof captureToken === 'string') {
         const event = await this.prisma.event.findFirst({

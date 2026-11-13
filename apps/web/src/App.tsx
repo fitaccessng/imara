@@ -49,12 +49,17 @@ import { WorkspaceFileDeliveriesPage } from "./workspaces/WorkspaceFileDeliverie
 import { AdminLoginPage } from "./pages/admin/AdminLoginPage";
 import { AdminPortal } from "./pages/admin/AdminPortal";
 import { SharedFilePreviewPage } from "./pages/sharing/SharedFilePreviewPage";
+import { OfflineAccessPage } from "./offline/OfflineAccessPage";
+import { NotesPage } from "./notes/NotesPage";
 
 const EventsPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.EventsPage })));
 const CreateEventPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.CreateEventPage })));
 const EventDetailPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.EventDetailPage })));
 const CaptureEventPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.CaptureEventPage })));
 const EventGalleryPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.EventGalleryPage })));
+const FileRequestsPage = lazy(() => import("./file-requests/FileRequestsPage").then((pages) => ({ default: pages.FileRequestsPage })));
+const PublicFileRequestPage = lazy(() => import("./file-requests/FileRequestsPage").then((pages) => ({ default: pages.PublicFileRequestPage })));
+const DocumentToolsPage = lazy(() => import("./document-tools/DocumentToolsPage").then((pages) => ({ default: pages.DocumentToolsPage })));
 
 function ProtectedRoutes() {
   const { user, loading, loadError, refresh } = useAuth();
@@ -85,6 +90,9 @@ function ProtectedRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dashboard/storage" element={<DashboardPage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/notes" element={<NotesPage />} />
+        <Route path="/document-tools" element={<DocumentToolsPage />} />
+        <Route path="/file-requests" element={<FileRequestsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/smart-files" element={<SmartFilesPage />} />
         <Route path="/favorites" element={<StarredFilesPage />} />
@@ -160,6 +168,7 @@ export function App() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/security" element={<SecurityPage />} />
         <Route path="/accessibility" element={<AccessibilityPage />} />
+        <Route path="/offline-files" element={<OfflineAccessPage />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/admin/*" element={<AdminPortal />} />
         <Route path="/login" element={<AuthPage key="login" mode="login" />} />
@@ -171,6 +180,7 @@ export function App() {
         <Route path="/capture/:token" element={<CaptureEventPage />} />
         <Route path="/gallery/:token" element={<EventGalleryPage />} />
         <Route path="/share/:token" element={<SharedFilePreviewPage />} />
+        <Route path="/request/:token" element={<PublicFileRequestPage />} />
         <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>
       </Suspense>

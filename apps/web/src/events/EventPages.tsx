@@ -68,6 +68,11 @@ interface EventMedia {
   createdAt: string;
 }
 
+interface EventUploadFailure {
+  fileName: string;
+  message: string;
+}
+
 interface EventCreated {
   event: ImaraEvent;
   tokens: EventTokens;
@@ -152,6 +157,27 @@ function EventEmptyState() {
       <h2>Your event stories start here.</h2>
       <p>Create an event to collect photos and videos from guests with one scannable QR code.</p>
       <Link to="/events/new" className="button button-green"><Plus size={16} /> Create your first event</Link>
+    </section>
+  );
+}
+
+function EventUploadFailures({ failures }: { failures: EventUploadFailure[] }) {
+  if (!failures.length) return null;
+
+  return (
+    <section className="capture-upload-failures" role="alert" aria-label="Upload errors">
+      <div className="capture-upload-failures-heading">
+        <strong>{failures.length} {failures.length === 1 ? "file couldn’t" : "files couldn’t"} be added</strong>
+        <span>Other files that uploaded successfully are still saved.</span>
+      </div>
+      <ul>
+        {failures.map((failure, index) => (
+          <li key={`${failure.fileName}-${index}`}>
+            <strong title={failure.fileName}>{failure.fileName}</strong>
+            <span>{failure.message}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -738,6 +764,7 @@ export function CaptureEventPage() {
   const queryClient = useQueryClient();
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [uploadFailures, setUploadFailures] = useState<EventUploadFailure[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadedCount, setUploadedCount] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
@@ -774,11 +801,16 @@ export function CaptureEventPage() {
   function setCapturedFile(file: File) {
     if (!uploadLimitReady) {
       setUploadError("The event’s upload limit could not be checked. Please reload this page and try again.");
+      setUploadFailures([]);
       setUploadMessage("");
       return;
     }
     if (file.size > maxUploadBytes) {
-      setUploadError(`${file.name} is ${formatBytes(file.size)}. This event’s plan allows files up to ${formatUploadLimit(maxUploadBytes)}. Ask the event host to upgrade their plan for larger uploads.`);
+      setUploadError("");
+      setUploadFailures([{
+        fileName: file.name,
+        message: `This file is ${formatBytes(file.size)}. The event limit is ${formatUploadLimit(maxUploadBytes)}.`,
+      }]);
       setUploadMessage("");
       return;
     }
@@ -789,6 +821,7 @@ export function CaptureEventPage() {
     });
     setCameraError("");
     setUploadError("");
+    setUploadFailures([]);
     setUploadMessage("");
   }
 
@@ -854,22 +887,28 @@ export function CaptureEventPage() {
     if (!selected.length) return;
     if (!uploadLimitReady) {
       setUploadError("The event’s upload limit could not be checked. Please reload this page and try again.");
+      setUploadFailures([]);
       return;
     }
     const oversized = selected.filter((file) => file.size > maxUploadBytes);
     if (oversized.length) {
-      setUploadError(`${oversized[0].name} is ${formatBytes(oversized[0].size)}. This event’s plan allows files up to ${formatUploadLimit(maxUploadBytes)}. Ask the event host to upgrade their plan for larger uploads.`);
+      setUploadError("");
+      setUploadFailures(oversized.map((file) => ({
+        fileName: file.name,
+        message: `This file is ${formatBytes(file.size)}. The event limit is ${formatUploadLimit(maxUploadBytes)}.`,
+      })));
       setUploadMessage("");
       return;
     }
     setUploading(true);
     setUploadError("");
+    setUploadFailures([]);
     setUploadMessage("");
     const controller = new AbortController();
     uploadController.current = controller;
     let completed = 0;
     let nextIndex = 0;
-    const errors: string[] = [];
+    const errors: EventUploadFailure[] = [];
 
     async function uploadOne(file: File) {
       const body = new FormData();
@@ -907,7 +946,7 @@ export function CaptureEventPage() {
             await uploadOne(file);
           } catch (error) {
             if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
-            errors.push(`${file.name}: ${errorMessage(error, "Upload failed.")}`);
+            errors.push({ fileName: file.name, message: errorMessage(error, "Upload failed.") });
           }
         }
       }
@@ -915,7 +954,7 @@ export function CaptureEventPage() {
       await Promise.all(
         Array.from({ length: Math.min(EVENT_UPLOAD_CONCURRENCY, selected.length) }, () => uploadNext()),
       );
-      if (errors.length) setUploadError(errors.join(" "));
+      setUploadFailures(errors);
       if (controller.signal.aborted) {
         setUploadMessage(`${completed} ${completed === 1 ? "memory was" : "memories were"} added before upload cancellation.`);
       } else {
@@ -952,9 +991,6 @@ export function CaptureEventPage() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: facing },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 24, max: 30 },
         },
         audio: false,
       });
@@ -1156,6 +1192,7 @@ export function CaptureEventPage() {
             </header>
             <div className="capture-review-panel">
               {uploadError && <p className="capture-camera-alert" role="alert"><PlanLimitMessage message={uploadError} /></p>}
+              <EventUploadFailures failures={uploadFailures} />
               <div className="capture-review-actions">
                 <button className="capture-review-circle capture-review-retake" type="button" disabled={uploading} onClick={() => setCapturedMedia(null)} aria-label="Retake"><RotateCcw size={19} /><span>Retake</span></button>
                 {uploading && <button className="capture-camera-cancel" type="button" onClick={cancelUploads}>Cancel upload</button>}
@@ -1172,9 +1209,9 @@ export function CaptureEventPage() {
               <video ref={videoRef} autoPlay muted playsInline aria-label="Live camera preview" />
               {!cameraReady && (
                 <div className="event-camera-placeholder">
-                  <Camera size={28} />
-                  <strong>{cameraBusy ? "Waiting for camera permission…" : "Ready when you are"}</strong>
-                  <span>{cameraBusy ? "Allow camera access in your browser" : "Allow access to capture a moment"}</span>
+                  <span className="event-camera-placeholder-icon"><Camera size={27} /></span>
+                  <strong>{cameraBusy ? "Opening your camera…" : "Ready when you are"}</strong>
+                  <span>{cameraBusy ? "Approve camera access if your browser asks" : "Allow access to capture a moment"}</span>
                   {!cameraBusy && <button className="capture-permission-button" type="button" onClick={() => void startCamera()}><Camera size={16} /> Allow camera access</button>}
                 </div>
               )}
@@ -1191,6 +1228,7 @@ export function CaptureEventPage() {
             <div className="capture-camera-status" aria-live="polite">
               {cameraError && <p className="capture-camera-alert" role="alert">{cameraError}</p>}
               {uploadError && <p className="capture-camera-alert" role="alert"><PlanLimitMessage message={uploadError} /></p>}
+              <EventUploadFailures failures={uploadFailures} />
               {uploadMessage && <p className="capture-camera-success" role="status"><Check size={15} />{uploadMessage}</p>}
               {recording
                 ? <span className="capture-recording-badge"><i /> REC {`${Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:${(recordingSeconds % 60).toString().padStart(2, "0")}`}</span>
