@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { MailerService } from '../auth/mailer.service';
 import { SessionGuard } from '../auth/session.guard';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -17,7 +17,7 @@ import { FileDeliveryService } from './file-delivery.service';
 import { PersonalNotificationsModule } from '../notifications/personal-notifications.module';
 
 @Module({
-  imports: [PrismaModule, PlanCatalogueModule, PersonalNotificationsModule],
+  imports: [PrismaModule, PlanCatalogueModule, forwardRef(() => PersonalNotificationsModule)],
   controllers: [WorkspacesController, WorkspaceStorageController, WorkspaceChatController, CalendarController],
   providers: [
     WorkspacesService, WorkspaceStorageService, WorkspaceChatService, CalendarService, CalendarReminderWorker, FileDeliveryService,

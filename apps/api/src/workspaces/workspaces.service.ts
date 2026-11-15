@@ -457,6 +457,35 @@ export class WorkspacesService {
   async acceptInvitation(userId: string, token: string) {
     if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) throw new NotFoundException('Invitation not found');
     const tokenHash = hashToken(token);
+    return this.acceptInvitationByHash(userId, tokenHash);
+  }
+
+  /**
+   * Automatically accepts the single outstanding invitation for a newly verified
+   * account. Verification proves control of the invited address; multiple
+   * invitations are left for the user to select via their individual links.
+   */
+  async acceptPendingInvitationForUser(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, emailVerifiedAt: true },
+    });
+    if (!user?.emailVerifiedAt) return null;
+
+    const invitations = await this.prisma.workspaceInvitation.findMany({
+      where: {
+        email: user.email.trim().toLowerCase(),
+        status: InvitationStatus.PENDING,
+        expiresAt: { gt: new Date() },
+      },
+      select: { tokenHash: true },
+      take: 2,
+    });
+    if (invitations.length !== 1) return null;
+    return this.acceptInvitationByHash(userId, invitations[0].tokenHash);
+  }
+
+  private async acceptInvitationByHash(userId: string, tokenHash: string) {
     const preflight = await this.prisma.workspaceInvitation.findUnique({ where: { tokenHash } });
     if (preflight?.status === InvitationStatus.PENDING && preflight.expiresAt <= new Date()) {
       await this.prisma.workspaceInvitation.updateMany({
@@ -467,7 +496,21 @@ export class WorkspacesService {
     }
     return this.prisma.$transaction(async (tx) => {
       const invitation = await tx.workspaceInvitation.findUnique({ where: { tokenHash } });
-      if (!invitation || invitation.status !== InvitationStatus.PENDING) throw new NotFoundException('Invitation not found');
+      if (!invitation) throw new NotFoundException('Invitation not found');
+      if (invitation.status === InvitationStatus.ACCEPTED) {
+        const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+        if (!user || user.email.toLowerCase() !== invitation.email.toLowerCase()) {
+          throw new ForbiddenException('Sign in with the email address that received this invitation');
+        }
+        const member = await tx.workspaceMember.findUnique({
+          where: { workspaceId_userId: { workspaceId: invitation.workspaceId, userId } },
+        });
+        if (!member || member.status !== WorkspaceMemberStatus.ACTIVE) {
+          throw new ConflictException('Invitation was already used');
+        }
+        return { workspaceId: invitation.workspaceId, memberId: member.id, role: member.role };
+      }
+      if (invitation.status !== InvitationStatus.PENDING) throw new NotFoundException('Invitation not found');
       if (invitation.expiresAt <= new Date()) {
         await tx.workspaceInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.EXPIRED } });
         throw new ConflictException('Invitation has expired');

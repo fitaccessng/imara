@@ -18,7 +18,7 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { apiRequest } from "../lib/api";
@@ -464,6 +464,7 @@ export function WorkspaceMemberPage() {
   const [error, setError] = useState("");
   const [role, setRole] = useState<WorkspaceRole | "">("");
   const [displayName, setDisplayName] = useState("");
+  const hydratedMember = useRef<WorkspaceMember | null>(null);
   const [actionModal, setActionModal] = useState<ActionModalRequest | null>(null);
   const memberQuery = useQuery({
     queryKey: ["workspace-member", workspace?.id, memberId],
@@ -472,11 +473,21 @@ export function WorkspaceMemberPage() {
   });
 
   useEffect(() => {
-    if (memberQuery.data) {
-      setRole(memberQuery.data.role);
-      setDisplayName(memberQuery.data.displayName ?? memberQuery.data.user.name);
+    const incoming = memberQuery.data;
+    if (!incoming) return;
+    const previous = hydratedMember.current;
+    const localIsClean = !previous
+      || previous.id !== incoming.id
+      || (
+        role === previous.role
+        && displayName === (previous.displayName ?? previous.user.name)
+      );
+    if (localIsClean) {
+      setRole(incoming.role);
+      setDisplayName(incoming.displayName ?? incoming.user.name);
     }
-  }, [memberQuery.data]);
+    hydratedMember.current = incoming;
+  }, [memberQuery.data, role, displayName]);
 
   if (workspacesQuery.isLoading) return <PageLoading />;
   if (workspacesQuery.isError) return <WorkspaceLoadError error={workspacesQuery.error} retry={() => void workspacesQuery.refetch()} />;
@@ -992,10 +1003,12 @@ export function AcceptWorkspaceInvitationPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const token = params.get("token");
+  const autoAccept = params.get("autoAccept") === "1";
+  const autoAcceptStarted = useRef(false);
   const [status, setStatus] = useState<"ready" | "accepting" | "accepted" | "error">(token ? "ready" : "error");
   const [error, setError] = useState(token ? "" : "This invitation link is incomplete. Ask the workspace owner to send you a new invitation.");
 
-  async function accept() {
+  const accept = useCallback(async () => {
     if (!token) return;
     setStatus("accepting");
     setError("");
@@ -1007,7 +1020,13 @@ export function AcceptWorkspaceInvitationPage() {
       setError(reason instanceof Error ? reason.message : "Unable to accept this invitation.");
       setStatus("error");
     }
-  }
+  }, [navigate, token]);
+
+  useEffect(() => {
+    if (!autoAccept || !user || autoAcceptStarted.current) return;
+    autoAcceptStarted.current = true;
+    void accept();
+  }, [accept, autoAccept, user]);
 
   const returnTo = `${location.pathname}${location.search}`;
   return (
@@ -1016,11 +1035,11 @@ export function AcceptWorkspaceInvitationPage() {
         <span className="eyebrow">IMARA · BUSINESS</span>
         <div className="invite-accept-mark"><Users size={21} /></div>
         <h1>{status === "accepted" ? "You’re in." : "A place on the team."}</h1>
-        <p>{user ? "Accept this secure invitation to join the business workspace. You must be signed in with the invited email address." : "Sign in or create an account with the email address that received this invitation."}</p>
+        <p>{user ? autoAccept ? "Your account is ready. We’re adding you to the workspace with the role and folder access chosen by the inviter." : "Accept this secure invitation to join the business workspace. You must be signed in with the invited email address." : "Sign in or create an account with the email address that received this invitation."}</p>
         {error && <p className="form-alert" role="alert"><CircleAlert size={14} />{error}</p>}
         {user ? (
           <button className="button button-green button-wide" onClick={() => void accept()} disabled={status === "accepting" || status === "accepted"}>
-            {status === "accepting" ? "Accepting invitation…" : "Accept invitation"}<ArrowRight size={15} />
+            {status === "accepting" ? autoAccept ? "Adding you to the workspace…" : "Accepting invitation…" : "Accept invitation"}<ArrowRight size={15} />
           </button>
         ) : (
           <div className="invite-auth-actions">

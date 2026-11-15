@@ -5,6 +5,7 @@ jest.mock('@nestjs/common', () => {
   }
   return {
     Injectable: () => (target: unknown) => target,
+    Optional: () => () => undefined,
     ConflictException: MockHttpException,
     ForbiddenException: MockHttpException,
     Logger: MockLogger,
@@ -338,6 +339,7 @@ describe('session management', () => {
     const referralCount = jest.fn();
     const referralRewardCreateMany = jest.fn();
     const subscriptionUpdate = jest.fn();
+    const acceptPendingInvitation = jest.fn().mockResolvedValue(null);
     const txClient = {
       $queryRaw: queryRaw,
       verificationToken: {
@@ -360,6 +362,7 @@ describe('session management', () => {
       } as unknown as PrismaService,
       {} as MailerService,
       planService as never,
+      { acceptPendingInvitationForUser: acceptPendingInvitation } as never,
     );
 
     beforeEach(() => {
@@ -444,6 +447,7 @@ describe('session management', () => {
       expect(sessionCreate).toHaveBeenCalledWith({
         data: expect.objectContaining({ userId: 'user-id', tokenHash: hashToken(result.token) }),
       });
+      expect(acceptPendingInvitation).toHaveBeenCalledWith('user-id');
     });
 
     it('credits the inviter when an invited account verifies by code', async () => {

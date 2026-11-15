@@ -35,7 +35,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, apiRequest } from "../../lib/api";
 import { BrandMark, BrandWordmark } from "../../components/BrandLockup";
@@ -1390,6 +1390,7 @@ function AdminSupportTicketDetail({ identity }: { identity: AdminIdentity }) {
   const [internalNote, setInternalNote] = useState(false);
   const [notice, setNotice] = useState("");
   const [actionError, setActionError] = useState("");
+  const hydratedTicket = useRef<AdminSupportTicketDetails | null>(null);
   const query = useQuery({
     queryKey: ["admin-support-ticket", id],
     queryFn: () => apiRequest<AdminSupportTicketDetails>(`/admin/support-tickets/${encodeURIComponent(id)}`),
@@ -1401,11 +1402,22 @@ function AdminSupportTicketDetail({ identity }: { identity: AdminIdentity }) {
     queryFn: () => apiRequest<AdminSupportAgent[]>("/admin/support-agents"),
   });
   useEffect(() => {
-    if (!query.data) return;
-    setStatus(query.data.status);
-    setPriority(query.data.priority);
-    setAssignedAdminId(query.data.assignedAdmin?.id ?? "");
-  }, [query.data]);
+    const incoming = query.data;
+    if (!incoming) return;
+    const previous = hydratedTicket.current;
+    const localIsClean = !previous
+      || (
+        status === previous.status
+        && priority === previous.priority
+        && assignedAdminId === (previous.assignedAdmin?.id ?? "")
+      );
+    if (localIsClean) {
+      setStatus(incoming.status);
+      setPriority(incoming.priority);
+      setAssignedAdminId(incoming.assignedAdmin?.id ?? "");
+    }
+    hydratedTicket.current = incoming;
+  }, [query.data, status, priority, assignedAdminId]);
   const updateTicket = useMutation({
     mutationFn: () => apiRequest(`/admin/support-tickets/${encodeURIComponent(id)}`, {
       method: "PATCH",

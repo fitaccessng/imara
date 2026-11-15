@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -24,6 +25,7 @@ import { createOpaqueToken, hashToken } from './token';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { serializePlanEntitlements } from '../subscriptions/plan-entitlements';
 import { creditVerifiedReferral } from '../referrals/referrals.service';
+import { WorkspacesService } from '../workspaces/workspaces.service';
 
 @Injectable()
 export class AuthService {
@@ -33,6 +35,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly mailer: MailerService,
     private readonly plans: PlanCatalogueService,
+    @Optional() private readonly workspaces?: WorkspacesService,
   ) {}
 
   private requireMailer() {
@@ -147,10 +150,26 @@ export class AuthService {
         this.logger.error('Verification email delivery failed after account creation; retry from the verification page.');
       });
     }
+    const acceptedInvitation = skipEmailVerification
+      ? await this.tryAcceptInvitation(user.user.id)
+      : null;
+    const workspaceId = user.workspaceId ?? acceptedInvitation?.workspaceId;
     return {
       id: user.user.id, email: user.user.email, name: user.user.name, emailVerified: skipEmailVerification,
-      ...(user.workspaceId ? { workspaceId: user.workspaceId } : {}),
+      ...(workspaceId ? { workspaceId } : {}),
     };
+  }
+
+  private async tryAcceptInvitation(userId: string) {
+    if (!this.workspaces) return null;
+    try {
+      return await this.workspaces.acceptPendingInvitationForUser(userId);
+    } catch {
+      // Verification and account creation must still complete if workspace
+      // capacity or invitation state changed; the invitation link remains usable.
+      this.logger.error('Automatic workspace invitation acceptance failed; the invitation can still be accepted from its link.');
+      return null;
+    }
   }
 
   async resendVerification(emailInput: string): Promise<void> {
@@ -203,6 +222,7 @@ export class AuthService {
       select: { id: true, email: true, name: true, role: true, emailVerifiedAt: true, accountStatus: true },
     });
     if (!user || !user.emailVerifiedAt) throw new UnauthorizedException('Verification token is invalid or expired');
+    await this.tryAcceptInvitation(user.id);
     return this.createSession(user, userAgent);
   }
 
@@ -250,6 +270,7 @@ export class AuthService {
     });
 
     if (!verified) throw new UnauthorizedException('Verification code is invalid or expired');
+    await this.tryAcceptInvitation(user.id);
     return this.createSession({ ...user, emailVerifiedAt: now }, userAgent);
   }
 

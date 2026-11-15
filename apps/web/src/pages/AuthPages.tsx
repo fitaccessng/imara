@@ -348,7 +348,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const referralCode = searchParams.get("ref") ?? searchParams.get("referralCode");
 
   const invitationReturnTo = inviteToken
-    ? `/workspace/invitations/accept?token=${encodeURIComponent(inviteToken)}`
+    ? `/workspace/invitations/accept?token=${encodeURIComponent(inviteToken)}&autoAccept=1`
     : "";
 
   const locationState = location.state;
@@ -1147,7 +1147,9 @@ export function ResetPasswordPage() {
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const { setUser } = useAuth();
+  const invitationRedirectStarted = useRef(false);
   const tokenVerificationRequest = useRef<{
     token: string;
     promise: Promise<{ user: User; workspaceId: string | null }>;
@@ -1166,8 +1168,12 @@ export function VerifyEmailPage() {
   const [postVerificationReturnTo, setPostVerificationReturnTo] = useState("");
 
   useEffect(() => {
+    const storedInvitationReturnTo =
+      window.sessionStorage.getItem("imara.invitationReturnTo") ?? "";
     setInvitationReturnTo(
-      window.sessionStorage.getItem("imara.invitationReturnTo") ?? "",
+      storedInvitationReturnTo.startsWith("/workspace/invitations/accept?token=")
+        ? storedInvitationReturnTo
+        : "",
     );
     const stateReturnTo =
       typeof location.state === "object" &&
@@ -1220,6 +1226,14 @@ export function VerifyEmailPage() {
       active = false;
     };
   }, [token, location.state, setUser]);
+
+  useEffect(() => {
+    if (status !== "success" || !invitationReturnTo || invitationRedirectStarted.current) return;
+    invitationRedirectStarted.current = true;
+    window.sessionStorage.removeItem("imara.invitationReturnTo");
+    window.sessionStorage.removeItem("imara.postVerificationReturnTo");
+    navigate(invitationReturnTo, { replace: true });
+  }, [invitationReturnTo, navigate, status]);
 
   async function submitCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

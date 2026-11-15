@@ -140,6 +140,12 @@ function validateForSharing(document: StudioDocument): string | null {
   return null;
 }
 
+function hasDocumentEdits(current: StudioDocument, saved: StudioDocument) {
+  return current.title !== saved.title
+    || current.description !== saved.description
+    || JSON.stringify(current.content) !== JSON.stringify(saved.content);
+}
+
 function DocumentTypeIcon({ type }: { type: DocumentKind }) {
   if (type === "FORM") return <ListPlus size={19} />;
   if (type === "AGREEMENT") return <FileSignature size={19} />;
@@ -169,7 +175,13 @@ export function DocumentStudioPage() {
     enabled: Boolean(selectedId && activePanel === "RESPONSES" && (editing?.type === "FORM" || editing?.type === "AGREEMENT")),
   });
   useEffect(() => {
-    if (selectedQuery.data) setEditing(selectedQuery.data);
+    const saved = selectedQuery.data;
+    if (!saved) return;
+    setEditing((current) => (
+      current?.id === saved.id && hasDocumentEdits(current, saved)
+        ? current
+        : saved
+    ));
   }, [selectedQuery.data]);
 
   const createDocument = useMutation({
