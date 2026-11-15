@@ -70,6 +70,183 @@ describe('workspace storage authorization', () => {
     expect(fileFindMany).not.toHaveBeenCalled();
   });
 
+  it('lists unindexed files only from folders where the member can download files', async () => {
+    authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF });
+    folderFindMany.mockResolvedValue([{ id: 'download-folder' }, { id: 'view-only-folder' }]);
+    authorizeFolder.mockImplementation(async (_workspaceId: string, _userId: string, folderId: string, permission: string) => {
+      if (folderId !== 'download-folder' || permission !== 'downloadFiles') throw new NotFoundException();
+      return {};
+    });
+    fileFindMany.mockResolvedValue([{
+      id: 'visible-file',
+      originalName: 'scan.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 120n,
+    }]);
+    const storage = new WorkspaceStorageService(
+      { folder: { findMany: folderFindMany }, storedFile: { findMany: fileFindMany } } as unknown as PrismaService,
+      {} as ObjectStorageService,
+      { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
+      {} as never,
+    );
+
+    await expect(storage.listUnindexed('workspace-a', 'staff-a')).resolves.toEqual([{
+      id: 'visible-file',
+      name: 'scan.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: '120',
+    }]);
+    expect(fileFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        workspaceId: 'workspace-a',
+        status: 'READY',
+        deletedAt: null,
+        ocrText: null,
+        folderId: { in: ['download-folder'] },
+      }),
+      select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+    }));
+    expect(authorizeFolder).toHaveBeenCalledWith('workspace-a', 'staff-a', 'download-folder', 'downloadFiles');
+    expect(authorizeFolder).toHaveBeenCalledWith('workspace-a', 'staff-a', 'view-only-folder', 'downloadFiles');
+  });
+
+  it('searches visible workspace files by OCR content without returning OCR text', async () => {
+    authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF });
+    folderFindMany.mockResolvedValue([{ id: 'visible-folder' }, { id: 'inaccessible-folder' }]);
+    authorizeFolder.mockImplementation(async (_workspaceId: string, _userId: string, folderId: string, permission: string) => {
+      if (folderId !== 'visible-folder' || permission !== 'viewFiles') throw new NotFoundException();
+      return {};
+    });
+    const createdAt = new Date();
+    fileFindMany.mockResolvedValue([{
+      id: 'content-match',
+      originalName: 'scan.pdf',
+      ocrText: 'Confidential invoice reference',
+      mimeType: 'application/pdf',
+      sizeBytes: 120n,
+      folderId: 'visible-folder',
+      createdAt,
+      isFavorite: false,
+    }]);
+    const storage = new WorkspaceStorageService(
+      { folder: { findMany: folderFindMany }, storedFile: { findMany: fileFindMany } } as unknown as PrismaService,
+      {} as ObjectStorageService,
+      { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
+      {} as never,
+    );
+
+    const result = await storage.search('workspace-a', 'staff-a', 'invoice');
+
+    expect(result).toEqual({
+      workspaceId: 'workspace-a',
+      files: [{
+        id: 'content-match',
+        name: 'scan.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: '120',
+        folderId: 'visible-folder',
+        createdAt,
+        isFavorite: false,
+        canDownload: false,
+        matchedBy: 'content',
+      }],
+    });
+    expect(JSON.stringify(result)).not.toContain('Confidential');
+    expect(fileFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        workspaceId: 'workspace-a',
+        folderId: { in: ['visible-folder'] },
+        OR: [
+          { originalName: { contains: 'invoice', mode: 'insensitive' } },
+          { ocrText: { contains: 'invoice', mode: 'insensitive' } },
+        ],
+      }),
+      take: 50,
+    }));
+  });
+
+  it('allows OCR updates for members with view access to the file', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 'file-a',
+      folderId: 'visible-folder',
+      userId: 'uploader-a',
+      objectKey: 'key',
+      originalName: 'scan.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 120n,
+    });
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF });
+    authorizeFolder.mockResolvedValue({});
+    const storage = new WorkspaceStorageService(
+      { storedFile: { findFirst, updateMany } } as unknown as PrismaService,
+      {} as ObjectStorageService,
+      { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
+      {} as never,
+    );
+
+    await expect(storage.setOcrText('workspace-a', 'staff-a', 'file-a', 'invoice terms'))
+      .resolves.toEqual({ id: 'file-a', characterCount: 13 });
+    expect(authorizeFolder).toHaveBeenCalledWith('workspace-a', 'staff-a', 'visible-folder', 'viewFiles');
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'file-a',
+        workspaceId: 'workspace-a',
+        folderId: 'visible-folder',
+        status: 'READY',
+      },
+      data: { ocrText: 'invoice terms' },
+    });
+  });
+
+  it('denies non-admin access to OCR updates for root files', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 'root-file',
+      folderId: null,
+      userId: 'uploader-a',
+      objectKey: 'key',
+      originalName: 'private.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 120n,
+    });
+    const updateMany = jest.fn();
+    authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF });
+    const storage = new WorkspaceStorageService(
+      { storedFile: { findFirst, updateMany } } as unknown as PrismaService,
+      {} as ObjectStorageService,
+      { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
+      {} as never,
+    );
+
+    await expect(storage.setOcrText('workspace-a', 'staff-a', 'root-file', 'private text'))
+      .rejects.toBeInstanceOf(NotFoundException);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('includes root-level files only for workspace administrators in search', async () => {
+    authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.ADMIN });
+    fileFindMany.mockResolvedValue([{
+      id: 'root-file',
+      originalName: 'records.pdf',
+      ocrText: null,
+      mimeType: 'application/pdf',
+      sizeBytes: 120n,
+      folderId: null,
+      createdAt: new Date(),
+      isFavorite: false,
+    }]);
+
+    const result = await service.search('workspace-a', 'admin-a', 'records');
+    expect(result).toMatchObject({
+      workspaceId: 'workspace-a',
+      files: [{ id: 'root-file', canDownload: true, matchedBy: 'name' }],
+    });
+    expect(fileFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.not.objectContaining({ folderId: expect.anything() }),
+      take: 50,
+    }));
+  });
+
   it.each([WorkspaceRole.OWNER, WorkspaceRole.ADMIN])(
     'allows a %s to create a root shared folder',
     async (role) => {
@@ -184,6 +361,9 @@ describe('workspace storage authorization', () => {
       'Edited 2 spreadsheet cells: Sheet1!A1, Sheet1!B2',
     )).resolves.toMatchObject({ id: 'file-a', name: 'Plan.xlsx' });
 
+    expect(tx.storedFile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ ocrText: null }),
+    }));
     expect(auditCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'FILE_EDITED',

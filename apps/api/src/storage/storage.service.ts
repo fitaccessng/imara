@@ -274,6 +274,26 @@ export class StorageService {
     return { id: fileId, characterCount: text.length };
   }
 
+  async listUnindexed(userId: string) {
+    const files = await this.prisma.storedFile.findMany({
+      where: {
+        userId,
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+        ocrText: null,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+    });
+    return files.map(({ id, originalName, mimeType, sizeBytes }) => ({
+      id,
+      name: originalName,
+      mimeType,
+      sizeBytes: sizeBytes.toString(),
+    }));
+  }
+
   private async ownedFolder(userId: string, folderId?: string | null) {
     if (!folderId) return null;
     const folder = await this.prisma.folder.findFirst({ where: { id: folderId, userId, workspaceId: null }, select: { id: true } });
@@ -824,6 +844,7 @@ export class StorageService {
             sizeBytes: nextSize,
             mimeType: contentType,
             contentHash,
+            ocrText: null,
           },
         });
         if (!updated.count) throw new ConflictException('This file changed while you were editing. Reload it and try again.');

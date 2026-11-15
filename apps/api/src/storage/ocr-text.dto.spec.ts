@@ -9,6 +9,13 @@ describe('SetOcrTextDto', () => {
     await expect(validate(dto)).resolves.toHaveLength(0);
   });
 
+  it('accepts an empty string to mark unsupported or unreadable content as processed', async () => {
+    const dto = new SetOcrTextDto();
+    dto.text = '';
+
+    await expect(validate(dto)).resolves.toHaveLength(0);
+  });
+
   it('rejects non-string and over-limit text', async () => {
     const nonString = new SetOcrTextDto();
     (nonString as unknown as { text: unknown }).text = 42;

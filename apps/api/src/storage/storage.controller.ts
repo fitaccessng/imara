@@ -38,6 +38,11 @@ export class StorageController {
     return this.storage.list(req.auth.userId, folderId);
   }
 
+  @Get('files/unindexed')
+  listUnindexedFiles(@Req() req: AuthenticatedRequest) {
+    return this.storage.listUnindexed(req.auth.userId);
+  }
+
   @Get('search')
   searchFiles(@Req() req: AuthenticatedRequest, @Query() dto: SearchFilesDto) {
     return this.storage.search(req.auth.userId, dto.q);

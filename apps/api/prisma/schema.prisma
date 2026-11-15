@@ -223,6 +223,12 @@ enum FolderPermissionEffect {
   RESTRICT
 }
 
+enum PersonalDocumentType {
+  FORM
+  AGREEMENT
+  INVOICE
+}
+
 model User {
   id              String                @id @default(uuid()) @db.Uuid
   email           String                @unique @db.VarChar(320)
@@ -273,8 +279,46 @@ model User {
   referredUsers   User[]                @relation("UserReferrals")
   referralRewards ReferralReward[]      @relation("ReferralRewardInviter")
   personalNotes  PersonalNote[]
+  personalDocuments PersonalDocument[]
 
   @@index([referredByUserId, emailVerifiedAt])
+}
+
+model PersonalDocument {
+  id          String               @id @default(uuid()) @db.Uuid
+  ownerId     String               @db.Uuid
+  type        PersonalDocumentType
+  title       String               @db.VarChar(160)
+  description String?              @db.VarChar(1000)
+  content     Json
+  published   Boolean              @default(false)
+  publishedAt DateTime?
+  tokenHash   String?              @unique @db.Char(64)
+  revokedAt   DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  owner       User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  responses   PersonalDocumentResponse[]
+
+  @@index([ownerId, updatedAt])
+  @@index([type, published, revokedAt])
+}
+
+model PersonalDocumentResponse {
+  id              String           @id @default(uuid()) @db.Uuid
+  documentId      String           @db.Uuid
+  respondentName  String           @db.VarChar(120)
+  respondentEmail String           @db.VarChar(320)
+  answers         Json?
+  consent         Boolean          @default(false)
+  signedAt        DateTime?
+  signedName      String?          @db.VarChar(120)
+  ipAddress       String?          @db.VarChar(64)
+  userAgent       String?          @db.VarChar(512)
+  submittedAt     DateTime         @default(now())
+  document        PersonalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, submittedAt])
 }
 
 model PersonalNote {

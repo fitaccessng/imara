@@ -2105,6 +2105,8 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .search-result-icon, .subscription-icon { display: grid; width: 36px; height: 36px; flex: none; place-items: center; border-radius: 8px; background: #eef2f6; color: #526579; }
 .search-folder-icon, .subscription-icon { background: #eaf7ed; color: #168d34; }
 .search-result-main { display: grid; min-width: 0; flex: 1; gap: 4px; }
+.search-result-main-button { min-height: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.search-result-main-button:hover strong { color: #3d7652; text-decoration: underline; text-underline-offset: 3px; }
 .search-result-main strong { color: #172b3a; font-size: 13px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .search-result-main small, .search-result-action { color: #718096; font-size: 11px; }
 .search-result-action { flex: none; }

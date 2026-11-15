@@ -31,7 +31,7 @@ import {
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthProvider";
-import { apiRequest } from "../lib/api";
+import { ApiError, apiBlob, apiRequest } from "../lib/api";
 import { BrandIdentity } from "./BrandLockup";
 import { ReferralPromotionModal } from "./ReferralComponents";
 import type { Workspace, WorkspaceNotification } from "../workspaces/types";
@@ -44,6 +44,88 @@ interface ProductTourStep {
   description: string;
   href: string;
   icon: LucideIcon;
+}
+
+interface UnindexedFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes?: string;
+}
+
+const MAX_AUTOMATIC_INDEX_BYTES = 50 * 1024 * 1024;
+const INDEXABLE_EXTENSIONS = new Set([
+  "pdf", "docx", "xlsx", "xls", "csv", "tsv", "pptx", "txt", "md", "log", "json", "xml", "html", "htm",
+]);
+
+function isAutomaticallyIndexable(file: UnindexedFile) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/") || INDEXABLE_EXTENSIONS.has(extension);
+}
+
+function shouldPauseIndexing(error: unknown) {
+  return !(error instanceof ApiError) || error.status === 0 || error.status === 401 || error.status >= 500;
+}
+
+async function indexPendingFiles(
+  candidates: UnindexedFile[],
+  active: () => boolean,
+  readPath: (fileId: string) => string,
+  writePath: (fileId: string) => string,
+) {
+  for (const candidate of candidates) {
+    if (!active()) return;
+    if (document.visibilityState === "hidden") return;
+    const size = Number(candidate.sizeBytes);
+    const tooLarge = Number.isFinite(size) && size > MAX_AUTOMATIC_INDEX_BYTES;
+    const canExtract = isAutomaticallyIndexable(candidate) && !tooLarge;
+    if (!canExtract) {
+      console.warn(
+        tooLarge
+          ? `Automatic search indexing skipped ${candidate.name} because it exceeds 50 MiB.`
+          : `Automatic search indexing skipped unsupported file ${candidate.name}.`,
+      );
+      try {
+        await apiRequest(writePath(candidate.id), {
+          method: "PUT",
+          body: JSON.stringify({ text: "" }),
+        });
+      } catch (error) {
+        console.warn(`Automatic search indexing could not save the status for ${candidate.name}.`, error);
+        if (!shouldPauseIndexing(error)) continue;
+        return;
+      }
+      continue;
+    }
+    let blob: Blob;
+    try {
+      blob = await apiBlob(readPath(candidate.id));
+    } catch (error) {
+      console.warn(`Automatic search indexing could not load ${candidate.name}.`, error);
+      if (shouldPauseIndexing(error)) return;
+      continue;
+    }
+
+    let text = "";
+    try {
+      const file = new File([blob], candidate.name, { type: candidate.mimeType || blob.type });
+      const { extractDocumentText } = await import("../document-tools/ocr");
+      text = await extractDocumentText(file, () => undefined);
+    } catch (error) {
+      console.warn(`Automatic search indexing could not extract text from ${candidate.name}.`, error);
+    }
+    if (!active()) return;
+    try {
+      await apiRequest(writePath(candidate.id), {
+        method: "PUT",
+        body: JSON.stringify({ text }),
+      });
+    } catch (error) {
+      console.warn(`Automatic search indexing could not save text for ${candidate.name}.`, error);
+      if (!shouldPauseIndexing(error)) continue;
+      return;
+    }
+  }
 }
 
 function createProductTourSteps(workspaceId?: string): ProductTourStep[] {
@@ -152,6 +234,44 @@ export function AppShell({ children }: { children: ReactNode }) {
     queryFn: () => apiRequest<Workspace[]>("/workspaces"),
   });
   const businessWorkspaces = workspacesQuery.data ?? [];
+  useEffect(() => {
+    if (!user || !workspacesQuery.data || workspacesQuery.isError) return;
+    let running = true;
+    let timer: number | undefined;
+
+    const active = () => running;
+    const indexLibrary = async () => {
+      try {
+        const personalFiles = await apiRequest<UnindexedFile[]>("/files/unindexed");
+        await indexPendingFiles(
+          personalFiles,
+          active,
+          (fileId) => `/files/${fileId}/download`,
+          (fileId) => `/files/${fileId}/ocr-text`,
+        );
+        for (const workspace of workspacesQuery.data ?? []) {
+          if (!active()) return;
+          const files = await apiRequest<UnindexedFile[]>(`/workspaces/${workspace.id}/files/unindexed`);
+          await indexPendingFiles(
+            files,
+            active,
+            (fileId) => `/workspaces/${workspace.id}/files/${fileId}/download`,
+            (fileId) => `/workspaces/${workspace.id}/files/${fileId}/ocr-text`,
+          );
+        }
+      } catch (error) {
+        console.warn("Automatic search indexing could not check for files.", error);
+      } finally {
+        if (running) timer = window.setTimeout(() => void indexLibrary(), 60_000);
+      }
+    };
+
+    void indexLibrary();
+    return () => {
+      running = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [user?.id, workspacesQuery.data, workspacesQuery.isError]);
   const selectedWorkspaceId = new URLSearchParams(search).get("workspace");
   const businessWorkspace =
     businessWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId) ??
@@ -286,7 +406,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? `${nameParts[0][0]}${nameParts[nameParts.length - 1]?.[0]}`
     : nameParts[0]?.slice(0, 2) ?? "").toUpperCase();
   const isBusinessPage = pathname.startsWith("/workspace");
-  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname === "/calendar" ? "Calendar" : pathname === "/workspace/calendar" ? "Shared calendar" : pathname === "/workspace/file-deliveries" ? "Private files" : pathname === "/file-requests" ? "Request files" : pathname === "/document-tools" ? "Document tools" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Signatures" : pathname.startsWith("/workspace/approvals") ? "Approvals" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : pathname === "/workspace" && !businessWorkspace ? "Set up workspace" : isBusinessPage ? "Shared files" : "Overview";
+  const pageTitle = pathname === "/favorites" || pathname === "/starred" ? "Favourites" : pathname === "/trash" ? "Recycle Bin" : pathname.startsWith("/settings") ? "Account settings" : pathname.startsWith("/scanner") ? "Document scanner" : pathname === "/calendar" ? "Calendar" : pathname === "/workspace/calendar" ? "Shared calendar" : pathname === "/workspace/file-deliveries" ? "Private files" : pathname === "/file-requests" ? "Request files" : pathname === "/documents" ? "Forms & documents" : pathname === "/document-tools" ? "Document tools" : pathname.startsWith("/files") ? "Your files" : pathname.startsWith("/events") ? "Events" : pathname.startsWith("/workspace/chat") ? "Team chat" : pathname.startsWith("/workspace/signatures") ? "Signatures" : pathname.startsWith("/workspace/approvals") ? "Approvals" : pathname.startsWith("/workspace/reminders") ? "Reminders" : pathname.startsWith("/workspace/team/invite") ? "Invite a teammate" : pathname.startsWith("/workspace/team") ? "Your team" : pathname.startsWith("/workspace/invitations") ? "Invitations" : pathname.startsWith("/workspace/activity") ? "Activity" : pathname.startsWith("/workspace/roles") ? "Workspace roles" : pathname === "/workspace" && !businessWorkspace ? "Set up workspace" : isBusinessPage ? "Shared files" : "Overview";
   const workspaceName = isBusinessPage ? businessWorkspace?.name ?? "Business space" : "Personal space";
   const renderNotificationControl = () => (
     <div className="notification-wrap">
@@ -342,6 +462,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink to="/files" end className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <Files size={17} strokeWidth={1.8} /><span>Your files</span>
+          </NavLink>
+          <NavLink to="/documents" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <FileSignature size={17} strokeWidth={1.8} /><span>Forms &amp; documents</span>
           </NavLink>
           <NavLink to="/calendar" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CalendarDays size={17} strokeWidth={1.8} /><span>Calendar</span>

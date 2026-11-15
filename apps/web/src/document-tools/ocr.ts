@@ -16,6 +16,66 @@ function ensureTextFits(text: string) {
   return normalized;
 }
 
+function extensionOf(name: string) {
+  return name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+async function extractOfficeText(file: File, extension: string) {
+  if (["xlsx", "xls", "csv", "tsv"].includes(extension)) {
+    const XLSX = await import("@e965/xlsx");
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    return workbook.SheetNames
+      .map((name) => XLSX.utils.sheet_to_csv(workbook.Sheets[name]))
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  const { default: JSZip } = await import("jszip");
+  const archive = await JSZip.loadAsync(file);
+  if (extension === "docx") {
+    const document = archive.file("word/document.xml");
+    if (!document) throw new Error("The document content could not be found.");
+    const xml = new DOMParser().parseFromString(await document.async("text"), "application/xml");
+    if (xml.querySelector("parsererror")) throw new Error("This document is damaged or uses an unsupported format.");
+    return Array.from(xml.getElementsByTagNameNS("*", "p"))
+      .map((paragraph) => Array.from(paragraph.getElementsByTagNameNS("*", "t"))
+        .map((text) => text.textContent ?? "")
+        .join(""))
+      .join("\n");
+  }
+
+  const slides = Object.keys(archive.files)
+    .map((path) => ({ path, match: path.match(/^ppt\/slides\/slide(\d+)\.xml$/) }))
+    .filter((entry): entry is { path: string; match: RegExpMatchArray } => Boolean(entry.match))
+    .sort((left, right) => Number(left.match[1]) - Number(right.match[1]));
+  if (!slides.length) throw new Error("No slides were found in this presentation.");
+  return (await Promise.all(slides.map(async ({ path }) => {
+    const source = archive.file(path);
+    if (!source) return "";
+    const xml = new DOMParser().parseFromString(await source.async("text"), "application/xml");
+    return Array.from(xml.getElementsByTagNameNS("*", "t"))
+      .map((text) => text.textContent ?? "")
+      .join(" ");
+  }))).join("\n\n");
+}
+
+async function extractReadableText(file: File) {
+  const extension = extensionOf(file.name);
+  if (["docx", "xlsx", "xls", "csv", "tsv", "pptx"].includes(extension)) {
+    return extractOfficeText(file, extension);
+  }
+  if (["txt", "md", "log", "json", "xml", "html", "htm"].includes(extension) || file.type.startsWith("text/")) {
+    const content = await file.text();
+    if (extension === "html" || extension === "htm") {
+      const document = new DOMParser().parseFromString(content, "text/html");
+      document.querySelectorAll("script, style, noscript").forEach((element) => element.remove());
+      return document.body.textContent ?? "";
+    }
+    return content;
+  }
+  return null;
+}
+
 export async function extractDocumentText(
   file: File,
   onProgress: (progress: OcrProgress) => void,
@@ -23,32 +83,36 @@ export async function extractDocumentText(
   const isImage = file.type.startsWith("image/");
   const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   if (!isImage && !isPdf) {
-    throw new Error("Text recognition is available for image files and PDFs.");
+    const readableText = await extractReadableText(file);
+    if (readableText !== null) {
+      onProgress({ label: "Preparing searchable text…", percent: 98 });
+      return ensureTextFits(readableText);
+    }
+    throw new Error("Text recognition supports PDFs, images, and common text and Office documents.");
   }
 
-  const [pdfjs, tesseract, pdfWorker] = await Promise.all([
+  const [pdfjs, pdfWorker] = await Promise.all([
     import("pdfjs-dist"),
-    import("tesseract.js"),
     import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
   ]);
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker.default;
 
   let currentPage = 1;
   let totalPages = 1;
-  const workerState: { promise: ReturnType<typeof tesseract.createWorker> | null } = { promise: null };
+  const workerState: { promise: ReturnType<(typeof import("tesseract.js"))["createWorker"]> | null } = { promise: null };
   const ensureWorker = () => {
-    workerState.promise ??= tesseract.createWorker("eng", 1, {
-      logger: (message) => {
-        if (message.status !== "recognizing text") return;
-        const percent = isImage
-          ? Math.min(95, 5 + Math.round(message.progress * 90))
-          : Math.min(95, Math.round(((currentPage - 1 + message.progress) / totalPages) * 90) + 5);
-        onProgress({
-          label: isImage ? "Recognising text in image…" : `Recognising text on page ${currentPage} of ${totalPages}…`,
-          percent,
-        });
-      },
-    });
+    workerState.promise ??= import("tesseract.js").then(({ createWorker }) => createWorker("eng", 1, {
+        logger: (message) => {
+          if (message.status !== "recognizing text") return;
+          const percent = isImage
+            ? Math.min(95, 5 + Math.round(message.progress * 90))
+            : Math.min(95, Math.round(((currentPage - 1 + message.progress) / totalPages) * 90) + 5);
+          onProgress({
+            label: isImage ? "Recognising text in image…" : `Recognising text on page ${currentPage} of ${totalPages}…`,
+            percent,
+          });
+        },
+      }));
     return workerState.promise;
   };
   try {

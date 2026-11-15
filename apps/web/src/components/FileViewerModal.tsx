@@ -4,7 +4,7 @@ import { apiBlob, apiRequest } from "../lib/api";
 import { OfficePreviewEditor } from "./OfficePreviewEditor";
 import { saveOfflineFile, type OfflineScope } from "../offline/offlineFiles";
 import { useAuth } from "../auth/AuthProvider";
-import { extractDocumentText, type OcrProgress } from "../document-tools/ocr";
+import type { OcrProgress } from "../document-tools/ocr";
 import { PlanLimitMessage } from "./PlanLimitMessage";
 
 export interface ViewableFile {
@@ -18,6 +18,7 @@ interface FileViewerModalProps {
   file: ViewableFile;
   readUrl: string;
   saveUrl: string;
+  indexUrl?: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
   canEdit: boolean;
@@ -42,7 +43,7 @@ function isOfficeDocument(file: ViewableFile) {
   return ["csv", "doc", "docx", "pdf", "ppt", "pptx", "xls", "xlsx"].includes(extension ?? "");
 }
 
-export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes, manageExpiry = false, offlineScope, offlineFolderId = null }: FileViewerModalProps) {
+export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${file.id}/ocr-text`, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes, manageExpiry = false, offlineScope, offlineFolderId = null }: FileViewerModalProps) {
   const { user } = useAuth();
   const [blob, setBlob] = useState<Blob | null>(null);
   const [text, setText] = useState("");
@@ -185,8 +186,9 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
     setOcrProgress({ label: "Preparing text recognition…", percent: 0 });
     try {
       const sourceFile = new File([blob], file.name, { type: file.mimeType || blob.type });
+      const { extractDocumentText } = await import("../document-tools/ocr");
       const extractedText = await extractDocumentText(sourceFile, setOcrProgress);
-      await apiRequest(`/files/${file.id}/ocr-text`, {
+      await apiRequest(indexUrl, {
         method: "PUT",
         body: JSON.stringify({ text: extractedText }),
       });

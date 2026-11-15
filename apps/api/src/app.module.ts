@@ -21,6 +21,7 @@ import { SignaturesModule } from './signatures/signatures.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { NotesModule } from './notes/notes.module';
 import { InsightsModule } from './insights/insights.module';
+import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health.controller';
 import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
 
@@ -49,6 +50,7 @@ import { ApiErrorLoggingInterceptor } from './api-error-logging.interceptor';
     ReferralsModule,
     NotesModule,
     InsightsModule,
+    DocumentsModule,
   ],
   controllers: [HealthController],
   providers: [

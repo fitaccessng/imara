@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Folder, RotateCcw, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { apiRequest, type StoredFile, type UserFolder } from "../../lib/api";
+import { apiRequest, downloadFile, type StoredFile, type UserFolder } from "../../lib/api";
+import { FileViewerModal } from "../../components/FileViewerModal";
 
 type Collection = "favorites" | "trash";
 
@@ -18,6 +19,7 @@ function formatBytes(bytes: number) {
 export function FileCollectionPage({ collection }: { collection: Collection }) {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState("");
+  const [viewingFile, setViewingFile] = useState<StoredFile | null>(null);
   const isTrash = collection === "trash";
   const filesQuery = useQuery({
     queryKey: [`storage-${collection}`],
@@ -37,6 +39,14 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
       queryClient.invalidateQueries({ queryKey: ["storage-trash"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
     ]);
+  }
+
+  async function handleDownload(file: StoredFile) {
+    try {
+      await downloadFile(`/files/${file.id}/download`, file.name);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to download this file.");
+    }
   }
 
   const updateFile = useMutation({
@@ -110,10 +120,13 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
           ))}
           {files.map((file) => (
             <div className="file-list-row" key={file.id}>
-              <div className="file-name-button file-name-static">
-                <FileText size={17} />
-                <span title={file.name}>{file.name}{file.folderName ? <small className="file-entry-folder">In {file.folderName}</small> : null}</span>
-              </div>
+              {isTrash ? <div className="file-name-button file-name-static">
+                  <FileText size={17} />
+                  <span title={file.name}>{file.name}{file.folderName ? <small className="file-entry-folder">In {file.folderName}</small> : null}</span>
+                </div> : <button className="file-name-button" type="button" aria-label={`Open ${file.name}`} onClick={() => setViewingFile(file)}>
+                  <FileText size={17} />
+                  <span title={file.name}>{file.name}{file.folderName ? <small className="file-entry-folder">In {file.folderName}</small> : null}</span>
+                </button>}
               <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Size</span>{formatBytes(Number(file.sizeBytes))}</span>
               <span className="file-secondary file-list-date"><span className="file-list-mobile-label">{isTrash ? "Deleted" : "Added"}</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(isTrash && file.deletedAt ? file.deletedAt : file.createdAt))}</span>
               <div className="file-row-actions">
@@ -148,6 +161,16 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
           )}
         </section>
       ) : null}
+      {viewingFile && !isTrash && <FileViewerModal
+        file={viewingFile}
+        readUrl={`/files/${viewingFile.id}/download`}
+        saveUrl={`/files/${viewingFile.id}/content`}
+        canEdit
+        canDownload
+        onClose={() => setViewingFile(null)}
+        onSaved={refreshFiles}
+        onDownload={() => void handleDownload(viewingFile)}
+      />}
     </div>
   );
 }

@@ -376,7 +376,9 @@ export function FilesPage() {
           ))}
           {files.map((file) => (
             <div className="file-list-row" key={file.id}>
-              <div className="file-name-button file-name-static"><FileText size={17} /><span title={file.name}>{file.name}</span></div>
+              <button className="file-name-button" type="button" aria-label={`Open ${file.name}`} onClick={() => setViewingFile(file)}>
+                <FileText size={17} aria-hidden="true" /><span title={file.name}>{file.name}</span>
+              </button>
               <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Size</span>{formatBytes(Number(file.sizeBytes))}</span>
               <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(file.createdAt))}</span>
               <div className="file-row-actions">

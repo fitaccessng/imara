@@ -79,6 +79,125 @@ export class WorkspaceStorageService {
     };
   }
 
+  async listUnindexed(workspaceId: string, userId: string) {
+    const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
+    const isAdministrator = member.role === WorkspaceRole.OWNER || member.role === WorkspaceRole.ADMIN;
+    const visibleFolderIds = isAdministrator
+      ? undefined
+      : await this.accessibleFileFolderIds(workspaceId, userId, 'downloadFiles');
+
+    if (visibleFolderIds?.length === 0) return [];
+
+    const files = await this.prisma.storedFile.findMany({
+      where: {
+        workspaceId,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+        ocrText: null,
+        ...(visibleFolderIds
+          ? { folderId: { in: visibleFolderIds } }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+    });
+    return files.map(({ id, originalName, mimeType, sizeBytes }) => ({
+      id,
+      name: originalName,
+      mimeType,
+      sizeBytes: sizeBytes.toString(),
+    }));
+  }
+
+  async setOcrText(workspaceId: string, userId: string, fileId: string, text: string) {
+    const file = await this.authorizedFile(workspaceId, userId, fileId, 'viewFiles');
+    const updated = await this.prisma.storedFile.updateMany({
+      where: {
+        id: fileId,
+        workspaceId,
+        folderId: file.folderId,
+        status: StoredFileStatus.READY,
+      },
+      data: { ocrText: text },
+    });
+    if (!updated.count) throw new NotFoundException('File not found');
+    return { id: fileId, characterCount: text.length };
+  }
+
+  async search(workspaceId: string, userId: string, query: string) {
+    const term = query.trim();
+    if (!term) throw new BadRequestException('Search query cannot be empty');
+    const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
+    const isAdministrator = member.role === WorkspaceRole.OWNER || member.role === WorkspaceRole.ADMIN;
+    const visibleFolderIds = isAdministrator
+      ? undefined
+      : await this.accessibleFileFolderIds(workspaceId, userId, 'viewFiles');
+    const downloadableFolderIds = isAdministrator
+      ? undefined
+      : await this.accessibleFileFolderIds(workspaceId, userId, 'downloadFiles');
+    const files = visibleFolderIds?.length === 0
+      ? []
+      : await this.prisma.storedFile.findMany({
+        where: {
+          workspaceId,
+          status: StoredFileStatus.READY,
+          deletedAt: null,
+          ...(visibleFolderIds ? { folderId: { in: visibleFolderIds } } : {}),
+          OR: [
+            { originalName: { contains: term, mode: 'insensitive' } },
+            { ocrText: { contains: term, mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          originalName: true,
+          ocrText: true,
+          mimeType: true,
+          sizeBytes: true,
+          folderId: true,
+          createdAt: true,
+          isFavorite: true,
+        },
+      });
+
+    return {
+      workspaceId,
+      files: files.map(({ id, originalName, ocrText, mimeType, sizeBytes, folderId, createdAt, isFavorite }) => ({
+        id,
+        name: originalName,
+        mimeType,
+        sizeBytes: sizeBytes.toString(),
+        folderId,
+        createdAt,
+        isFavorite,
+        canDownload: isAdministrator || Boolean(folderId && downloadableFolderIds?.includes(folderId)),
+        matchedBy: originalName.toLocaleLowerCase().includes(term.toLocaleLowerCase()) ? 'name' : 'content',
+      })),
+    };
+  }
+
+  private async accessibleFileFolderIds(workspaceId: string, userId: string, permission: string) {
+    const folders = await this.prisma.folder.findMany({
+      where: { workspaceId },
+      select: { id: true },
+    });
+    const accessible = await Promise.all(folders.map(async ({ id }) =>
+      (await this.hasFilePermission(workspaceId, userId, id, permission)) ? id : null));
+    return accessible.filter((id): id is string => id !== null);
+  }
+
+  private async hasFilePermission(workspaceId: string, userId: string, folderId: string, permission: string) {
+    try {
+      await this.allowedFolder(workspaceId, userId, folderId, permission);
+      return true;
+    } catch (error) {
+      if (error instanceof NotFoundException) return false;
+      throw error;
+    }
+  }
+
   private async canViewFiles(workspaceId: string, userId: string, folderId: string) {
     try {
       await this.allowedFolder(workspaceId, userId, folderId, 'viewFiles');
@@ -445,7 +564,7 @@ export class WorkspaceStorageService {
             id: current.id, workspaceId, status: StoredFileStatus.READY,
             objectKey: current.objectKey, sizeBytes: current.sizeBytes,
           },
-          data: { objectKey: nextKey, sizeBytes: nextSize, mimeType: contentType },
+          data: { objectKey: nextKey, sizeBytes: nextSize, mimeType: contentType, ocrText: null },
         });
         if (!updated.count) throw new ConflictException('This file changed while you were editing. Reload it and try again.');
         await tx.auditLog.create({

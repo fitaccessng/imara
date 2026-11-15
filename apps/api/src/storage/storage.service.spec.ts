@@ -283,6 +283,33 @@ describe('StorageService quota-safe uploads', () => {
     }));
   });
 
+  it('lists only ready, active personal files with no OCR text', async () => {
+    storedFileFindMany.mockResolvedValue([{
+      id: 'unindexed-file',
+      originalName: 'scan.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 120n,
+    }]);
+
+    await expect(service.listUnindexed('owner-id')).resolves.toEqual([{
+      id: 'unindexed-file',
+      name: 'scan.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: '120',
+    }]);
+    expect(storedFileFindMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'owner-id',
+        workspaceId: null,
+        status: StoredFileStatus.READY,
+        deletedAt: null,
+        ocrText: null,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, originalName: true, mimeType: true, sizeBytes: true },
+    });
+  });
+
   it('stores OCR text only for an owned, personal, ready, non-deleted file', async () => {
     jest.mocked(prisma.storedFile.updateMany).mockResolvedValueOnce({ count: 1 });
 
@@ -299,6 +326,29 @@ describe('StorageService quota-safe uploads', () => {
       },
       data: { ocrText: 'Invoice number 123' },
     });
+  });
+
+  it('clears prior OCR text after replacing a personal file', async () => {
+    jest.mocked(prisma.storedFile.findFirst).mockResolvedValue({
+      ...fileRow,
+      originalName: 'passport.pdf',
+      status: StoredFileStatus.READY,
+    } as never);
+
+    await service.replaceContent('owner-id', 'file-id', {
+      buffer: Buffer.from('new pdf contents'),
+      size: 16,
+      originalname: 'passport.pdf',
+      mimetype: 'application/pdf',
+    });
+
+    expect(transactionClient.storedFile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'file-id', objectKey: fileRow.objectKey }),
+      data: expect.objectContaining({
+        objectKey: expect.any(String),
+        ocrText: null,
+      }),
+    }));
   });
 
   it('does not disclose files that are not owned, personal, ready, and active', async () => {

@@ -60,6 +60,8 @@ const EventGalleryPage = lazy(() => import("./events/EventPages").then((pages) =
 const FileRequestsPage = lazy(() => import("./file-requests/FileRequestsPage").then((pages) => ({ default: pages.FileRequestsPage })));
 const PublicFileRequestPage = lazy(() => import("./file-requests/FileRequestsPage").then((pages) => ({ default: pages.PublicFileRequestPage })));
 const DocumentToolsPage = lazy(() => import("./document-tools/DocumentToolsPage").then((pages) => ({ default: pages.DocumentToolsPage })));
+const DocumentStudioPage = lazy(() => import("./documents/DocumentStudioPage").then((pages) => ({ default: pages.DocumentStudioPage })));
+const PublicDocumentPage = lazy(() => import("./documents/DocumentStudioPage").then((pages) => ({ default: pages.PublicDocumentPage })));
 
 function ProtectedRoutes() {
   const { user, loading, loadError, refresh } = useAuth();
@@ -102,6 +104,7 @@ function ProtectedRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dashboard/storage" element={<DashboardPage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/documents" element={<DocumentStudioPage />} />
         <Route path="/notes" element={<NotesPage />} />
         <Route path="/document-tools" element={<DocumentToolsPage />} />
         <Route path="/file-requests" element={<FileRequestsPage />} />
@@ -192,6 +195,7 @@ export function App() {
         <Route path="/capture/:token" element={<CaptureEventPage />} />
         <Route path="/gallery/:token" element={<EventGalleryPage />} />
         <Route path="/share/:token" element={<SharedFilePreviewPage />} />
+        <Route path="/respond/:token" element={<PublicDocumentPage />} />
         <Route path="/request/:token" element={<PublicFileRequestPage />} />
         <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>

@@ -1,11 +1,11 @@
 import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post,
-  Query, Req, Res, UploadedFile, UseGuards, UseInterceptors,
+  Put, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { RenameFolderDto, ReplaceFileContentDto, UploadFileDto } from '../storage/storage.dto';
+import { RenameFolderDto, ReplaceFileContentDto, SearchFilesDto, SetOcrTextDto, UploadFileDto } from '../storage/storage.dto';
 import { UploadInput } from '../storage/storage.service';
 import { TempUploadInterceptor } from '../storage/temp-upload.interceptor';
 import { CreateWorkspaceFolderDto, MoveWorkspaceFileDto, RenameWorkspaceFileDto } from './workspace-storage.dto';
@@ -25,6 +25,33 @@ export class WorkspaceStorageController {
     @Query('folderId', new ParseUUIDPipe({ version: '4', optional: true })) folderId?: string,
   ) {
     return this.storage.list(workspaceId, req.auth.userId, folderId);
+  }
+
+  @Get('files/unindexed')
+  listUnindexedFiles(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+  ) {
+    return this.storage.listUnindexed(workspaceId, req.auth.userId);
+  }
+
+  @Put('files/:fileId/ocr-text')
+  setOcrText(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Body() dto: SetOcrTextDto,
+  ) {
+    return this.storage.setOcrText(workspaceId, req.auth.userId, fileId, dto.text);
+  }
+
+  @Get('search')
+  searchFiles(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Query() dto: SearchFilesDto,
+  ) {
+    return this.storage.search(workspaceId, req.auth.userId, dto.q);
   }
 
   @Get('folders')
