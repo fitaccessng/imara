@@ -32,6 +32,7 @@ import {
   AdminAnnouncementCreateDto,
   AdminAnnouncementsQueryDto,
   AdminAnnouncementRecipientsQueryDto,
+  AdminEmailComposerResendDto,
   AdminEmailComposerSendDto,
   AdminEmailRecipientsQueryDto,
   AdminEventsQueryDto,
@@ -230,6 +231,18 @@ export class AdminController {
     @Req() request: PlatformAdminRequest,
   ) {
     return this.admin.emailComposerCampaignStatus(id, request);
+  }
+
+  @Post('email-composer/campaigns/:id/resend')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @RequirePlatformAdminPermission(PlatformAdminPermission.ANNOUNCEMENTS_SEND)
+  resendEmailCampaign(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AdminEmailComposerResendDto,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.resendEmailCampaign(id, dto, request);
   }
 
   @Post(['email/send', 'email-composer/send'])

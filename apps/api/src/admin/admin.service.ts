@@ -28,6 +28,7 @@ import type {
   AdminAnalyticsQueryDto,
   AdminAnnouncementsQueryDto,
   AdminAnnouncementRecipientsQueryDto,
+  AdminEmailComposerResendDto,
   AdminEmailComposerSendDto,
   AdminEmailRecipientsQueryDto,
   AdminAuditQueryDto,
@@ -1124,6 +1125,8 @@ export class AdminService {
       select: {
         id: true,
         subject: true,
+        preheader: true,
+        html: true,
         createdAt: true,
         _count: { select: { deliveries: true } },
       },
@@ -1288,6 +1291,138 @@ export class AdminService {
       );
 
       return { ...announcement, recipientCount: recipients.length };
+    });
+  }
+
+  async resendEmailCampaign(
+    campaignId: string,
+    input: AdminEmailComposerResendDto,
+    request: PlatformAdminRequest,
+  ) {
+    if (!this.mailer?.isSmtpConfigured()) {
+      throw new ServiceUnavailableException('SMTP email delivery is not configured for email composer.');
+    }
+
+    const campaign = await this.prisma.adminEmailCampaign.findUnique({
+      where: { id: campaignId },
+      select: { id: true, subject: true, preheader: true, html: true },
+    });
+    if (!campaign) throw new NotFoundException('Email campaign not found');
+
+    const hasSelectedRecipients = input.userIds !== undefined || input.recipientIds !== undefined;
+    const hasTarget = input.target !== undefined;
+    if (input.userIds !== undefined && input.recipientIds !== undefined) {
+      throw new BadRequestException('Provide userIds only once');
+    }
+    if (hasTarget) {
+      if (input.target === PlatformAnnouncementTarget.SELECTED && !input.userIds?.length && !input.recipientIds?.length) {
+        throw new BadRequestException('Select at least one recipient');
+      }
+      if (input.target !== PlatformAnnouncementTarget.SELECTED && hasSelectedRecipients) {
+        throw new BadRequestException('User IDs are only valid for selected-recipient targeting');
+      }
+      if (input.target === PlatformAnnouncementTarget.SIGNUP_WINDOW && input.signupWindowMinutes === undefined) {
+        throw new BadRequestException('Choose a signup window');
+      }
+      if (input.target !== PlatformAnnouncementTarget.SIGNUP_WINDOW && input.signupWindowMinutes !== undefined) {
+        throw new BadRequestException('Signup window is only valid for recent-signup targeting');
+      }
+    } else {
+      const hasAudienceFilter = input.filter !== undefined || input.audience !== undefined || input.signupWindowMinutes !== undefined;
+      if (hasSelectedRecipients === hasAudienceFilter) {
+        throw new BadRequestException('Provide either recipientIds or an audience filter');
+      }
+    }
+
+    const recipientIds = input.userIds ?? input.recipientIds;
+    if (recipientIds !== undefined) {
+      if (!recipientIds.length || recipientIds.length > MAX_EMAIL_RECIPIENTS) {
+        throw new BadRequestException(`Select between 1 and ${MAX_EMAIL_RECIPIENTS} recipients`);
+      }
+    }
+    if (input.target === PlatformAnnouncementTarget.AUDIENCE && input.audience === undefined) {
+      throw new BadRequestException('Choose a plan audience');
+    }
+
+    const selectedPlan = input.target === PlatformAnnouncementTarget.AUDIENCE && input.audience
+      ? ANNOUNCEMENT_PLAN_BY_AUDIENCE[input.audience]
+      : undefined;
+    const where: Prisma.UserWhereInput = {
+      role: UserRole.USER,
+      accountStatus: UserAccountStatus.ACTIVE,
+      ...(recipientIds ? { id: { in: recipientIds } } : {}),
+      ...(selectedPlan ? { subscription: { is: { plan: selectedPlan } } } : {}),
+      ...(input.target === PlatformAnnouncementTarget.SIGNUP_WINDOW && input.signupWindowMinutes !== undefined
+        ? { createdAt: { gte: new Date(Date.now() - input.signupWindowMinutes * 60_000) } }
+        : {}),
+      ...(input.filter === 'VERIFIED'
+        ? { emailVerifiedAt: { not: null } }
+        : input.filter === 'UNVERIFIED'
+          ? { emailVerifiedAt: null }
+          : {}),
+    };
+    const recipients = await this.prisma.user.findMany({
+      where,
+      take: MAX_EMAIL_RECIPIENTS + 1,
+      select: { id: true, email: true },
+    });
+    if (recipientIds && recipients.length !== recipientIds.length) {
+      throw new BadRequestException('One or more selected recipients are unavailable');
+    }
+    if (recipients.length > MAX_EMAIL_RECIPIENTS) {
+      throw new BadRequestException(`Audience exceeds the ${MAX_EMAIL_RECIPIENTS}-recipient limit; refine the filter or select recipients individually`);
+    }
+    if (!recipients.length) throw new BadRequestException('The selected audience is empty');
+
+    const subject = input.subject?.trim() || campaign.subject;
+    const preheader = input.preheader !== undefined ? input.preheader.trim() || null : campaign.preheader;
+    const html = input.html ? sanitizeHtml(input.html, EMAIL_HTML_POLICY).trim() : campaign.html;
+    if (!subject) throw new BadRequestException('Email subject is required');
+    if (!html) throw new BadRequestException('Email body must contain safe HTML or text');
+
+    return this.prisma.$transaction(async (tx) => {
+      const resendCampaign = await tx.adminEmailCampaign.create({
+        data: {
+          subject,
+          preheader,
+          html,
+          createdByUserId: request.platformAdmin.id,
+        },
+        select: { id: true, subject: true, createdAt: true },
+      });
+      await tx.adminEmailCampaignDelivery.createMany({
+        data: recipients.map(({ id: userId }) => ({
+          campaignId: resendCampaign.id,
+          userId,
+          status: AdminEmailDeliveryStatus.PENDING,
+        })),
+      });
+      await this.auditMutation(
+        tx,
+        request,
+        'admin.email-composer.resend',
+        'email-campaign',
+        resendCampaign.id,
+        {
+          originalCampaignId: campaignId,
+          recipientMode: recipientIds ? 'selected' : 'filter',
+          filter: input.filter ?? null,
+          target: input.target ?? null,
+          audience: input.audience ?? null,
+          signupWindowMinutes: input.signupWindowMinutes ?? null,
+          recipientCount: recipients.length,
+          queuedCount: recipients.length,
+        },
+      );
+      return {
+        campaignId: resendCampaign.id,
+        subject: resendCampaign.subject,
+        createdAt: resendCampaign.createdAt,
+        status: 'QUEUED' as const,
+        recipientCount: recipients.length,
+        queuedCount: recipients.length,
+        queuedRecipientCount: recipients.length,
+      };
     });
   }
 

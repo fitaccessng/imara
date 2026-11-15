@@ -292,6 +292,59 @@ export class AdminEmailComposerSendDto {
   html!: string;
 }
 
+export class AdminEmailComposerResendDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  recipientIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  userIds?: string[];
+
+  @IsOptional()
+  @IsEnum(PlatformAnnouncementTarget)
+  target?: PlatformAnnouncementTarget;
+
+  @IsOptional()
+  @IsEnum(PlatformAnnouncementAudience)
+  audience?: PlatformAnnouncementAudience;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([30, 60, 1440, 10080, 43200])
+  signupWindowMinutes?: number;
+
+  @IsOptional()
+  @IsEnum(AdminEmailRecipientFilter)
+  filter?: AdminEmailRecipientFilter;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(180)
+  @Matches(/^[^\u0000-\u001f\u007f]+$/)
+  subject?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(250)
+  preheader?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(100_000)
+  html?: string;
+}
+
 export class SupportTicketCreateDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

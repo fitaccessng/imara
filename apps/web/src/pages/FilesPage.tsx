@@ -227,6 +227,9 @@ export function FilesPage() {
   const contents = contentsQuery.data;
   const folders = contents?.folders ?? [];
   const files = contents?.files ?? [];
+  const currentFolderName = folderId
+    ? currentFolderQuery.data?.name ?? (currentFolderQuery.isLoading ? "Loading folder…" : "Folder")
+    : "Your files";
   const folderTree = folderTreeQuery.data ?? [];
   const excludedMoveTargets = new Set<string>();
   if (movingFolder) {
@@ -252,44 +255,60 @@ export function FilesPage() {
       <div className="page-heading files-heading">
         <div>
           <span className="eyebrow">YOUR LIBRARY</span>
-          <h1>{currentFolderQuery.data?.name ?? "Your files"}<span className="heading-period">.</span></h1>
+          <h1>{currentFolderName}<span className="heading-period">.</span></h1>
           <p className="page-subtitle">A private home for the documents you want to keep.</p>
         </div>
         <div className="files-heading-actions">
-          <Link className="button button-outline" to="/file-requests">
-            <MailPlus size={15} /> Request files
-          </Link>
-          <Link className="button button-outline files-scan-button" to={folderId ? `/scanner?folder=${encodeURIComponent(folderId)}` : "/scanner"}>
-            <Camera size={15} /> Scan a document
-          </Link>
-          <button className="button button-outline" type="button" onClick={() => setCreateFolderOpen(true)}>
-            <FolderPlus size={15} /> New folder
-          </button>
-          <CreateDocumentButton<StoredFile>
-            disabled={busy || !uploadPolicyReady}
-            onCreate={(file) => uploadFile.mutateAsync(file)}
-            onCreated={setViewingFile}
-          />
-          <BatchUploadControls
-            disabled={busy || !uploadPolicyReady}
-            canCreateFolders
-            rootFolderId={folderId}
-            maxFileSizeBytes={uploadLimitBytes}
-            getFolders={async (parentFolderId, signal) => (await apiRequest<FolderContents>(`/files${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`, { signal })).folders}
-            createFolder={(name, parentFolderId, signal) => apiRequest<UserFolder>("/folders", {
-              method: "POST",
-              body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
-              signal,
-            })}
-            uploadFile={(file, parentFolderId, signal) => {
-              const form = new FormData();
-              form.append("file", file);
-              if (parentFolderId) form.append("folderId", parentFolderId);
-              return apiRequest<StoredFile>("/files", { method: "POST", body: form, signal });
-            }}
-            onComplete={refreshLibrary}
-            onBusyChange={setBatchUploadBusy}
-          />
+          <details className="file-action-menu files-page-actions-menu">
+            <summary aria-label="File library actions" title="File library actions">
+              <MoreHorizontal size={18} /><span>Actions</span>
+            </summary>
+            <div className="file-action-popover files-page-action-popover">
+              <Link className="button button-outline" to="/file-requests">
+                <MailPlus size={15} /> Request files
+              </Link>
+              <Link className="button button-outline files-scan-button" to={folderId ? `/scanner?folder=${encodeURIComponent(folderId)}` : "/scanner"}>
+                <Camera size={15} /> Scan a document
+              </Link>
+              <button className="button button-outline" type="button" onClick={() => setCreateFolderOpen(true)}>
+                <FolderPlus size={15} /> New folder
+              </button>
+              <CreateDocumentButton<StoredFile>
+                disabled={busy || !uploadPolicyReady}
+                onCreate={(file) => uploadFile.mutateAsync(file)}
+                onCreated={setViewingFile}
+              />
+              <BatchUploadControls
+                disabled={busy || !uploadPolicyReady}
+                canCreateFolders
+                rootFolderId={folderId}
+                maxFileSizeBytes={uploadLimitBytes}
+                getFolders={async (parentFolderId, signal) => (await apiRequest<FolderContents>(`/files${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`, { signal })).folders}
+                createFolder={(name, parentFolderId, signal) => apiRequest<UserFolder>("/folders", {
+                  method: "POST",
+                  body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
+                  signal,
+                })}
+                uploadFile={(file, parentFolderId, signal) => {
+                  const form = new FormData();
+                  form.append("file", file);
+                  if (parentFolderId) form.append("folderId", parentFolderId);
+                  return apiRequest<StoredFile>("/files", { method: "POST", body: form, signal });
+                }}
+                onComplete={refreshLibrary}
+                onBusyChange={setBatchUploadBusy}
+              />
+              <FolderZipTools
+                folderId={folderId}
+                folderName={currentFolderName}
+                canDownload
+                canExtract={uploadPolicyReady}
+                canCreateFolders
+                maxUploadBytes={uploadLimitBytes}
+                onComplete={refreshLibrary}
+              />
+            </div>
+          </details>
         </div>
       </div>
       {uploadPolicyQuery.isError && <p className="inline-error" role="alert">Your upload limit could not be checked. Refresh the page before uploading.</p>}
@@ -300,19 +319,10 @@ export function FilesPage() {
             <>
               <button className="subtle-link" onClick={() => setSearchParams({})}><ArrowLeft size={14} /> All files</button>
               <ChevronRight size={14} />
-              <span>{currentFolderQuery.data?.name ?? "Folder"}</span>
+              <span>{currentFolderName}</span>
             </>
           ) : <span>All files</span>}
         </div>
-        <FolderZipTools
-          folderId={folderId}
-          folderName={currentFolderQuery.data?.name ?? "Your files"}
-          canDownload
-          canExtract={uploadPolicyReady}
-          canCreateFolders
-          maxUploadBytes={uploadLimitBytes}
-          onComplete={refreshLibrary}
-        />
       </div>
 
       {actionError && <p className="form-alert files-alert" role="alert"><PlanLimitMessage message={actionError} /></p>}
@@ -331,7 +341,7 @@ export function FilesPage() {
           {folders.map((folder) => (
             <div className="file-list-row" key={folder.id}>
               <button className="file-name-button" onClick={() => setSearchParams({ folder: folder.id })}>
-                <Folder size={17} className="folder-icon" /><span>{folder.name}</span>
+                <Folder size={17} className="folder-icon" aria-hidden="true" /><span title={folder.name}>{folder.name}</span>
               </button>
               <span className="file-secondary">Folder</span>
               <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
@@ -395,7 +405,7 @@ export function FilesPage() {
                       variant="file"
                       file={file}
                       folderId={folderId}
-                      folderName={currentFolderQuery.data?.name ?? "Your files"}
+                      folderName={currentFolderName}
                       canDownload
                       canExtract={uploadPolicyReady}
                       canCreateFolders

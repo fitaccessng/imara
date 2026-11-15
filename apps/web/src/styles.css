@@ -1293,7 +1293,7 @@ input, select, textarea { max-width: 100%; }
   bottom: calc(100% + 5px);
 }
 .file-name-button { display: flex; min-width: 0; align-items: center; gap: 10px; border: 0; background: transparent; color: #435b56; padding: 8px 0; font-size: 10px; font-weight: 600; text-align: left; cursor: pointer; }
-.file-name-button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-name-button > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-name-static { cursor: default; }
 .file-name-static svg { flex: none; color: #73907f; }
 .folder-icon { flex: none; color: #9a9b5b; }
@@ -1303,16 +1303,64 @@ input, select, textarea { max-width: 100%; }
 .file-row-actions button:hover { background: #eef2ea; color: #31744e; }
 .file-row-actions button:disabled { cursor: wait; opacity: .55; }
 .folder-zip-row-status { color: #64746d; font-size: 9px; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
+.files-page-actions-menu > summary {
+  display: inline-flex;
+  width: auto;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #dfe7df;
+  background: #fff;
+  padding: 0 14px;
+  color: #315344;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.files-page-actions-menu > summary:hover,
+.files-page-actions-menu[open] > summary { border-color: #b7d8bd; background: #f3faf4; }
+.files-page-action-popover { width: min(300px, calc(100vw - 32px)); max-height: min(70vh, 560px); overflow: auto; padding: 8px; }
+.files-page-action-popover > .button,
+.files-page-action-popover > .create-document-button,
+.files-page-action-popover > .folder-zip-tools {
+  width: 100%;
+}
+.files-page-action-popover > .button { min-height: 40px; justify-content: flex-start; }
+.files-page-action-popover > .batch-upload-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.files-page-action-popover .batch-upload-button,
+.files-page-action-popover .folder-zip-tools > .button,
+.files-page-action-popover .folder-zip-tools > .zip-upload-button {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 11px;
+  text-align: left;
+}
+.files-page-action-popover .batch-upload-drop-target { min-height: 38px; }
+.files-page-action-popover > .folder-zip-tools { display: grid; gap: 6px; border-top: 1px solid #edf1ed; padding-top: 7px; }
+.files-page-action-popover .folder-zip-status { text-align: left; }
+.files-page-actions-menu .file-action-popover { right: 0; }
 .files-empty { display: flex; min-height: 245px; flex-direction: column; align-items: center; justify-content: center; padding: 18px; text-align: center; }
 .files-empty h2 { margin: 0; color: #344e4c; font: 20px var(--serif); }
 .files-empty p { margin: 7px 0 0; color: #929b95; font-size: 10px; }
 .files-alert { margin: 0 0 12px; }
 
-@media (max-width: 620px) {
+@media (max-width: 760px) {
   .files-heading { align-items: flex-start; }
   .files-heading-actions { width: 100%; }
-  .files-heading-actions .button { flex: 1; }
-  .files-upload-button { min-height: 42px; }
+  .files-heading-actions { justify-content: flex-end; }
+  .files-page-actions-menu { margin-left: auto; }
+  .files-page-actions-menu > summary { min-height: 42px; }
   .files-toolbar { align-items: stretch; flex-direction: column; gap: 12px; padding: 12px; }
   .folder-zip-tools { justify-content: flex-start; }
   .folder-zip-status { text-align: left; }
@@ -1331,10 +1379,11 @@ input, select, textarea { max-width: 100%; }
   .file-list-row > .file-secondary:nth-child(2) { grid-column: 1; grid-row: 2; }
   .file-list-row > .file-secondary:nth-child(3) { display: none; }
   .file-row-actions { grid-column: 2; grid-row: 1 / span 2; gap: 0; }
-  .file-row-actions button { width: 34px; height: 34px; }
+  .file-action-menu > summary { width: 40px; height: 40px; }
   .file-secondary { font-size: 8px; }
   .file-name-button { gap: 6px; font-size: 9px; }
   .file-action-popover { right: 0; width: min(230px, calc(100vw - 56px)); }
+  .files-page-action-popover { width: min(300px, calc(100vw - 30px)); }
 }
 
 /* Business workspace */
