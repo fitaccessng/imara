@@ -341,7 +341,7 @@ export function FilesPage() {
           {folders.map((folder) => (
             <div className="file-list-row" key={folder.id}>
               <button className="file-name-button" onClick={() => setSearchParams({ folder: folder.id })}>
-                <Folder size={17} className="folder-icon" aria-hidden="true" /><span title={folder.name}>{folder.name}</span>
+                <Folder size={17} className="folder-icon" aria-hidden="true" /><span className="file-folder-name" title={folder.name}>{folder.name}</span>
               </button>
               <span className="file-secondary">Folder</span>
               <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>

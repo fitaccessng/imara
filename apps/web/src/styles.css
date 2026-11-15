@@ -1294,6 +1294,15 @@ input, select, textarea { max-width: 100%; }
 }
 .file-name-button { display: flex; min-width: 0; align-items: center; gap: 10px; border: 0; background: transparent; color: #435b56; padding: 8px 0; font-size: 10px; font-weight: 600; text-align: left; cursor: pointer; }
 .file-name-button > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-name-button > .file-folder-name {
+  display: block;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  text-overflow: clip;
+  white-space: normal;
+}
+.file-name-button:has(.file-folder-name) { width: 100%; }
 .file-name-static { cursor: default; }
 .file-name-static svg { flex: none; color: #73907f; }
 .folder-icon { flex: none; color: #9a9b5b; }

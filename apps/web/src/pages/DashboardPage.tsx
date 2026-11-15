@@ -16,7 +16,6 @@ import {
   Sparkles,
   Upload,
   WandSparkles,
-  Compass,
   Files,
   Clock3,
 } from "lucide-react";
@@ -583,19 +582,6 @@ export function DashboardPage() {
         </div>
 
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-          <button
-            type="button"
-            onClick={() =>
-              window.dispatchEvent(
-                new Event("imara:start-product-tour")
-              )
-            }
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:px-4 sm:text-sm"
-          >
-            <Compass size={15} />
-            Take a tour
-          </button>
-
           <Link
             to="/files?createFolder=1"
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:px-4 sm:text-sm"
@@ -606,7 +592,7 @@ export function DashboardPage() {
 
           <Link
             to="/files"
-            className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#189638] sm:col-span-1 sm:text-sm"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#189638] sm:text-sm"
           >
             <Upload size={16} />
             Upload file

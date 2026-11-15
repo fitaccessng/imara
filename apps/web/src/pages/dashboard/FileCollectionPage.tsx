@@ -97,7 +97,7 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
           {folders.map((folder) => (
             <div className="file-list-row" key={`folder-${folder.id}`}>
               <Link className="file-name-button" to={`/files?folder=${encodeURIComponent(folder.id)}`}>
-                <Folder size={17} className="folder-icon" /><span>{folder.name}</span>
+                <Folder size={17} className="folder-icon" /><span className="file-folder-name" title={folder.name}>{folder.name}</span>
               </Link>
               <span className="file-secondary">Folder</span>
               <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
