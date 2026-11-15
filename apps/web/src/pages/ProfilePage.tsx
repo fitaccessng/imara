@@ -1,23 +1,16 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowRight,
-  Check,
   CheckCircle2,
-  Clock3,
   Eye,
   EyeOff,
   Gift,
-  Laptop,
   LockKeyhole,
-  Monitor,
-  Save,
   ShieldCheck,
-  Smartphone,
+  Save,
   UserRound,
-  X,
 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -25,7 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 
 import { useAuth } from "../auth/AuthProvider";
-import { apiRequest, type AuthSession, type User } from "../lib/api";
+import { apiRequest, type User } from "../lib/api";
 import { ReferralSettingsCard } from "../components/ReferralComponents";
 
 /* -------------------------------------------------------------------------- */
@@ -69,19 +62,6 @@ const inputClass =
   "mt-2 w-full min-w-0 rounded-xl border border-[#E5EAF0] bg-white px-4 py-3 text-sm text-[#172B3A] outline-none transition placeholder:text-[#A0AAB5] hover:border-[#CBD5E1] focus:border-[#20AD43] focus:ring-4 focus:ring-[#20AD43]/10";
 
 const labelClass = "block text-sm font-semibold text-[#263B4D]";
-
-function formatDate(value: string, includeTime = false) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown";
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    ...(includeTime ? { timeStyle: "short" as const } : {}),
-  }).format(date);
-}
 
 /* -------------------------------------------------------------------------- */
 /* Main page                                                                  */
@@ -177,7 +157,7 @@ export function ProfilePage() {
     {
       id: "security",
       label: "Security",
-      description: "Password and active devices",
+      description: "Password and sign-in protection",
       icon: LockKeyhole,
     },
     {
@@ -195,34 +175,39 @@ export function ProfilePage() {
   ];
 
   return (
-    <main className="min-h-screen min-w-0 bg-[#F7F9FC] px-4 py-6 text-[#172B3A] sm:px-6 sm:py-8 lg:px-8">
-      <div className="mx-auto w-full max-w-[1440px] min-w-0">
+    <main className="min-h-screen min-w-0 bg-[#F3F6F3] px-4 py-5 text-[#172B3A] sm:px-6 sm:py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-[1280px] min-w-0">
 
-        {/* Page heading */}
-        <header className="mb-8 flex flex-col gap-4 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-[#20AD43]" />
-              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#718096]">
+        <header className="relative mb-6 overflow-hidden rounded-[26px] bg-[#102B46] px-5 py-6 shadow-[0_14px_38px_rgba(16,43,70,0.12)] sm:mb-8 sm:px-8 sm:py-8 lg:px-10">
+          <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[38px] border-white/[0.045]" />
+          <div className="pointer-events-none absolute -bottom-36 right-1/3 h-64 w-64 rounded-full border-[30px] border-white/[0.035]" />
+          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white/75">
+                <ShieldCheck size={13} className="text-[#7DE69A]" />
                 Account management
               </span>
+              <h1 className="mt-4 text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-[36px]">
+                Account settings
+              </h1>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-white/65">
+                Your details, password and account preferences — together in one place.
+              </p>
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight text-[#102B46] sm:text-3xl lg:text-[36px]">
-              Account settings
-            </h1>
-
-            <p className="mt-2 max-w-xl text-sm leading-6 text-[#718096] sm:text-base">
-              Manage your personal information, security preferences and
-              account access.
-            </p>
-          </div>
-
-          <div className="flex w-fit items-center gap-2 rounded-full border border-[#DDEFE2] bg-[#F0FAF2] px-3 py-2">
-            <ShieldCheck size={16} className="text-[#20AD43]" />
-            <span className="text-xs font-semibold text-[#247A3C]">
-              Account settings
-            </span>
+            <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.08] p-3 sm:min-w-[250px] sm:p-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#20AD43] text-lg font-bold text-white shadow-[0_6px_18px_rgba(32,173,67,0.25)]">
+                {user?.name?.trim()?.charAt(0)?.toUpperCase() || "U"}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-white">{user?.name || "Your account"}</p>
+                <p className="truncate text-xs text-white/55">{user?.email || "Account profile"}</p>
+                <span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#9BE5AC]">
+                  <span className={`h-1.5 w-1.5 rounded-full ${user?.emailVerified ? "bg-[#65D880]" : "bg-amber-400"}`} />
+                  {user?.emailVerified ? "Email verified" : "Email not verified"}
+                </span>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -231,7 +216,7 @@ export function ProfilePage() {
 
           {/* Sidebar navigation */}
           <aside className="min-w-0 lg:sticky lg:top-6">
-            <div className="overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-3 shadow-sm">
+            <div className="overflow-hidden rounded-2xl border border-[#E2E9E3] bg-white p-3 shadow-[0_5px_20px_rgba(16,43,70,0.035)]">
               <div className="px-3 pb-3 pt-2">
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9AA6B2]">
                   Settings menu
@@ -285,7 +270,7 @@ export function ProfilePage() {
             </div>
 
             {/* Account identity */}
-            <div className="mt-4 rounded-2xl border border-[#E5EAF0] bg-white p-4 shadow-sm">
+            <div className="mt-4 rounded-2xl border border-[#E2E9E3] bg-white p-4 shadow-[0_5px_20px_rgba(16,43,70,0.035)]">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#EAF7ED] text-base font-bold text-[#168A35]">
                   {user?.name?.trim()?.charAt(0)?.toUpperCase() || "U"}
@@ -322,7 +307,7 @@ export function ProfilePage() {
             {/* Personal details */}
             <section
               id="profile"
-              className="scroll-mt-6 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white shadow-sm"
+              className="scroll-mt-6 overflow-hidden rounded-2xl border border-[#E2E9E3] bg-white shadow-[0_5px_20px_rgba(16,43,70,0.035)]"
             >
               <div className="flex flex-col gap-3 border-b border-[#F0F2F5] px-5 py-5 sm:flex-row sm:items-center sm:px-7">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EAF7ED] text-[#20AD43]">
@@ -432,7 +417,7 @@ export function ProfilePage() {
             {/* Security */}
             <section
               id="security"
-              className="scroll-mt-6 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white shadow-sm"
+              className="scroll-mt-6 overflow-hidden rounded-2xl border border-[#E2E9E3] bg-white shadow-[0_5px_20px_rgba(16,43,70,0.035)]"
             >
               <div className="flex items-center gap-3 border-b border-[#F0F2F5] px-5 py-5 sm:px-7">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F0FAF2] text-[#20AD43]">
@@ -547,10 +532,6 @@ export function ProfilePage() {
                 </div>
               </form>
 
-              {/* Sessions */}
-              <div className="border-t border-[#E5EAF0] bg-[#FCFDFE] px-5 py-6 sm:px-7 sm:py-7">
-                <SessionsPanel />
-              </div>
             </section>
 
             {/* Privacy */}
@@ -576,7 +557,7 @@ export function ProfilePage() {
                   <p className="mt-2 max-w-2xl text-xs leading-6 text-[#63836B] sm:text-sm">
                     IMARA is designed to keep your documents and personal
                     information protected. Your account access is controlled
-                    through your sign-in credentials and active sessions.
+                    through your sign-in credentials and security settings.
                   </p>
                 </div>
               </div>
@@ -644,184 +625,5 @@ function PasswordField({
         </span>
       )}
     </label>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Active sessions                                                            */
-/* -------------------------------------------------------------------------- */
-
-function SessionsPanel() {
-  const queryClient = useQueryClient();
-
-  const sessionsQuery = useQuery({
-    queryKey: ["auth-sessions"],
-    queryFn: () =>
-      apiRequest<{ sessions: AuthSession[] }>("/auth/sessions"),
-  });
-
-  const revokeSession = useMutation({
-    mutationFn: (sessionId: string) =>
-      apiRequest(`/auth/sessions/${encodeURIComponent(sessionId)}`, {
-        method: "DELETE",
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["auth-sessions"],
-      });
-    },
-  });
-
-  return (
-    <div className="min-w-0">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-[#102B46]">
-              Active sessions
-            </h3>
-            <span className="rounded-full bg-[#EAF7ED] px-2 py-1 text-[10px] font-bold text-[#168A35]">
-              {sessionsQuery.data?.sessions.length ?? 0} devices
-            </span>
-          </div>
-
-          <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
-            Review devices currently signed in to your account.
-          </p>
-        </div>
-
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#718096]">
-          <Clock3 size={17} />
-        </div>
-      </div>
-
-      {sessionsQuery.isLoading ? (
-        <div className="flex items-center justify-center gap-3 rounded-xl border border-[#E5EAF0] bg-white px-4 py-8 text-sm text-[#718096]">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#20AD43] border-t-transparent" />
-          Loading active sessions...
-        </div>
-      ) : sessionsQuery.isError ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-red-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-red-600">
-            <AlertCircle size={16} />
-            <span>
-              {sessionsQuery.error instanceof Error
-                ? sessionsQuery.error.message
-                : "Unable to load active sessions."}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void sessionsQuery.refetch()}
-            className="text-left text-xs font-bold text-[#168A35] hover:underline"
-          >
-            Try again
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sessionsQuery.data?.sessions.map((session) => {
-            const userAgent = session.userAgent || "Browser session";
-            const isMobile = /mobile|android|iphone|ipad/i.test(userAgent);
-            const DeviceIcon = isMobile ? Smartphone : Monitor;
-
-            return (
-              <div
-                key={session.id}
-                className="flex min-w-0 flex-col gap-3 rounded-xl border border-[#E8EDF2] bg-white p-4 transition hover:border-[#D5E3D9] sm:flex-row sm:items-center"
-              >
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                    session.current
-                      ? "bg-[#EAF7ED] text-[#20AD43]"
-                      : "bg-[#F1F5F9] text-[#718096]"
-                  }`}
-                >
-                  <DeviceIcon size={19} />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="max-w-full break-words text-sm font-bold text-[#263B4D]">
-                      {userAgent}
-                    </p>
-
-                    {session.current && (
-                      <span className="rounded-full bg-[#EAF7ED] px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-[#168A35]">
-                        This device
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="mt-1 text-xs leading-5 text-[#94A3B8]">
-                    Last active {formatDate(session.lastSeenAt, true)}
-                  </p>
-
-                  <p className="text-[11px] text-[#A0AAB5]">
-                    Started {formatDate(session.createdAt)}
-                  </p>
-                </div>
-
-                {session.current ? (
-                  <span className="flex w-fit items-center gap-1.5 rounded-lg bg-[#F0FAF2] px-3 py-2 text-xs font-semibold text-[#168A35]">
-                    <CheckCircle2 size={14} />
-                    Current
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => revokeSession.mutate(session.id)}
-                    disabled={revokeSession.isPending}
-                    className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-[#F0DCDC] px-3 py-2 text-xs font-semibold text-[#C05252] transition hover:border-red-200 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                  >
-                    <X size={14} />
-                    {revokeSession.isPending &&
-                    revokeSession.variables === session.id
-                      ? "Revoking..."
-                      : "Revoke"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-
-          {sessionsQuery.data?.sessions.length === 0 && (
-            <div className="rounded-xl border border-dashed border-[#DCE3EA] bg-white px-4 py-10 text-center">
-              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F1F5F9] text-[#94A3B8]">
-                <Laptop size={20} />
-              </div>
-              <p className="text-sm font-semibold text-[#263B4D]">
-                No active sessions found
-              </p>
-              <p className="mt-1 text-xs text-[#94A3B8]">
-                Your active devices will appear here.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {revokeSession.isError && (
-        <div
-          role="alert"
-          className="mt-4 rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-700"
-        >
-          {revokeSession.error instanceof Error
-            ? revokeSession.error.message
-            : "Unable to revoke this session."}
-        </div>
-      )}
-
-      {revokeSession.isSuccess && (
-        <div
-          role="status"
-          className="mt-4 flex items-center gap-2 rounded-xl border border-[#D9EFDF] bg-[#F0FAF2] p-3 text-xs font-medium text-[#168A35]"
-        >
-          <Check size={15} />
-          Session revoked successfully.
-        </div>
-      )}
-    </div>
   );
 }

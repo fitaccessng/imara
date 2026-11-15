@@ -1,37 +1,42 @@
+
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
-  File,
   FileText,
   Folder,
-  FolderPlus,
   HardDrive,
-  MoreHorizontal,
   ShieldCheck,
-  Upload,
   Users,
+  Upload,
+  Clock3,
 } from "lucide-react";
+
 import { apiRequest, type DashboardSummary } from "../../lib/api";
 import { PageShell } from "../PageShell";
-import { formatStorageBytes, StorageOverviewCard } from "./StorageOverviewCard";
+import {
+  formatStorageBytes,
+  StorageOverviewCard,
+} from "./StorageOverviewCard";
 
 const stats = [
   {
     label: "Total files",
     value: "0",
-    description: "Your files will appear here",
+    description: "Documents in your workspace",
     icon: FileText,
     iconBg: "bg-blue-50",
     iconColor: "text-blue-600",
+    accent: "border-l-blue-500",
   },
   {
     label: "Folders",
     value: "0",
-    description: "Organise your documents",
+    description: "Your organised collections",
     icon: Folder,
     iconBg: "bg-amber-50",
     iconColor: "text-amber-600",
+    accent: "border-l-amber-500",
   },
   {
     label: "Shared files",
@@ -40,26 +45,16 @@ const stats = [
     icon: Users,
     iconBg: "bg-purple-50",
     iconColor: "text-purple-600",
+    accent: "border-l-purple-500",
   },
   {
     label: "Storage used",
     value: "0 GB",
-    description: "Your storage overview",
+    description: "Your current storage usage",
     icon: HardDrive,
     iconBg: "bg-green-50",
     iconColor: "text-green-600",
-  },
-];
-
-const recentFiles = [
-  {
-    name: "No files uploaded yet",
-    type: "Your documents will appear here",
-    date: "—",
-    size: "—",
-    icon: FileText,
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-600",
+    accent: "border-l-[#20AD43]",
   },
 ];
 
@@ -84,14 +79,14 @@ function SectionHeading({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-5 flex min-w-0 flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <h2 className="break-words text-base font-bold tracking-tight text-[#172B3A]">
+    <div className="mb-5 flex min-w-0 items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="text-base font-bold tracking-tight text-[#172B3A] sm:text-lg">
           {title}
         </h2>
 
         {description && (
-          <p className="mt-1 break-words text-xs leading-5 text-[#718096] sm:text-sm">
+          <p className="mt-1 text-xs leading-5 text-[#718096] sm:text-sm">
             {description}
           </p>
         )}
@@ -106,32 +101,58 @@ function EmptyState({
   icon: Icon,
   title,
   description,
+  action,
 }: {
   icon: React.ElementType;
   title: string;
   description: string;
+  action?: React.ReactNode;
 }) {
   return (
-    <div className="flex w-full flex-col items-center justify-center px-3 py-8 text-center sm:px-5 sm:py-10">
-      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F0F7F2]">
-        <Icon size={22} className="text-[#20AD43]" />
+    <div className="flex min-h-[230px] w-full flex-col items-center justify-center px-4 py-10 text-center">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F0F7F2]">
+        <Icon size={25} strokeWidth={1.8} className="text-[#20AD43]" />
       </div>
 
-      <h3 className="text-sm font-semibold text-[#172B3A]">{title}</h3>
+      <h3 className="text-sm font-semibold text-[#172B3A] sm:text-base">
+        {title}
+      </h3>
 
-      <p className="mt-1 max-w-xs text-xs leading-5 text-[#718096]">
+      <p className="mt-2 max-w-xs text-xs leading-5 text-[#718096] sm:text-sm">
         {description}
       </p>
+
+      {action && <div className="mt-5">{action}</div>}
     </div>
+  );
+}
+
+function LoadingCard() {
+  return (
+    <div
+      className="h-[300px] animate-pulse rounded-2xl border border-[#E5EAF0] bg-white"
+      aria-label="Loading storage overview"
+    />
   );
 }
 
 export function DashboardOverviewPage() {
   const storageQuery = useQuery({
     queryKey: ["dashboard-summary"],
-    queryFn: () => apiRequest<DashboardSummary>("/dashboard/summary"),
+    queryFn: () =>
+      apiRequest<DashboardSummary>("/dashboard/summary"),
     refetchInterval: 30_000,
   });
+
+  const storageUsed = storageQuery.data
+    ? formatStorageBytes(
+        Number(
+          storageQuery.data.subscription.storage.usedBytes
+        )
+      )
+    : storageQuery.isLoading
+      ? "Loading"
+      : "—";
 
   return (
     <PageShell
@@ -139,99 +160,63 @@ export function DashboardOverviewPage() {
       title="Overview"
       description="A clear view of your files, storage and recent activity."
     >
-      <div className="w-full min-w-0 space-y-5 overflow-hidden pb-8 sm:space-y-7">
+      <div className="w-full min-w-0 space-y-6 overflow-hidden pb-8 sm:space-y-8">
 
-        {/* Welcome banner */}
-        <section className="relative w-full min-w-0 overflow-hidden rounded-2xl bg-[#102B46] px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
-          <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full border-[28px] border-white/[0.04] sm:h-64 sm:w-64 sm:border-[35px]" />
-
-          <div className="pointer-events-none absolute -bottom-28 right-12 h-48 w-48 rounded-full border-[28px] border-white/[0.04] sm:right-32 sm:h-64 sm:w-64 sm:border-[35px]" />
-
-          <div className="relative z-10 flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0 max-w-xl">
-              <div className="mb-3 inline-flex max-w-full items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-[#20AD43]" />
-                Your workspace
-              </div>
-
-              <h2 className="max-w-full break-words text-xl font-bold leading-tight tracking-tight text-white sm:text-2xl lg:text-3xl">
-                Everything in its right place.
+        {/* Workspace overview */}
+        <section className="min-w-0">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold tracking-tight text-[#172B3A] sm:text-lg">
+                Workspace overview
               </h2>
-
-              <p className="mt-2 max-w-md text-xs leading-6 text-white/65 sm:text-sm">
-                Store, organise and access your important documents securely
-                from one simple workspace.
+              <p className="mt-1 text-xs text-[#718096] sm:text-sm">
+                Your workspace at a glance.
               </p>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap lg:w-auto lg:shrink-0">
-              <a
-                href="/dashboard/files"
-                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#189638] sm:w-auto sm:px-5"
-              >
-                <Upload size={16} className="shrink-0" />
-                Upload files
-              </a>
-
-              <a
-                href="/dashboard/folders"
-                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 sm:w-auto sm:px-5"
-              >
-                <FolderPlus size={16} className="shrink-0" />
-                New folder
-              </a>
+            <div className="hidden items-center gap-2 rounded-full border border-[#E5EAF0] bg-white px-3 py-1.5 sm:flex">
+              <span className="h-2 w-2 rounded-full bg-[#20AD43]" />
+              <span className="text-[11px] font-medium text-[#718096]">
+                Workspace active
+              </span>
             </div>
           </div>
-        </section>
 
-        {/* Statistics */}
-        <section className="min-w-0">
-          <SectionHeading
-            title="Your workspace at a glance"
-            description="A summary of your account."
-          />
-
-          <div className="grid min-w-0 grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-2 gap-3 xl:grid-cols-4">
             {stats.map((stat) => {
               const Icon = stat.icon;
-              const value = stat.label === "Storage used"
-                ? storageQuery.data
-                  ? formatStorageBytes(Number(storageQuery.data.subscription.storage.usedBytes))
-                  : storageQuery.isLoading
-                    ? "Loading"
-                    : "—"
-                : stat.value;
+
+              const value =
+                stat.label === "Storage used"
+                  ? storageUsed
+                  : stat.value;
 
               return (
                 <div
                   key={stat.label}
-                  className="min-w-0 rounded-2xl border border-[#E5EAF0] bg-white p-4 transition hover:border-[#20AD43]/30 hover:shadow-sm sm:p-5"
+                  className={`group min-w-0 rounded-2xl border border-[#E5EAF0] border-l-[3px] ${stat.accent} bg-white p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-5`}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.iconBg}`}
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 ${stat.iconBg}`}
                     >
-                      <Icon size={19} className={stat.iconColor} />
+                      <Icon
+                        size={19}
+                        strokeWidth={1.8}
+                        className={stat.iconColor}
+                      />
                     </div>
-
-                    <button
-                      type="button"
-                      aria-label={`More about ${stat.label}`}
-                      className="rounded-lg p-1.5 text-[#A0AEC0] hover:bg-slate-50 hover:text-[#172B3A]"
-                    >
-                      <MoreHorizontal size={19} />
-                    </button>
                   </div>
 
-                  <p className="mt-4 text-xs font-medium text-[#718096] sm:text-sm">
+                  <p className="mt-4 text-[11px] font-medium text-[#718096] sm:text-sm">
                     {stat.label}
                   </p>
 
-                  <p className="mt-1 break-words text-2xl font-bold tracking-tight text-[#172B3A]">
+                  <p className="mt-1 break-words text-xl font-bold tracking-tight text-[#172B3A] sm:text-2xl">
                     {value}
                   </p>
 
-                  <p className="mt-2 break-words text-[11px] leading-5 text-[#A0AEC0] sm:text-xs">
+                  <p className="mt-1.5 hidden text-xs text-[#A0AEC0] sm:block">
                     {stat.description}
                   </p>
                 </div>
@@ -241,33 +226,48 @@ export function DashboardOverviewPage() {
         </section>
 
         {/* Storage overview */}
-        <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
-          <div className="min-w-0 xl:col-span-5">
-              {storageQuery.isLoading ? (
-                <div className="h-72 animate-pulse rounded-2xl border border-[#E5EAF0] bg-white" aria-label="Loading storage overview" />
-              ) : storageQuery.isError || !storageQuery.data ? (
-                <div className="flex min-h-40 flex-col items-start justify-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900" role="alert">
-                  <p>Storage details couldn’t load. Check your connection and try again.</p>
-                  <button
-                    type="button"
-                    className="font-semibold underline underline-offset-2"
-                    onClick={() => void storageQuery.refetch()}
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : (
-                <StorageOverviewCard
-                  storage={storageQuery.data.subscription.storage}
-                  plan={storageQuery.data.subscription.plan}
-                />
-              )}
+        <section className="min-w-0">
+          <div className="mb-4">
+            <h2 className="text-base font-bold tracking-tight text-[#172B3A] sm:text-lg">
+              Storage overview
+            </h2>
+            <p className="mt-1 text-xs text-[#718096] sm:text-sm">
+              Monitor your available storage and usage.
+            </p>
           </div>
+
+          {storageQuery.isLoading ? (
+            <LoadingCard />
+          ) : storageQuery.isError || !storageQuery.data ? (
+            <div
+              className="flex min-h-40 flex-col items-start justify-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900"
+              role="alert"
+            >
+              <p>
+                Storage details couldn’t load. Check your connection and try again.
+              </p>
+
+              <button
+                type="button"
+                className="font-semibold underline underline-offset-2"
+                onClick={() => void storageQuery.refetch()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <StorageOverviewCard
+              storage={storageQuery.data.subscription.storage}
+              plan={storageQuery.data.subscription.plan}
+            />
+          )}
         </section>
 
-        {/* Recent files and activity */}
-        <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
-          <div className="min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white xl:col-span-3">
+        {/* Files and activity */}
+        <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-12">
+
+          {/* Recent files */}
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white xl:col-span-7">
             <div className="p-4 sm:p-5 lg:p-6">
               <SectionHeading
                 title="Recent files"
@@ -275,114 +275,42 @@ export function DashboardOverviewPage() {
                 action={
                   <a
                     href="/dashboard/files"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#20AD43] hover:text-[#168B37]"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold text-[#20AD43] transition hover:bg-[#F0F7F2] hover:text-[#168B37]"
                   >
-                    View all <ArrowRight size={14} />
+                    View all
+                    <ArrowRight size={14} />
                   </a>
                 }
               />
 
-              {/* Responsive file list: cards on mobile, table on larger screens */}
-              <div className="space-y-3 sm:hidden">
-                {recentFiles.map((file) => {
-                  const Icon = file.icon;
-
-                  return (
-                    <div
-                      key={file.name}
-                      className="flex min-w-0 items-center gap-3 rounded-xl bg-[#F7F9FC] p-3"
-                    >
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${file.iconBg}`}
-                      >
-                        <Icon size={18} className={file.iconColor} />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="break-words text-sm font-semibold text-[#172B3A]">
-                          {file.name}
-                        </p>
-                        <p className="mt-1 break-words text-xs text-[#718096]">
-                          {file.type}
-                        </p>
-                      </div>
-
-                      <span className="shrink-0 text-xs text-[#A0AEC0]">
-                        {file.size}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="hidden overflow-x-auto sm:block">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-[#EDF1F5] text-[10px] font-semibold uppercase tracking-wider text-[#A0AEC0] lg:text-[11px]">
-                      <th className="pb-3 pr-3 font-semibold">File name</th>
-                      <th className="pb-3 pr-3 font-semibold">Date added</th>
-                      <th className="pb-3 text-right font-semibold">Size</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {recentFiles.map((file) => {
-                      const Icon = file.icon;
-
-                      return (
-                        <tr key={file.name}>
-                          <td className="py-4 pr-3">
-                            <div className="flex min-w-0 items-center gap-3">
-                              <div
-                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${file.iconBg}`}
-                              >
-                                <Icon
-                                  size={17}
-                                  className={file.iconColor}
-                                />
-                              </div>
-
-                              <div className="min-w-0">
-                                <p className="break-words text-sm font-semibold text-[#172B3A]">
-                                  {file.name}
-                                </p>
-                                <p className="mt-0.5 text-xs text-[#A0AEC0]">
-                                  {file.type}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="whitespace-nowrap py-4 pr-3 text-xs text-[#718096]">
-                            {file.date}
-                          </td>
-
-                          <td className="whitespace-nowrap py-4 text-right text-xs text-[#718096]">
-                            {file.size}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
               <EmptyState
-                icon={File}
-                title="Your files will appear here"
-                description="Upload your first document to start building your digital workspace."
+                icon={FileText}
+                title="No files uploaded yet"
+                description="Your documents will appear here once you upload your first file."
+                action={
+                  <a
+                    href="/dashboard/files"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#168B37] sm:text-sm"
+                  >
+                    <Upload size={15} />
+                    Upload your first file
+                  </a>
+                }
               />
             </div>
           </div>
 
-          {/* Activity */}
-          <div className="min-w-0 rounded-2xl border border-[#E5EAF0] bg-white p-4 sm:p-5 lg:p-6 xl:col-span-2">
+          {/* Recent activity */}
+          <div className="min-w-0 rounded-2xl border border-[#E5EAF0] bg-white p-4 sm:p-5 lg:p-6 xl:col-span-5">
             <SectionHeading
               title="Recent activity"
               description="What's happening in your workspace."
               action={
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F7F9FC]">
-                  <Activity size={16} className="text-[#718096]" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F0F7F2]">
+                  <Activity
+                    size={17}
+                    className="text-[#20AD43]"
+                  />
                 </div>
               }
             />
@@ -397,9 +325,13 @@ export function DashboardOverviewPage() {
                     className="flex min-w-0 gap-3"
                   >
                     <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${activity.iconBg}`}
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${activity.iconBg}`}
                     >
-                      <Icon size={17} className={activity.iconColor} />
+                      <Icon
+                        size={18}
+                        strokeWidth={1.8}
+                        className={activity.iconColor}
+                      />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -411,9 +343,10 @@ export function DashboardOverviewPage() {
                         {activity.description}
                       </p>
 
-                      <p className="mt-2 text-[11px] text-[#A0AEC0]">
+                      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[#A0AEC0]">
+                        <Clock3 size={12} />
                         {activity.time}
-                      </p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -423,40 +356,38 @@ export function DashboardOverviewPage() {
             <div className="mt-6 border-t border-[#EDF1F5] pt-4">
               <a
                 href="/dashboard/activity"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#20AD43] hover:text-[#168B37]"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#20AD43] transition hover:text-[#168B37]"
               >
-                View activity history <ArrowRight size={14} />
+                View activity history
+                <ArrowRight size={14} />
               </a>
             </div>
           </div>
         </section>
 
-        {/* Security reminder */}
-        <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-[#DDEFE2] bg-[#F5FBF6] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 lg:p-6">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white">
-              <ShieldCheck size={21} className="text-[#20AD43]" />
+        {/* Workspace status */}
+        <div className="flex flex-col gap-2 rounded-2xl border border-[#E5EAF0] bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F0F7F2]">
+              <ShieldCheck size={16} className="text-[#20AD43]" />
             </div>
 
-            <div className="min-w-0">
-              <h3 className="break-words text-sm font-bold text-[#172B3A]">
-                Your documents deserve protection.
-              </h3>
-
-              <p className="mt-1 max-w-xl break-words text-xs leading-5 text-[#718096]">
-                Keep your account secure by using a strong password and
-                reviewing your sharing permissions regularly.
+            <div>
+              <p className="text-xs font-semibold text-[#172B3A]">
+                Your workspace is ready
+              </p>
+              <p className="mt-0.5 text-[11px] text-[#718096]">
+                Your files and documents in one organised place.
               </p>
             </div>
           </div>
 
-          <a
-            href="/dashboard/settings/security"
-            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 self-start text-sm font-semibold text-[#168B37] hover:text-[#106E2B] sm:self-center"
-          >
-            Security settings <ArrowRight size={16} />
-          </a>
-        </section>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#20AD43]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#20AD43]" />
+            Active
+          </span>
+        </div>
+
       </div>
     </PageShell>
   );

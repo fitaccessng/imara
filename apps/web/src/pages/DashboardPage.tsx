@@ -5,20 +5,20 @@ import {
   Activity,
   ArrowRight,
   Camera,
-  CheckCircle2,
-  Cloud,
-  Compass,
   CalendarDays,
+  Cloud,
   CloudDownload,
   FileText,
   FolderPlus,
-  LockKeyhole,
   MailPlus,
   NotebookPen,
   ShieldCheck,
   Sparkles,
   Upload,
   WandSparkles,
+  Compass,
+  Files,
+  Clock3,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
@@ -26,12 +26,20 @@ import { ApiError, apiRequest, type DashboardSummary } from "../lib/api";
 import { StorageOverviewCard } from "./dashboard/StorageOverviewCard";
 
 interface WeeklyInsights {
-  period: { startsAt: string; endsAt: string; durationDays: number };
+  period: {
+    startsAt: string;
+    endsAt: string;
+    durationDays: number;
+  };
   filesCreated: number;
   activeFileRequests: number;
   upcomingExpiry: {
     supported: boolean;
-    items: Array<{ id: string; name: string; expiresAt: string }>;
+    items: Array<{
+      id: string;
+      name: string;
+      expiresAt: string;
+    }>;
     reason?: string;
   };
 }
@@ -45,11 +53,16 @@ function getGreeting() {
 }
 
 function formatInsightDate(value: string) {
-  const date = new Date(value.length === 10 ? `${value}T12:00:00` : value);
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+  const date = new Date(
+    value.length === 10 ? `${value}T12:00:00` : value
+  );
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(date);
 }
 
-function SectionTitle({
+function SectionHeading({
   eyebrow,
   title,
   action,
@@ -59,12 +72,12 @@ function SectionTitle({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-5 flex min-w-0 flex-wrap items-end justify-between gap-3">
+    <div className="mb-5 flex min-w-0 flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#20AD43] sm:text-[11px]">
+        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#20AD43]">
           {eyebrow}
         </p>
-        <h2 className="mt-1 break-words text-lg font-bold tracking-tight text-[#172B3A] sm:text-xl">
+        <h2 className="mt-1 text-lg font-bold tracking-tight text-[#172B3A] sm:text-xl">
           {title}
         </h2>
       </div>
@@ -74,76 +87,147 @@ function SectionTitle({
   );
 }
 
+/* Quick access tools */
+
+const quickTools = [
+  {
+    title: "IMARA Notes",
+    description: "Capture your thoughts",
+    icon: NotebookPen,
+    iconBg: "bg-[#EAF7ED]",
+    iconColor: "text-[#20AD43]",
+    to: "/notes",
+  },
+  {
+    title: "File requests",
+    description: "Collect files by link",
+    icon: MailPlus,
+    iconBg: "bg-[#EEF3FF]",
+    iconColor: "text-[#5278D9]",
+    to: "/file-requests",
+  },
+  {
+    title: "Document tools",
+    description: "Convert and create",
+    icon: WandSparkles,
+    iconBg: "bg-[#F5EEFF]",
+    iconColor: "text-[#9461C8]",
+    to: "/document-tools",
+  },
+  {
+    title: "Shared galleries",
+    description: "Bring memories together",
+    icon: Camera,
+    iconBg: "bg-[#FFF1E8]",
+    iconColor: "text-[#E78A4B]",
+    to: "/events",
+  },
+  {
+    title: "Calendar",
+    description: "Keep important dates",
+    icon: CalendarDays,
+    iconBg: "bg-[#EAF5FC]",
+    iconColor: "text-[#3992C6]",
+    to: "/calendar",
+  },
+];
+
 function DashboardQuickTools({ online }: { online: boolean }) {
   return (
-    <section className="dashboard-tools-panel" aria-labelledby="dashboard-tools-title">
-      <div className="dashboard-tools-heading">
+    <section className="overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-4 shadow-[0_3px_18px_rgba(16,43,70,0.025)] sm:p-5 lg:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <span className="dashboard-tools-eyebrow">YOUR WORKSPACE</span>
-          <h2 id="dashboard-tools-title">Quick tools</h2>
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#20AD43]">
+            WORKSPACE
+          </p>
+          <h2 className="mt-1 text-base font-bold text-[#172B3A] sm:text-lg">
+            Quick access
+          </h2>
         </div>
-        <span>Everyday actions, one click away</span>
+
+        <span className="text-[11px] text-[#89969B] sm:text-xs">
+          Your everyday tools
+        </span>
       </div>
-      <div className="dashboard-tools-grid">
-        <Link to="/notes" className="dashboard-tool-card">
-          <span className="dashboard-tool-icon dashboard-tool-notes"><NotebookPen size={19} /></span>
-          <span><strong>IMARA Notes</strong><small>Capture a thought</small></span>
-          <ArrowRight size={15} className="dashboard-tool-arrow" />
-        </Link>
-        <Link to="/file-requests" className="dashboard-tool-card">
-          <span className="dashboard-tool-icon dashboard-tool-requests"><MailPlus size={19} /></span>
-          <span><strong>Request files</strong><small>Collect files by link</small></span>
-          <ArrowRight size={15} className="dashboard-tool-arrow" />
-        </Link>
-        <Link to="/document-tools" className="dashboard-tool-card">
-          <span className="dashboard-tool-icon dashboard-tool-documents"><WandSparkles size={19} /></span>
-          <span><strong>Document tools</strong><small>Convert and create</small></span>
-          <ArrowRight size={15} className="dashboard-tool-arrow" />
-        </Link>
-        <Link to="/events" className="dashboard-tool-card">
-          <span className="dashboard-tool-icon dashboard-tool-events"><Camera size={19} /></span>
-          <span><strong>Events</strong><small>Manage shared galleries</small></span>
-          <ArrowRight size={15} className="dashboard-tool-arrow" />
-        </Link>
-        <Link to="/calendar" className="dashboard-tool-card">
-          <span className="dashboard-tool-icon dashboard-tool-calendar"><CalendarDays size={19} /></span>
-          <span><strong>Calendar</strong><small>Keep dates in view</small></span>
-          <ArrowRight size={15} className="dashboard-tool-arrow" />
-        </Link>
+
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2 lg:grid-cols-3 xl:grid-cols-5">
+        {quickTools.map((tool) => {
+          const Icon = tool.icon;
+
+          return (
+            <Link
+              key={tool.title}
+              to={tool.to}
+              className="group flex min-w-0 flex-col items-center gap-2 rounded-xl border border-transparent bg-[#F8FAF9] p-2 text-center transition hover:border-[#DDEFE2] hover:bg-[#F1F9F3] sm:items-start sm:p-3 lg:p-4"
+            >
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${tool.iconBg}`}
+              >
+                <Icon size={18} className={tool.iconColor} />
+              </div>
+
+              <div className="min-w-0 w-full">
+                <p className="line-clamp-2 min-h-7 text-[10px] font-bold leading-tight text-[#172B3A] sm:text-xs lg:text-sm">
+                  {tool.title}
+                </p>
+                <p className="mt-1 hidden truncate text-[11px] text-[#89969B] sm:block">
+                  {tool.description}
+                </p>
+              </div>
+
+              <ArrowRight
+                size={15}
+                className="hidden shrink-0 text-[#A0AEC0] transition group-hover:translate-x-1 group-hover:text-[#20AD43] sm:block sm:self-end"
+              />
+            </Link>
+          );
+        })}
       </div>
+
       {!online && (
-        <div className="dashboard-offline-notice" role="status">
-          <CloudDownload size={18} />
-          <p><strong>You’re offline.</strong> Saved copies are still available on this device.</p>
-          <Link to="/offline-files">Offline access <ArrowRight size={14} /></Link>
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-100 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-xs text-amber-800">
+            <CloudDownload size={17} />
+            <p>
+              <strong>You’re offline.</strong> Saved copies are still available.
+            </p>
+          </div>
+
+          <Link
+            to="/offline-files"
+            className="inline-flex items-center gap-1 text-xs font-bold text-amber-800"
+          >
+            Offline access <ArrowRight size={13} />
+          </Link>
         </div>
       )}
     </section>
   );
 }
 
+/* Loading state */
+
 function LoadingDashboard({ online }: { online: boolean }) {
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
+    <main className="mx-auto w-full max-w-[1500px] space-y-5 p-4 sm:space-y-7 sm:p-6 lg:p-8">
       <DashboardQuickTools online={online} />
+
       <div className="animate-pulse space-y-3">
         <div className="h-3 w-28 rounded bg-slate-200" />
         <div className="h-8 w-64 max-w-full rounded-lg bg-slate-200" />
         <div className="h-4 w-80 max-w-full rounded bg-slate-100" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
         <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
       </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="h-56 animate-pulse rounded-2xl bg-slate-100 lg:col-span-2" />
-        <div className="h-56 animate-pulse rounded-2xl bg-slate-100" />
-      </div>
-    </div>
+    </main>
   );
 }
+
+/* Error state */
 
 function ErrorState({
   message,
@@ -168,7 +252,7 @@ function ErrorState({
 
       <p className="mt-2 max-w-sm text-sm leading-6 text-[#718096]">
         {authenticationRequired
-          ? "Your sign-in session has expired. Sign in again to continue to your dashboard."
+          ? "Your sign-in session has expired. Sign in again to continue."
           : message}
       </p>
 
@@ -179,8 +263,7 @@ function ErrorState({
           onClick={onLogin}
           className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-6 text-sm font-semibold text-white transition hover:bg-[#189638]"
         >
-          Go to login
-          <ArrowRight size={16} />
+          Go to login <ArrowRight size={16} />
         </Link>
       ) : (
         <button
@@ -188,13 +271,14 @@ function ErrorState({
           onClick={onRetry}
           className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-6 text-sm font-semibold text-white transition hover:bg-[#189638]"
         >
-          Try again
-          <ArrowRight size={16} />
+          Try again <ArrowRight size={16} />
         </button>
       )}
     </div>
   );
 }
+
+/* Empty file library */
 
 function EmptyLibrary({
   documentCount,
@@ -204,11 +288,11 @@ function EmptyLibrary({
   const hasDocuments = documentCount > 0;
 
   return (
-    <div className="flex flex-col items-center px-4 py-9 text-center sm:py-12">
-      <div className="relative mb-5 flex h-20 w-20 items-center justify-center rounded-[24px] bg-[#F0F7F2]">
-        <FileText size={35} strokeWidth={1.5} className="text-[#20AD43]" />
+    <div className="flex flex-col items-center px-4 py-10 text-center sm:py-14">
+      <div className="relative mb-5 flex h-[76px] w-[76px] items-center justify-center rounded-[22px] border border-[#DDEFE2] bg-[#F0F8F2]">
+        <Files size={32} strokeWidth={1.5} className="text-[#20AD43]" />
 
-        <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-4 border-white bg-[#20AD43] text-white">
+        <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-white bg-[#20AD43] text-white">
           <Sparkles size={12} />
         </span>
       </div>
@@ -216,60 +300,239 @@ function EmptyLibrary({
       <h3 className="text-base font-bold text-[#172B3A] sm:text-lg">
         {hasDocuments
           ? `${documentCount} documents saved`
-          : "Your library starts here"}
+          : "Your cloud library is ready"}
       </h3>
 
       <p className="mt-2 max-w-sm text-xs leading-6 text-[#718096] sm:text-sm">
         {hasDocuments
           ? "Your documents are waiting in your file library. Open it to continue."
-          : "Keep your important documents organised in one secure place. Upload your first file to get started."}
+          : "Upload your first document and start organising everything in one secure place."}
       </p>
 
       <Link
         to="/files"
-        className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#189638]"
+        className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#189638]"
       >
+        <Upload size={16} />
         {hasDocuments ? "Open file library" : "Upload your first file"}
-        <ArrowRight size={16} />
+        <ArrowRight size={15} />
       </Link>
     </div>
   );
 }
 
+/* Weekly insights */
+
+function OrganisationInsights({
+  insightsQuery,
+}: {
+  insightsQuery: ReturnType<
+    typeof useQuery<WeeklyInsights>
+  >;
+}) {
+  return (
+    <section className="min-w-0 rounded-2xl border border-[#E5EAF0] bg-white p-4 shadow-[0_3px_18px_rgba(16,43,70,0.025)] sm:p-6">
+      <SectionHeading
+        eyebrow="YOUR WEEK"
+        title="Organisation insights"
+        action={
+          <Link
+            to="/notes"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#20AD43] hover:text-[#168B37]"
+          >
+            <NotebookPen size={14} />
+            Open Notes
+          </Link>
+        }
+      />
+
+      {insightsQuery.isPending ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className="h-28 animate-pulse rounded-xl bg-slate-100"
+            />
+          ))}
+        </div>
+      ) : insightsQuery.isError ? (
+        <div
+          className="rounded-xl bg-[#F7F9FC] p-4 text-sm text-[#718096]"
+          role="status"
+        >
+          <p>
+            {insightsQuery.error instanceof Error
+              ? insightsQuery.error.message
+              : "Weekly insights could not be loaded."}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void insightsQuery.refetch()}
+            className="mt-2 font-semibold text-[#168B37]"
+          >
+            Try again
+          </button>
+        </div>
+      ) : insightsQuery.data ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+
+          {/* Files created */}
+          <div className="rounded-xl border border-[#EDF1F5] bg-[#FAFCFA] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#89969B]">
+                Files added
+              </span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EAF7ED]">
+                <FileText size={16} className="text-[#20AD43]" />
+              </div>
+            </div>
+
+            <strong className="mt-3 block text-3xl font-bold tracking-tight text-[#172B3A]">
+              {insightsQuery.data.filesCreated}
+            </strong>
+
+            <p className="mt-1 text-xs text-[#89969B]">
+              New documents · Last 7 days
+            </p>
+          </div>
+
+          {/* File requests */}
+          <Link
+            to="/file-requests"
+            className="group rounded-xl border border-[#EDF1F5] bg-[#FAFCFA] p-4 transition hover:border-[#CFE8D4] hover:bg-[#F3FAF4]"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#89969B]">
+                Open requests
+              </span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EEF3FF]">
+                <MailPlus size={16} className="text-[#5278D9]" />
+              </div>
+            </div>
+
+            <strong className="mt-3 block text-3xl font-bold tracking-tight text-[#172B3A]">
+              {insightsQuery.data.activeFileRequests}
+            </strong>
+
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <p className="text-xs text-[#89969B]">
+                Active upload links
+              </p>
+              <ArrowRight
+                size={14}
+                className="text-[#20AD43] transition group-hover:translate-x-1"
+              />
+            </div>
+          </Link>
+
+          {/* Expiry */}
+          <div className="rounded-xl border border-[#EDF1F5] bg-[#FAFCFA] p-4 sm:col-span-2 xl:col-span-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#89969B]">
+                Upcoming expiry
+              </span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF5E8]">
+                <Clock3 size={16} className="text-[#D69B36]" />
+              </div>
+            </div>
+
+            {insightsQuery.data.upcomingExpiry.supported &&
+            insightsQuery.data.upcomingExpiry.items.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {insightsQuery.data.upcomingExpiry.items
+                  .slice(0, 2)
+                  .map((item) => (
+                    <li
+                      key={item.id}
+                      className="min-w-0 truncate text-sm font-semibold text-[#172B3A]"
+                    >
+                      {item.name}
+                      <span className="ml-1 text-xs font-normal text-[#89969B]">
+                        · {formatInsightDate(item.expiresAt)}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm font-semibold text-[#172B3A]">
+                {insightsQuery.data.upcomingExpiry.supported
+                  ? "None in the next 30 days"
+                  : "Not tracked yet"}
+              </p>
+            )}
+
+            <div className="mt-2 text-xs text-[#89969B]">
+              {insightsQuery.data.upcomingExpiry.supported ? (
+                <Link
+                  to="/files"
+                  className="font-semibold text-[#168B37] hover:underline"
+                >
+                  Manage expiry dates
+                </Link>
+              ) : (
+                insightsQuery.data.upcomingExpiry.reason
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/* Main dashboard */
+
 export function DashboardPage() {
   const { setUser } = useAuth();
   const [online, setOnline] = useState(navigator.onLine);
-  const { data, isLoading, isError, error, refetch } = useQuery({
+
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["dashboard-summary"],
-    queryFn: () => apiRequest<DashboardSummary>("/dashboard/summary"),
+    queryFn: () =>
+      apiRequest<DashboardSummary>("/dashboard/summary"),
     refetchInterval: 30_000,
+  });
+
+  const insightsQuery = useQuery<WeeklyInsights>({
+    queryKey: ["weekly-insights"],
+    queryFn: () =>
+      apiRequest<WeeklyInsights>("/insights/weekly"),
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
     const updateOnline = () => setOnline(navigator.onLine);
+
     window.addEventListener("online", updateOnline);
     window.addEventListener("offline", updateOnline);
+
     return () => {
       window.removeEventListener("online", updateOnline);
       window.removeEventListener("offline", updateOnline);
     };
   }, []);
-  const insightsQuery = useQuery({
-    queryKey: ["weekly-insights"],
-    queryFn: () => apiRequest<WeeklyInsights>("/insights/weekly"),
-    refetchInterval: 60_000,
-  });
 
   if (isLoading) {
     return <LoadingDashboard online={online} />;
   }
 
   if (isError || !data) {
-    const authenticationRequired = (error instanceof ApiError && error.status === 401)
-      || (error instanceof Error && /authentication required/i.test(error.message));
+    const authenticationRequired =
+      (error instanceof ApiError && error.status === 401) ||
+      (error instanceof Error &&
+        /authentication required/i.test(error.message));
+
     return (
       <div className="mx-auto w-full max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
         <DashboardQuickTools online={online} />
+
         <ErrorState
           message={
             error instanceof Error
@@ -294,42 +557,48 @@ export function DashboardPage() {
   }).format(new Date());
 
   return (
-    <>
-    <main className="mx-auto w-full min-w-0 max-w-[1500px] space-y-6 overflow-x-clip pb-8 sm:space-y-8">
+    <main className="mx-auto w-full min-w-0 max-w-[1500px] space-y-5 overflow-x-clip pb-8 sm:space-y-7">
 
-      {/* Page heading */}
-      <header data-tour="organize" className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      {/* Header */}
+      <header
+        data-tour="organize"
+        className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+      >
         <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div className="mb-2 flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#20AD43]" />
-            <span className="text-[11px] font-semibold text-[#718096]">
+            <span className="text-[11px] font-semibold text-[#89969B]">
               {today}
             </span>
           </div>
 
-          <h1 className="break-words text-2xl font-bold tracking-tight text-[#172B3A] sm:text-3xl lg:text-[34px]">
+          <h1 className="break-words text-2xl font-bold tracking-tight text-[#172B3A] sm:text-3xl lg:text-[36px]">
             {getGreeting()}, {firstName}
             <span className="text-[#20AD43]">.</span>
           </h1>
 
           <p className="mt-2 max-w-lg text-xs leading-6 text-[#718096] sm:text-sm">
-            Welcome to your personal space. Everything important, all in one
-            place.
+            Welcome back. Your files and everything important are right here.
           </p>
         </div>
 
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <button
             type="button"
-            onClick={() => window.dispatchEvent(new Event("imara:start-product-tour"))}
-            className="dashboard-quick-action inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
+            onClick={() =>
+              window.dispatchEvent(
+                new Event("imara:start-product-tour")
+              )
+            }
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:px-4 sm:text-sm"
           >
             <Compass size={15} />
             Take a tour
           </button>
+
           <Link
             to="/files?createFolder=1"
-            className="dashboard-quick-action inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 py-2 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:flex-none sm:px-4 sm:text-sm"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#E5EAF0] bg-white px-3 text-xs font-semibold text-[#172B3A] transition hover:bg-slate-50 sm:px-4 sm:text-sm"
           >
             <FolderPlus size={15} />
             New folder
@@ -337,18 +606,16 @@ export function DashboardPage() {
 
           <Link
             to="/files"
-            className="dashboard-quick-action inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#189638] sm:flex-none sm:px-4 sm:text-sm"
+            className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#189638] sm:col-span-1 sm:text-sm"
           >
-            <Upload size={15} />
+            <Upload size={16} />
             Upload file
           </Link>
         </div>
       </header>
 
-      {/* Main dashboard cards */}
       <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
-
-        {/* Storage card */}
+        {/* Storage */}
         <div data-tour="storage" className="min-w-0 xl:col-span-2">
           <StorageOverviewCard
             storage={data.subscription.storage}
@@ -356,179 +623,109 @@ export function DashboardPage() {
           />
         </div>
 
-        {/* Welcome card */}
-        <div data-tour="get-started" className="relative flex min-h-[260px] min-w-0 flex-col justify-between overflow-hidden rounded-2xl bg-[#102B46] p-5 sm:min-h-[280px] sm:p-7 xl:col-span-3">
-          <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full border-[35px] border-white/[0.04]" />
-          <div className="pointer-events-none absolute -bottom-28 right-28 h-56 w-56 rounded-full border-[30px] border-white/[0.04]" />
+        {/* Cloud library banner - wide screens only */}
+        <section
+          data-tour="get-started"
+          className="relative hidden min-h-[270px] min-w-0 flex-col justify-between overflow-hidden rounded-[24px] bg-[#102B46] p-6 xl:col-span-3 xl:flex xl:p-8 2xl:p-10"
+        >
+          <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full border-[38px] border-white/[0.045]" />
 
-          <div className="relative z-10 max-w-md">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-semibold tracking-wide text-white/80">
-              <Sparkles size={13} className="text-[#7DE69A]" />
-              YOUR SPACE, YOUR PACE
+          <div className="pointer-events-none absolute -bottom-36 right-40 h-72 w-72 rounded-full border-[38px] border-white/[0.035]" />
+
+          <div className="relative z-10 max-w-xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-semibold tracking-wider text-white/80">
+              <Cloud size={13} className="text-[#7DE69A]" />
+              YOUR PERSONAL CLOUD
             </div>
 
-            <h2 className="mt-5 text-3xl font-bold leading-[1.15] tracking-tight text-white sm:text-4xl">
-              Everything
+            <h2 className="mt-5 text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl">
+              Your files.
               <br />
-              has a place.
+              One organised space.
             </h2>
 
-            <p className="mt-3 max-w-sm text-xs leading-6 text-white/65 sm:text-sm">
-              Your private file library is ready. Organise documents, create
-              folders and keep everything important close.
+            <p className="mt-3 max-w-md text-xs leading-6 text-white/65 sm:text-sm">
+              Keep your important documents together. Upload, organise and
+              access your files whenever you need them.
             </p>
           </div>
 
-          <div className="relative z-10 mt-6 flex flex-wrap items-center gap-3">
+          <div className="relative z-10 mt-7 flex flex-wrap items-center gap-4">
             <Link
               to="/files"
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#189638]"
             >
-              Open file library
+              Explore my files
               <ArrowRight size={16} />
             </Link>
 
             <div className="inline-flex items-center gap-2 text-xs text-white/60">
-              <Cloud size={15} />
+              <ShieldCheck size={15} />
               Secure cloud storage
             </div>
           </div>
 
-          {/* Decorative document illustration */}
-          <div className="pointer-events-none absolute bottom-8 right-8 hidden h-40 w-40 items-center justify-center opacity-80 sm:flex lg:right-12">
-            <div className="absolute h-28 w-20 rotate-[-18deg] rounded-xl border border-white/20 bg-white/10 shadow-xl" />
-            <div className="absolute h-32 w-24 rotate-[10deg] rounded-xl border border-white/20 bg-white/10 shadow-xl" />
+          {/* Decorative cloud file illustration */}
+          <div className="pointer-events-none absolute bottom-8 right-12 hidden h-44 w-48 items-center justify-center lg:flex">
+            <div className="absolute h-32 w-24 rotate-[-16deg] rounded-2xl border border-white/15 bg-white/10 shadow-xl" />
 
-            <div className="absolute flex h-32 w-24 rotate-[-4deg] flex-col gap-3 rounded-xl border border-white/30 bg-white p-4 shadow-2xl">
-              <div className="h-2 w-10 rounded-full bg-[#20AD43]" />
+            <div className="absolute h-36 w-28 rotate-[12deg] rounded-2xl border border-white/20 bg-white/10 shadow-xl" />
+
+            <div className="absolute flex h-36 w-28 rotate-[-3deg] flex-col gap-3 rounded-2xl border border-white/30 bg-white p-4 shadow-2xl">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EAF7ED]">
+                <FileText size={16} className="text-[#20AD43]" />
+              </div>
               <div className="h-1.5 w-full rounded-full bg-slate-200" />
               <div className="h-1.5 w-4/5 rounded-full bg-slate-200" />
               <div className="h-1.5 w-full rounded-full bg-slate-200" />
-              <div className="mt-1 h-7 rounded-md bg-[#EAF7ED]" />
+              <div className="mt-1 h-7 rounded-lg bg-[#EAF7ED]" />
             </div>
           </div>
-        </div>
+        </section>
       </section>
 
+      {/* Quick tools */}
       <DashboardQuickTools online={online} />
 
-      {/* Library and account */}
-      <section className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-5">
-
-        {/* Recently added */}
-        <div data-tour="library" className="min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6 xl:col-span-3">
-          <SectionTitle
-            eyebrow="YOUR LIBRARY"
-            title="Recently added"
-            action={
-              <Link
-                to="/files"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[#20AD43] hover:text-[#168B37]"
-              >
-                View library <ArrowRight size={14} />
-              </Link>
-            }
-          />
-
-          <EmptyLibrary documentCount={data.overview.documentsCount} />
-        </div>
-
-        {/* Account security */}
-        <aside data-tour="account" className="flex min-w-0 flex-col rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6 xl:col-span-2">
-          <SectionTitle
-            eyebrow="ACCOUNT CARE"
-            title="Your account matters."
-          />
-
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F0F7F2]">
-            <ShieldCheck size={27} className="text-[#20AD43]" />
-          </div>
-
-          <h3 className="mt-5 text-base font-bold text-[#172B3A]">
-            Keep your details current.
-          </h3>
-
-          <p className="mt-2 text-xs leading-6 text-[#718096] sm:text-sm">
-            Your account is protected by secure sign-in. Review your personal
-            details and update your password whenever necessary.
-          </p>
-
-          <div className="mt-5 flex items-center gap-2 rounded-xl bg-[#F7F9FC] p-3">
-            <LockKeyhole size={16} className="shrink-0 text-[#20AD43]" />
-            <span className="text-xs font-medium text-[#4A5568]">
-              Secure account access
-            </span>
-            <CheckCircle2 size={15} className="ml-auto shrink-0 text-[#20AD43]" />
-          </div>
-
-          <Link
-            to="/settings/profile"
-            className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 self-start rounded-xl border border-[#E5EAF0] px-4 py-2.5 text-sm font-semibold text-[#172B3A] transition hover:border-[#20AD43] hover:text-[#168B37]"
-          >
-            Account settings
-            <ArrowRight size={15} />
-          </Link>
-        </aside>
-      </section>
-
-      <section className="rounded-2xl border border-[#E5EAF0] bg-white p-5 sm:p-6">
-        <SectionTitle
-          eyebrow="YOUR WEEK"
-          title="Organisation insights"
+      {/* File library */}
+      <section
+        data-tour="library"
+        className="min-w-0 overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-4 shadow-[0_3px_18px_rgba(16,43,70,0.025)] sm:p-6"
+      >
+        <SectionHeading
+          eyebrow="YOUR CLOUD LIBRARY"
+          title="Recently added"
           action={
-            <Link to="/notes" className="inline-flex items-center gap-1 text-xs font-semibold text-[#20AD43] hover:text-[#168B37]">
-              <NotebookPen size={14} /> Open Notes
+            <Link
+              to="/files"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#20AD43] hover:text-[#168B37]"
+            >
+              View all <ArrowRight size={14} />
             </Link>
           }
         />
-        {insightsQuery.isPending ? (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[0, 1, 2].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
-          </div>
-        ) : insightsQuery.isError ? (
-          <div className="rounded-xl bg-[#F7F9FC] p-4 text-sm text-[#718096]" role="status">
-            <p>{insightsQuery.error instanceof Error ? insightsQuery.error.message : "Weekly insights could not be loaded."}</p>
-            <button type="button" onClick={() => void insightsQuery.refetch()} className="mt-2 font-semibold text-[#168B37]">Try again</button>
-          </div>
-        ) : insightsQuery.data ? (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-[#F7F9FC] p-4">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#718096]">Files added · 7 days</span>
-              <strong className="mt-2 block text-2xl font-bold text-[#172B3A]">{insightsQuery.data.filesCreated}</strong>
-              <span className="mt-1 block text-xs text-[#718096]">New personal documents</span>
-            </div>
-            <Link to="/file-requests" className="rounded-xl bg-[#F7F9FC] p-4 transition hover:bg-[#EFF8F1]">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#718096]">Open file requests</span>
-              <strong className="mt-2 block text-2xl font-bold text-[#172B3A]">{insightsQuery.data.activeFileRequests}</strong>
-              <span className="mt-1 block text-xs text-[#718096]">Live upload request links</span>
-            </Link>
-            <div className="rounded-xl bg-[#F7F9FC] p-4">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#718096]">Upcoming expiry</span>
-              {insightsQuery.data.upcomingExpiry.supported && insightsQuery.data.upcomingExpiry.items.length ? (
-                <ul className="mt-2 space-y-1">
-                  {insightsQuery.data.upcomingExpiry.items.slice(0, 2).map((item) => (
-                    <li key={item.id} className="truncate text-sm font-semibold text-[#172B3A]">{item.name} · {formatInsightDate(item.expiresAt)}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-sm font-semibold text-[#172B3A]">{insightsQuery.data.upcomingExpiry.supported ? "None in the next 30 days" : "Not tracked yet"}</p>
-              )}
-              <span className="mt-1 block text-xs text-[#718096]">{insightsQuery.data.upcomingExpiry.supported ? <Link to="/files" className="font-semibold text-[#168B37] hover:underline">Manage expiry dates in your files</Link> : insightsQuery.data.upcomingExpiry.reason}</span>
-            </div>
-          </div>
-        ) : null}
+
+        <EmptyLibrary
+          documentCount={data.overview.documentsCount}
+        />
       </section>
 
-      {/* Storage note */}
+      {/* Organisation insights */}
+      <OrganisationInsights insightsQuery={insightsQuery} />
+
+      {/* Storage information */}
       <div className="flex min-w-0 items-start gap-2 border-t border-[#E5EAF0] pt-4">
-        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-[#20AD43]" />
+        <ShieldCheck
+          size={15}
+          className="mt-0.5 shrink-0 text-[#20AD43]"
+        />
+
         <p className="text-[11px] leading-5 text-[#A0AEC0]">
-          Storage figures are updated from your account. In-progress uploads
-          count against your available storage quota.
+          Storage figures are updated from your account. In-progress
+          uploads count against your available storage quota.
         </p>
       </div>
     </main>
-    </>
   );
 }
 
