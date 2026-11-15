@@ -303,16 +303,16 @@ export function WorkspaceStoragePage() {
 
       {contentsQuery.isLoading || accessibleFoldersQuery.isLoading ? <div className="page-loading"><span className="loader" />Loading authorized folders…</div> : contentsQuery.data && (
         <section className="file-list-card" aria-label="Authorized business files and folders">
-          <div className="file-list-header"><span>Name</span><span>Size</span><span>Added</span><span className="file-actions-heading">Actions</span></div>
+          <div className="file-list-header"><span>Name</span><span>Details</span><span>Date added</span><span className="file-actions-heading">Actions</span></div>
           {folders.map((folder) => (
             <div className="file-list-row" key={folder.id}>
-              <button className="file-name-button" onClick={() => {
+              <button className="file-name-button" type="button" onClick={() => {
                 const next = new URLSearchParams(searchParams);
                 next.set("folder", folder.id);
                 setSearchParams(next);
-              }}><Folder size={17} className="folder-icon" /><span>{folder.name}</span></button>
-              <span className="file-secondary">Folder</span>
-              <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
+              }}><Folder size={17} className="folder-icon" /><span title={folder.name}>{folder.name}</span></button>
+              <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Type</span>Folder</span>
+              <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
               <span className="file-row-actions">
                 {(isAdministrator || accessibleFoldersQuery.data?.find((item) => item.id === folder.id)?.permissions?.includes("renameFolders")) && <button aria-label={`Rename ${folder.name}`} title="Rename folder" onClick={() => void renameFolder(folder)}><Pencil size={15} /></button>}
                 {(isAdministrator || accessibleFoldersQuery.data?.find((item) => item.id === folder.id)?.permissions?.includes("manageContents")) && <button aria-label={`Delete ${folder.name}`} title="Delete folder" onClick={() => void deleteFolder(folder)}><Trash2 size={15} /></button>}
@@ -321,9 +321,9 @@ export function WorkspaceStoragePage() {
           ))}
           {canViewFiles && files.map((file) => (
             <div className="file-list-row" key={file.id}>
-              <div className="file-name-button file-name-static"><FileText size={17} /><span>{file.name}</span></div>
-              <span className="file-secondary">{formatBytes(Number(file.sizeBytes))}</span>
-              <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(file.createdAt))}</span>
+              <div className="file-name-button file-name-static"><FileText size={17} /><span title={file.name}>{file.name}</span></div>
+              <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Size</span>{formatBytes(Number(file.sizeBytes))}</span>
+              <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(file.createdAt))}</span>
               <div className="file-row-actions">
                 <FolderZipTools
                   variant="file"

@@ -74,14 +74,14 @@ export function SearchResultsPage() {
               {folders.map((folder) => (
                 <Link className="search-result-row" to={`/files?folder=${encodeURIComponent(folder.id)}`} key={`folder-${folder.id}`}>
                   <span className="search-result-icon search-folder-icon"><Folder size={17} /></span>
-                  <span className="search-result-main"><strong>{folder.name}</strong><small>Folder</small></span>
+                  <span className="search-result-main"><strong title={folder.name}>{folder.name}</strong><small>Folder</small></span>
                   <span className="search-result-action">Open folder</span>
                 </Link>
               ))}
               {files.map((file) => (
                 <article className="search-result-row" key={`file-${file.id}`}>
                   <span className="search-result-icon"><FileText size={17} /></span>
-                  <span className="search-result-main"><strong>{file.name}</strong><small>{file.mimeType} · {formatBytes(Number(file.sizeBytes))}{file.matchedBy === "content" && <em className="search-content-match">Matched document text</em>}</small></span>
+                  <span className="search-result-main"><strong title={file.name}>{file.name}</strong><small>{file.mimeType} · {formatBytes(Number(file.sizeBytes))}{file.matchedBy === "content" && <em className="search-content-match">Matched document text</em>}</small></span>
                   <button className="icon-button" aria-label={`Download ${file.name}`} onClick={() => void handleDownload(file)}><Download size={16} /></button>
                 </article>
               ))}

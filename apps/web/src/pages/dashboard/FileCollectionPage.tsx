@@ -93,14 +93,14 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
         <div className="page-loading"><span className="loader" />Loading {isTrash ? "Recycle Bin" : "favourites"}…</div>
       ) : filesQuery.data ? (
         <section className="file-list-card" aria-label={title}>
-          <div className="file-list-header"><span>Name</span><span>Size</span><span>{isTrash ? "Deleted" : "Added"}</span><span className="file-actions-heading">Actions</span></div>
+          <div className="file-list-header"><span>Name</span><span>Details</span><span>{isTrash ? "Date deleted" : "Date added"}</span><span className="file-actions-heading">Actions</span></div>
           {folders.map((folder) => (
             <div className="file-list-row" key={`folder-${folder.id}`}>
               <Link className="file-name-button" to={`/files?folder=${encodeURIComponent(folder.id)}`}>
                 <Folder size={17} className="folder-icon" /><span className="file-folder-name" title={folder.name}>{folder.name}</span>
               </Link>
-              <span className="file-secondary">Folder</span>
-              <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
+              <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Type</span>Folder</span>
+              <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
               <div className="file-row-actions">
                 <button aria-label={`Remove ${folder.name} from favourites`} title="Remove from favourites" disabled={updateFolder.isPending} onClick={() => updateFolder.mutate(folder)}>
                   <Star size={15} fill="currentColor" />
@@ -112,10 +112,10 @@ export function FileCollectionPage({ collection }: { collection: Collection }) {
             <div className="file-list-row" key={file.id}>
               <div className="file-name-button file-name-static">
                 <FileText size={17} />
-                <span>{file.name}{file.folderName ? <small className="file-secondary"> · {file.folderName}</small> : null}</span>
+                <span title={file.name}>{file.name}{file.folderName ? <small className="file-entry-folder">In {file.folderName}</small> : null}</span>
               </div>
-              <span className="file-secondary">{formatBytes(Number(file.sizeBytes))}</span>
-              <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(isTrash && file.deletedAt ? file.deletedAt : file.createdAt))}</span>
+              <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Size</span>{formatBytes(Number(file.sizeBytes))}</span>
+              <span className="file-secondary file-list-date"><span className="file-list-mobile-label">{isTrash ? "Deleted" : "Added"}</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(isTrash && file.deletedAt ? file.deletedAt : file.createdAt))}</span>
               <div className="file-row-actions">
                 {isTrash ? (
                   <>

@@ -337,14 +337,14 @@ export function FilesPage() {
         <div className="page-loading"><span className="loader" />Loading your files…</div>
       ) : contents ? (
         <section className="file-list-card" aria-label="Files and folders">
-          <div className="file-list-header"><span>Name</span><span>Size</span><span>Added</span><span className="file-actions-heading">Actions</span></div>
+          <div className="file-list-header"><span>Name</span><span>Details</span><span>Date added</span><span className="file-actions-heading">Actions</span></div>
           {folders.map((folder) => (
             <div className="file-list-row" key={folder.id}>
-              <button className="file-name-button" onClick={() => setSearchParams({ folder: folder.id })}>
+              <button className="file-name-button" type="button" onClick={() => setSearchParams({ folder: folder.id })}>
                 <Folder size={17} className="folder-icon" aria-hidden="true" /><span className="file-folder-name" title={folder.name}>{folder.name}</span>
               </button>
-              <span className="file-secondary">Folder</span>
-              <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
+              <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Type</span>Folder</span>
+              <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
               <span className="file-row-actions">
                 <details className="file-action-menu">
                   <summary aria-label={`More actions for ${folder.name}`} title="More actions"><MoreHorizontal size={18} /></summary>
@@ -376,9 +376,9 @@ export function FilesPage() {
           ))}
           {files.map((file) => (
             <div className="file-list-row" key={file.id}>
-              <div className="file-name-button file-name-static"><FileText size={17} /><span>{file.name}</span></div>
-              <span className="file-secondary">{formatBytes(Number(file.sizeBytes))}</span>
-              <span className="file-secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(file.createdAt))}</span>
+              <div className="file-name-button file-name-static"><FileText size={17} /><span title={file.name}>{file.name}</span></div>
+              <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Size</span>{formatBytes(Number(file.sizeBytes))}</span>
+              <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(file.createdAt))}</span>
               <div className="file-row-actions">
                 <details className="file-action-menu">
                   <summary aria-label={`More actions for ${file.name}`} title="More actions"><MoreHorizontal size={18} /></summary>
