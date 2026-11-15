@@ -603,7 +603,6 @@ export function LandingPage() {
           <Link to="/contact" className="hover:text-[#20AD43]">Contact</Link>
           <Link to="/privacy" className="hover:text-[#20AD43]">Privacy</Link>
           <Link to="/terms" className="hover:text-[#20AD43]">Terms</Link>
-          <Link to="/admin/login" className="hover:text-[#20AD43]">Admin sign in</Link>
         </nav>
       </footer>
     </main>

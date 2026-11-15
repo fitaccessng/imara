@@ -114,6 +114,14 @@ const quickTools = [
     to: "/document-tools",
   },
   {
+    title: "Forms & documents",
+    description: "Create and share",
+    icon: FileText,
+    iconBg: "bg-[#EAF7ED]",
+    iconColor: "text-[#20AD43]",
+    to: "/documents",
+  },
+  {
     title: "Shared galleries",
     description: "Bring memories together",
     icon: Camera,
@@ -149,7 +157,7 @@ function DashboardQuickTools({ online }: { online: boolean }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2 lg:grid-cols-3 xl:grid-cols-6">
         {quickTools.map((tool) => {
           const Icon = tool.icon;
 

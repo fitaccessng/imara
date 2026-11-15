@@ -2,17 +2,14 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "r
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import JSZip from "jszip";
 import {
-  ArrowDown, ArrowLeftRight, Check, ChevronDown, Download, FileImage, FileText,
-  FileWarning, Files, FilePlus2, Image, LoaderCircle, RotateCcw, ShieldCheck,
-  Sparkles, Upload, WandSparkles,
+  ArrowDown, Check, ChevronDown, Download, FileImage, FileText,
+  FileWarning, Files, Image, LoaderCircle, RotateCcw, ShieldCheck, Sparkles, Upload,
 } from "lucide-react";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "./document-tools.css";
 
 type Conversion = "images-pdf" | "pdf-images" | "docx-pdf" | "pdf-docx";
-type TemplateKind = "invoice" | "agreement" | "form";
 type Artifact = { name: string; blob: Blob; url: string };
-type TemplateField = { name: string; label: string; value: string; multiline?: boolean };
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 8;
@@ -30,38 +27,6 @@ const conversions: Array<{ id: Conversion; label: string; detail: string; accept
   { id: "pdf-docx", label: "PDF to Word", detail: "Text-first DOCX", accept: "application/pdf,.pdf", icon: FileText },
 ];
 
-const templateFields: Record<TemplateKind, TemplateField[]> = {
-  invoice: [
-    { name: "business", label: "Your business", value: "IMARA Studio" },
-    { name: "client", label: "Bill to", value: "Client name" },
-    { name: "invoiceNo", label: "Invoice number", value: "INV-001" },
-    { name: "date", label: "Issue date", value: new Date().toISOString().slice(0, 10) },
-    { name: "due", label: "Due date", value: "" },
-    { name: "items", label: "Items (one per line: description — amount)", value: "Creative services — 500.00", multiline: true },
-    { name: "currency", label: "Currency", value: "USD" },
-    { name: "notes", label: "Payment notes", value: "Thank you for your business.", multiline: true },
-  ],
-  agreement: [
-    { name: "title", label: "Agreement title", value: "Service Agreement" },
-    { name: "partyA", label: "First party", value: "Service provider" },
-    { name: "partyB", label: "Second party", value: "Client" },
-    { name: "effective", label: "Effective date", value: new Date().toISOString().slice(0, 10) },
-    { name: "scope", label: "Scope of work", value: "Describe the services, deliverables, and any exclusions.", multiline: true },
-    { name: "payment", label: "Payment terms", value: "Describe fees, invoicing, and payment timing.", multiline: true },
-    { name: "timeline", label: "Term and timeline", value: "Describe the expected schedule and duration.", multiline: true },
-    { name: "additional", label: "Additional terms", value: "Add any other terms for the parties to review.", multiline: true },
-  ],
-  form: [
-    { name: "title", label: "Form title", value: "Information Form" },
-    { name: "intro", label: "Introduction", value: "Please complete the following information.", multiline: true },
-    { name: "name", label: "Name", value: "" },
-    { name: "contact", label: "Contact details", value: "" },
-    { name: "questions", label: "Questions / fields (one per line)", value: "Address\nPreferred date\nAdditional details", multiline: true },
-    { name: "instructions", label: "Instructions", value: "Return this form to the person who shared it.", multiline: true },
-  ],
-};
-
-const templateLabels: Record<TemplateKind, string> = { invoice: "Invoice", agreement: "Agreement", form: "Form" };
 const escapeXml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 const safeName = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 70) || "document";
 
@@ -77,39 +42,6 @@ function makeDocx(paragraphs: Array<{ text: string; style?: string }>) {
   zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/></w:sectPr></w:body></w:document>`);
   zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`);
   return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-}
-
-function templateDocument(kind: TemplateKind, values: Record<string, string>) {
-  const get = (key: string) => values[key]?.trim() || "—";
-  if (kind === "invoice") {
-    const items = get("items").split(/\r?\n/).filter(Boolean);
-    return [
-      { text: "INVOICE" }, { text: `Invoice ${get("invoiceNo")}`, style: "Heading1" },
-      { text: `From: ${get("business")}` }, { text: `Bill to: ${get("client")}` },
-      { text: `Issue date: ${get("date")}    Due date: ${get("due")}` },
-      { text: "ITEMS", style: "Heading1" }, ...items.map((item) => ({ text: item })),
-      { text: `Currency: ${get("currency")}` }, { text: "PAYMENT NOTES", style: "Heading1" }, { text: get("notes") },
-    ];
-  }
-  if (kind === "agreement") {
-    return [
-      { text: get("title") }, { text: `Effective date: ${get("effective")}` },
-      { text: "PARTIES", style: "Heading1" }, { text: `First party: ${get("partyA")}` }, { text: `Second party: ${get("partyB")}` },
-      { text: "SCOPE OF WORK", style: "Heading1" }, { text: get("scope") },
-      { text: "PAYMENT TERMS", style: "Heading1" }, { text: get("payment") },
-      { text: "TERM AND TIMELINE", style: "Heading1" }, { text: get("timeline") },
-      { text: "ADDITIONAL TERMS", style: "Heading1" }, { text: get("additional") },
-      { text: "SIGNATURES", style: "Heading1" }, { text: `${get("partyA")}: ____________________    Date: __________` },
-      { text: `${get("partyB")}: ____________________    Date: __________` },
-    ];
-  }
-  const questions = get("questions").split(/\r?\n/).filter(Boolean);
-  return [
-    { text: get("title") }, { text: get("intro") }, { text: "CONTACT INFORMATION", style: "Heading1" },
-    { text: `Name: ${get("name")}` }, { text: `Contact details: ${get("contact")}` },
-    { text: "QUESTIONS", style: "Heading1" }, ...questions.map((question) => ({ text: `${question}: __________________________________________` })),
-    { text: "INSTRUCTIONS", style: "Heading1" }, { text: get("instructions") },
-  ];
 }
 
 async function createPdf(paragraphs: Array<{ text: string; style?: string }>) {
@@ -264,11 +196,8 @@ async function docxToPdf(file: File) {
 }
 
 export function DocumentToolsPage() {
-  const [mode, setMode] = useState<"convert" | "templates">("convert");
   const [conversion, setConversion] = useState<Conversion>("images-pdf");
   const [files, setFiles] = useState<File[]>([]);
-  const [template, setTemplate] = useState<TemplateKind>("invoice");
-  const [fields, setFields] = useState<Record<string, string>>(() => Object.fromEntries(templateFields.invoice.map((field) => [field.name, field.value])));
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(0);
@@ -367,41 +296,19 @@ export function DocumentToolsPage() {
     return zip.generateAsync({ type: "blob" });
   }
 
-  async function generateTemplate(type: "pdf" | "docx") {
-    setWorking(true); setError(""); setArtifacts([]);
-    try {
-      const paragraphs = templateDocument(template, fields);
-      const blob = type === "pdf" ? await createPdf(paragraphs) : await makeDocx(paragraphs);
-      const name = `${template}-${new Date().toISOString().slice(0, 10)}.${type === "pdf" ? "pdf" : "docx"}`;
-      setArtifacts([{ name, blob, url: URL.createObjectURL(blob) }]);
-    } catch { setError("The template could not be generated. Please try again."); }
-    finally { setWorking(false); }
-  }
-
-  function changeTemplate(next: TemplateKind) {
-    setTemplate(next); setFields(Object.fromEntries(templateFields[next].map((field) => [field.name, field.value])));
-    setArtifacts([]); setError("");
-  }
-
   return (
     <main className="document-tools-page">
       <header className="dt-hero">
         <div className="dt-hero-copy">
           <p className="dt-kicker"><span /> YOUR DOCUMENT DESK</p>
           <h1>Make paperwork<br /><em>work for you.</em></h1>
-          <p>Convert everyday files and create polished starting points for the documents you use most.</p>
+          <p>Convert everyday files into useful formats, right here in your browser.</p>
         </div>
         <div className="dt-hero-note"><ShieldCheck size={18} /><span><strong>Private by design</strong><br />Files are processed in this browser.</span></div>
         <div className="dt-orbit" aria-hidden="true"><span>DOC</span><span>PDF</span><span>IMG</span></div>
       </header>
 
-      <div className="dt-mode-tabs" role="group" aria-label="Document tools">
-        <button type="button" aria-pressed={mode === "convert"} className={mode === "convert" ? "is-active" : ""} disabled={working} onClick={() => { setMode("convert"); setError(""); setArtifacts([]); }}><ArrowLeftRight size={16} /> Convert files</button>
-        <button type="button" aria-pressed={mode === "templates"} className={mode === "templates" ? "is-active" : ""} disabled={working} onClick={() => { setMode("templates"); setError(""); setArtifacts([]); }}><FilePlus2 size={16} /> Start from a template</button>
-      </div>
-
-      {mode === "convert" ? (
-        <section className="dt-workspace" aria-labelledby="dt-convert-title">
+      <section className="dt-workspace" aria-labelledby="dt-convert-title">
           <div className="dt-panel-heading"><div><p className="dt-section-index">01 / CONVERSION</p><h2 id="dt-convert-title">Choose a direction</h2></div><span className="dt-local-tag"><span /> LOCAL PROCESSING</span></div>
           <div className="dt-conversion-grid" role="radiogroup" aria-label="Choose file conversion">
             {conversions.map((item) => {
@@ -424,30 +331,7 @@ export function DocumentToolsPage() {
           {working && <div className="dt-progress" role="status" aria-live="polite"><div><span>Working locally…</span><strong>{progress}%</strong></div><span className="dt-progress-track"><span style={{ width: `${progress}%` }} /></span></div>}
           <div className="dt-action-row"><span><ShieldCheck size={15} /> Nothing is uploaded or stored.</span><button type="button" className="dt-primary" disabled={!files.length || working} onClick={convert}>{working ? <><LoaderCircle size={16} className="dt-spin" /> Converting…</> : <><Sparkles size={16} /> Convert files <ArrowDown size={14} /></>}</button></div>
           {artifacts.length > 0 && <div className="dt-results" role="status"><div><span className="dt-success-icon"><Check size={17} /></span><div><strong>Ready to download</strong><small>Your files are ready on this device.</small></div></div>{artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} download={artifact.name}><Download size={15} />{artifact.name}</a>)}<button type="button" className="dt-reset" onClick={() => { setFiles([]); setArtifacts([]); setProgress(0); }}><RotateCcw size={14} /> Start another</button></div>}
-        </section>
-      ) : (
-        <section className="dt-workspace dt-template-workspace" aria-labelledby="dt-template-title">
-          <div className="dt-panel-heading"><div><p className="dt-section-index">02 / DOCUMENT STARTERS</p><h2 id="dt-template-title">A useful first draft</h2></div><span className="dt-local-tag"><span /> EDITABLE</span></div>
-          <div className="dt-template-layout">
-            <aside className="dt-template-rail" aria-label="Choose a template">
-              {(Object.keys(templateLabels) as TemplateKind[]).map((item, index) => <button key={item} type="button" aria-pressed={template === item} disabled={working} className={template === item ? "is-selected" : ""} onClick={() => changeTemplate(item)}><span>0{index + 1}</span><strong>{templateLabels[item]}</strong><small>{item === "invoice" ? "Billing & payment" : item === "agreement" ? "Parties & terms" : "Questions & details"}</small></button>)}
-              {template === "agreement" && <p className="dt-legal-note"><FileWarning size={15} /> This is a general starting point, not legal advice. Review and adapt it for your needs; consider qualified legal counsel before signing.</p>}
-            </aside>
-            <div className="dt-fields-area">
-              <div className="dt-fields-title"><div><WandSparkles size={17} /><strong>{templateLabels[template]} details</strong></div><span>All fields are editable</span></div>
-              <div className="dt-fields-grid">
-                {templateFields[template].map((field) => <label key={field.name} className={field.multiline ? "is-wide" : ""}>{field.label}{field.multiline
-                  ? <textarea disabled={working} value={fields[field.name] ?? ""} onChange={(event) => setFields((current) => ({ ...current, [field.name]: event.target.value }))} rows={field.name === "items" || field.name === "questions" ? 4 : 3} maxLength={4000} />
-                  : <input disabled={working} value={fields[field.name] ?? ""} onChange={(event) => setFields((current) => ({ ...current, [field.name]: event.target.value }))} maxLength={200} />}</label>)}
-              </div>
-              {template === "agreement" && <p className="dt-legal-inline">Please have the completed agreement reviewed for your jurisdiction and situation before use or signature.</p>}
-              {error && <p className="dt-alert" role="alert"><FileWarning size={16} />{error}</p>}
-              <div className="dt-template-actions"><span>Export as</span><button type="button" className="dt-secondary" disabled={working} onClick={() => generateTemplate("docx")}><FileText size={16} /> Word</button><button type="button" className="dt-primary" disabled={working} onClick={() => generateTemplate("pdf")}>{working ? <LoaderCircle size={16} className="dt-spin" /> : <Download size={16} />} PDF</button></div>
-              {artifacts.length > 0 && <div className="dt-results dt-template-result" role="status"><div><span className="dt-success-icon"><Check size={17} /></span><div><strong>Your {templateLabels[template].toLowerCase()} is ready</strong><small>Review the document and fill in any remaining details.</small></div></div>{artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} download={artifact.name}><Download size={15} /> Download {artifact.name}</a>)}</div>}
-            </div>
-          </div>
-        </section>
-      )}
+      </section>
       <footer className="dt-footer"><span><Files size={14} /> A little less busywork.</span><span>Conversions are browser-based; large files may take a moment.</span></footer>
     </main>
   );
