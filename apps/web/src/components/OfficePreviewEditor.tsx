@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { FileText, LoaderCircle, Pencil, Save, X } from "lucide-react";
+import { LoaderCircle, Pencil, Save, X } from "lucide-react";
 import type * as XLSX from "@e965/xlsx";
 import type JSZip from "jszip";
 import { apiRequest } from "../lib/api";
+import { DocxPagePreview } from "../document-tools/DocxPagePreview";
 import { PlanLimitMessage } from "./PlanLimitMessage";
 import type { ViewableFile } from "./FileViewerModal";
 
@@ -174,19 +175,21 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   }, [hasEdits, onDirtyChange]);
 
   useEffect(() => {
+    if (!pdf) {
+      setPdfUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    setPdfUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [blob, pdf]);
+
+  useEffect(() => {
     let active = true;
     setPreview(null);
     setError("");
-    if (pdf) {
-      const nextUrl = URL.createObjectURL(blob);
-      setPdfUrl(nextUrl);
-      return () => {
-        active = false;
-        URL.revokeObjectURL(nextUrl);
-      };
-    }
+    if (pdf) return () => { active = false; };
 
-    setPdfUrl("");
     void loadOfficePreview(file, blob)
       .then((result) => {
         if (!active) return;
@@ -528,12 +531,10 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
             : <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(true); setHasEdits(true); }}><Pencil size={15} />Edit text</button>)}
         </div>
         {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
-        {preview.paragraphs.length
-          ? preview.paragraphs.map((paragraph, index) => editing
-            ? <textarea key={index} aria-label={`Edit paragraph ${index + 1}`} value={paragraphDrafts[index] ?? ""} onChange={(event) => setParagraphDrafts((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} />
-            : <p key={index}>{paragraph || "\u00a0"}</p>)
-          : <div className="file-viewer-state"><FileText size={28} /><h3>No readable text found</h3><p>This document may contain content that this lightweight preview cannot display.</p></div>}
-        <p className="office-preview-hint">Basic text view and editing. Layout and images remain in the document; paragraph edits may flatten mixed text styling within that paragraph.</p>
+        {editing
+          ? preview.paragraphs.map((paragraph, index) => <textarea key={index} aria-label={`Edit paragraph ${index + 1}`} value={paragraphDrafts[index] ?? paragraph} onChange={(event) => setParagraphDrafts((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} />)
+          : <DocxPagePreview blob={blob} />}
+        <p className="office-preview-hint">Word pages are rendered with their original layout. Editing text may flatten mixed formatting within an edited paragraph.</p>
       </div>
     );
   }

@@ -2185,6 +2185,7 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .public-share-media img, .public-share-media video { max-width: 100%; max-height: 72vh; object-fit: contain; }
 .public-share-media audio { width: min(600px, 100%); }
 .public-share-card .office-preview { min-height: 300px; padding: 20px; }
+.public-share-card .office-preview .file-pdf-preview { height: min(72vh, 840px); min-height: 480px; flex: none; }
 .public-share-card .office-preview-toolbar { display: none; }
 .public-share-footer { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 16px 0; color: #86928e; font-size: 10px; }
 @supports (height: 100dvh) {
@@ -2294,6 +2295,11 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .office-document-preview > textarea { width: 100%; min-height: 78px; resize: vertical; border: 1px solid #d5e0e9; border-radius: 6px; margin: 0 0 12px; outline: 0; padding: 10px 12px; color: #172b3a; font: 14px/1.6 var(--font-sans); }
 .office-document-preview > textarea:focus { border-color: #20ad43; box-shadow: 0 0 0 3px rgba(32,173,67,.1); }
 .office-document-preview .office-preview-hint { margin: 20px calc(clamp(18px, 7vw, 72px) * -1) -24px; }
+.docx-page-preview { position: relative; min-height: 0; flex: 1; overflow: auto; background: #e9edef; }
+.docx-preview-styles { display: none; }
+.docx-preview-loading { position: sticky; top: 12px; z-index: 3; width: fit-content; margin: 12px auto; border: 1px solid #e5eaf0; border-radius: 6px; background: #fff; padding: 9px 13px; color: #718096; font-size: 12px; text-align: center; }
+.docx-preview-pages > .imara-docx-wrapper { align-items: center; gap: 18px; padding: 24px; background: #e9edef; }
+.docx-preview-pages .imara-docx { margin: 0 auto; box-shadow: 0 2px 12px rgba(25,42,36,.16); }
 .office-slide-preview { display: flex; flex-direction: column; align-items: center; gap: 18px; overflow: auto; padding: 0 24px 24px; }
 .office-slide-toolbar { position: sticky; top: 0; z-index: 2; width: calc(100% + 48px); flex: none; }
 .office-slide-card { display: flex; width: min(720px, 100%); min-height: 360px; flex: none; flex-direction: column; justify-content: center; gap: 12px; border: 1px solid #dfe6ee; border-radius: 8px; background: #fff; padding: 42px; box-shadow: 0 8px 24px rgba(16,43,70,.08); }
