@@ -228,6 +228,11 @@ accept `taggedUserIds`, but the API stores tags only after verifying every ID is
 an active member of that workspace. Omit the field to retain existing tags and
 send an empty array to clear them. The creator receives workspace reminders
 alongside tagged active members. Personal events always notify only their owner.
+When a shared event is created, each tagged member other than the creator receives
+an immediate in-app notification and email; the creator is not notified about
+their own event. Adding tags notifies only newly tagged members. Meaningful edits
+to event details or times notify the currently tagged members. Reminder-only
+changes do not resend event notifications.
 
 Existing create/update routes are unchanged:
 
@@ -237,22 +242,24 @@ Existing create/update routes are unchanged:
 
 The event response includes `reminderMinutesBefore`, `taggedUserIds: string[]`,
 and `taggedUsers: [{ id, name, email }]` (only active workspace tags are returned).
-Delivery is persisted and polled by the API worker.
-Edits to start time, reminder time or workspace tags cancel unsent prior work
-and schedule a fresh revision; deleting the event cascades queued work. Database
-uniqueness and notification source keys prevent duplicate queue/notification
-records. Email delivery is retried and is therefore at-least-once in the unlikely
-case a provider accepts a message but its acknowledgement is lost.
+Immediate event notifications and scheduled reminders are persisted as separate
+delivery revisions and polled by the API worker. Edits to start time, reminder
+time or workspace tags cancel unsent reminder work and schedule a fresh revision;
+deleting the event cascades queued work. No-op edits do not resend event
+notifications. Database uniqueness and notification source keys prevent duplicate
+queue/notification records. Email delivery is retried and is therefore
+at-least-once in the unlikely case a provider accepts a message but its
+acknowledgement is lost.
 
-Apply the new migration before starting updated API instances:
+Apply pending migrations before starting updated API instances:
 `npm run prisma:deploy -w @imara/api`. It adds nullable reminder scheduling
-columns, recipient/dispatch/tag tables, a personal-notification source key, and
-nullable notification workspace scope.
+columns, recipient/dispatch/tag tables, event-notification revisions, a personal-
+notification source key, and nullable notification workspace scope.
 Existing calendar events remain without reminders.
 
-The worker sends email through the existing SMTP configuration, writes an
-in-app `Notification`. Browser push is not enabled; reminders use email and
-in-app notifications only.
+The worker sends email through the existing SMTP configuration and writes
+in-app `Notification` records. Browser push is not enabled; calendar notices use
+email and in-app notifications only.
 `CALENDAR_REMINDER_DELIVERY_INTERVAL_MS` optionally adjusts the polling interval
 (default 30000ms; minimum 1000ms).
 

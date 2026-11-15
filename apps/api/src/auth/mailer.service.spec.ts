@@ -112,6 +112,66 @@ describe('MailerService local console delivery', () => {
       .resolves.toEqual({ accepted: false, responseCode: 550 });
   });
 
+  it('does not report a calendar reminder as delivered when SMTP rejects its recipient', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.EMAIL_DELIVERY = 'smtp';
+    process.env.SMTP_HOST = 'smtp.example.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
+    const sendMail = jest.fn().mockResolvedValue({
+      accepted: [],
+      rejected: ['person@example.com'],
+      responseCode: 550,
+    });
+    jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
+
+    await expect(mailer.sendCalendarEventReminderEmail(
+      'person@example.com',
+      'Team review',
+      'Bring the report',
+      'event-id',
+      'workspace-id',
+    )).rejects.toThrow('SMTP did not accept the calendar reminder recipient.');
+
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'person@example.com',
+      subject: 'IMARA calendar reminder: Team review',
+      text: expect.stringContaining('/calendar?eventId=event-id&workspaceId=workspace-id'),
+    }));
+  });
+
+  it('emails tagged users when a shared calendar event is created', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.EMAIL_DELIVERY = 'smtp';
+    process.env.SMTP_HOST = 'smtp.example.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
+    const sendMail = jest.fn().mockResolvedValue({ accepted: ['tagged@example.test'], rejected: [] });
+    jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
+
+    await mailer.sendCalendarEventNotificationEmail(
+      'tagged@example.test',
+      'Team review',
+      'Bring the report',
+      'event-id',
+      'workspace-id',
+      true,
+    );
+
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'tagged@example.test',
+      subject: 'New IMARA calendar event: Team review',
+      text: expect.stringContaining('A calendar event has been shared with you.'),
+    }));
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining('/calendar?eventId=event-id&workspaceId=workspace-id'),
+    }));
+  });
+
   it('sends password reset codes over SMTP', async () => {
     process.env.NODE_ENV = 'production';
     process.env.EMAIL_DELIVERY = 'smtp';

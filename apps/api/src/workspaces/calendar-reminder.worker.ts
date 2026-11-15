@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   CalendarReminderChannelStatus as ChannelStatus,
+  CalendarReminderDispatchKind as DispatchKind,
   CalendarReminderStatus as DispatchStatus,
   WorkspaceMemberStatus,
 } from '@prisma/client';
@@ -111,6 +112,7 @@ export class CalendarReminderWorker implements OnModuleInit, OnModuleDestroy {
           data: {
             eventId: event.id,
             revision: event.reminderRevision,
+            kind: DispatchKind.REMINDER,
             scheduledFor: event.reminderAt,
             recipients: {
               createMany: {
@@ -172,14 +174,22 @@ export class CalendarReminderWorker implements OnModuleInit, OnModuleDestroy {
         id: dispatch.id,
         status: { in: [DispatchStatus.PENDING, DispatchStatus.SENDING, DispatchStatus.FAILED] },
       },
-      include: { event: true },
+      include: { event: { include: { taggedUsers: { select: { userId: true } } } } },
     });
-    if (
-      !current ||
-      current.event.reminderRevision !== current.revision ||
-      current.event.reminderAt?.getTime() !== current.scheduledFor.getTime()
-    ) return null;
-    if (!current.event.workspaceId) return user.id === current.event.createdById ? current.event : null;
+    if (!current) return null;
+    if (current.kind === DispatchKind.REMINDER) {
+      if (
+        current.event.reminderRevision !== current.revision ||
+        current.event.reminderAt?.getTime() !== current.scheduledFor.getTime()
+      ) return null;
+      if (!current.event.workspaceId) return user.id === current.event.createdById ? current.event : null;
+    } else if (
+      !current.event.workspaceId ||
+      user.id === current.event.createdById ||
+      !current.event.taggedUsers.some((tag: { userId: string }) => tag.userId === user.id)
+    ) {
+      return null;
+    }
     const member = await this.prisma.workspaceMember.findFirst({
       where: {
         workspaceId: current.event.workspaceId,
@@ -193,18 +203,27 @@ export class CalendarReminderWorker implements OnModuleInit, OnModuleDestroy {
 
   private async deliverInApp(recipient: any): Promise<void> {
     const event = recipient.dispatch.event;
-    const message = `Event reminder: ${event.title}`;
+    const isReminder = recipient.dispatch.kind === DispatchKind.REMINDER;
+    const message = isReminder
+      ? `Event reminder: ${event.title}`
+      : `${recipient.dispatch.kind === DispatchKind.EVENT_CREATED ? 'New calendar event' : 'Calendar event updated'}: ${event.title}`;
+    const type = isReminder
+      ? 'CALENDAR_EVENT_REMINDER'
+      : recipient.dispatch.kind === DispatchKind.EVENT_CREATED
+        ? 'CALENDAR_EVENT_SHARED'
+        : 'CALENDAR_EVENT_UPDATED';
     await this.prisma.$transaction(async (tx) => {
       await tx.notification.createMany({
         data: [{
           workspaceId: event.workspaceId,
           userId: recipient.userId,
-          type: 'CALENDAR_EVENT_REMINDER',
+          type,
           message,
-          sourceKey: `calendar-event-reminder:${recipient.dispatchId}:${recipient.userId}`,
+          sourceKey: `calendar-event-${recipient.dispatch.kind.toLowerCase()}:${recipient.dispatchId}:${recipient.userId}`,
           metadata: {
             eventId: event.id,
             startsAt: event.startsAt.toISOString(),
+            endsAt: event.endsAt.toISOString(),
             workspaceId: event.workspaceId,
           },
         }],
@@ -219,13 +238,24 @@ export class CalendarReminderWorker implements OnModuleInit, OnModuleDestroy {
 
   private async deliverEmail(recipient: any): Promise<void> {
     const event = recipient.dispatch.event;
-    await this.mailer.sendCalendarEventReminderEmail(
-      recipient.user.email,
-      event.title,
-      event.description ?? '',
-      event.id,
-      event.workspaceId,
-    );
+    if (recipient.dispatch.kind === DispatchKind.REMINDER) {
+      await this.mailer.sendCalendarEventReminderEmail(
+        recipient.user.email,
+        event.title,
+        event.description ?? '',
+        event.id,
+        event.workspaceId,
+      );
+    } else {
+      await this.mailer.sendCalendarEventNotificationEmail(
+        recipient.user.email,
+        event.title,
+        event.description ?? '',
+        event.id,
+        event.workspaceId,
+        recipient.dispatch.kind === DispatchKind.EVENT_CREATED,
+      );
+    }
     await this.setChannelStatus(recipient.id, 'emailStatus', ChannelStatus.SENT);
   }
 
@@ -257,19 +287,23 @@ export class CalendarReminderWorker implements OnModuleInit, OnModuleDestroy {
           where: { id: dispatch.id, status: { not: DispatchStatus.CANCELLED } },
           data: { status: DispatchStatus.SENT, sentAt: new Date(), lastError: null },
         });
-        await this.prisma.calendarEvent.updateMany({
-          where: { id: dispatch.eventId, reminderRevision: dispatch.revision },
-          data: { reminderStatus: DispatchStatus.SENT },
-        });
+        if (dispatch.kind === DispatchKind.REMINDER) {
+          await this.prisma.calendarEvent.updateMany({
+            where: { id: dispatch.eventId, reminderRevision: dispatch.revision },
+            data: { reminderStatus: DispatchStatus.SENT },
+          });
+        }
       } else if (statuses.some((status: ChannelStatus) => status === ChannelStatus.FAILED)) {
         await this.prisma.calendarReminderDispatch.updateMany({
           where: { id: dispatch.id, status: { not: DispatchStatus.CANCELLED } },
           data: { status: DispatchStatus.FAILED, lastError: 'One or more reminder channels need retry' },
         });
-        await this.prisma.calendarEvent.updateMany({
-          where: { id: dispatch.eventId, reminderRevision: dispatch.revision },
-          data: { reminderStatus: DispatchStatus.FAILED },
-        });
+        if (dispatch.kind === DispatchKind.REMINDER) {
+          await this.prisma.calendarEvent.updateMany({
+            where: { id: dispatch.eventId, reminderRevision: dispatch.revision },
+            data: { reminderStatus: DispatchStatus.FAILED },
+          });
+        }
       } else {
         await this.prisma.calendarReminderDispatch.updateMany({
           where: { id: dispatch.id, status: DispatchStatus.PENDING },

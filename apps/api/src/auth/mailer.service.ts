@@ -80,17 +80,38 @@ export class MailerService implements OnModuleDestroy {
     this.smtpTransporter?.close();
   }
 
-  private async deliver(to: string, subject: string, text: string, url: URL, preferSmtp = false): Promise<void> {
+  private async deliver(
+    to: string,
+    subject: string,
+    text: string,
+    url: URL,
+    preferSmtp = false,
+    requireRecipientAcceptance = false,
+  ): Promise<void> {
     if (this.isLocalConsoleMode() && (!preferSmtp || !this.isSmtpConfigured())) {
       this.logger.warn(`[local email] ${subject} for ${to}: ${url.toString()}`);
       return;
     }
-    await this.sendSmtpMail({
+    const result = await this.sendSmtpMail({
       from: process.env.SMTP_FROM,
       to,
       subject,
       text,
     });
+    if (requireRecipientAcceptance) {
+      const acceptedRecipients: unknown[] = Array.isArray(result.accepted) ? result.accepted : [];
+      const accepted = acceptedRecipients.some((recipient) => {
+        const address = typeof recipient === 'string'
+          ? recipient
+          : recipient && typeof recipient === 'object' && 'address' in recipient
+            ? String((recipient as { address: unknown }).address)
+            : '';
+        return address.toLowerCase() === to.toLowerCase();
+      });
+      if (!accepted) {
+        throw new ServiceUnavailableException('SMTP did not accept the calendar reminder recipient.');
+      }
+    }
   }
 
   async sendVerification(to: string, token: string): Promise<void> {
@@ -227,6 +248,34 @@ export class MailerService implements OnModuleDestroy {
       `IMARA calendar reminder: ${safeTitle}`,
       `Your calendar event is coming up.${safeBody ? `\n\n${safeBody}` : ''}\n\nOpen the event: ${url.toString()}`,
       url,
+      true,
+      true,
+    );
+  }
+
+  async sendCalendarEventNotificationEmail(
+    to: string,
+    title: string,
+    body: string,
+    eventId: string,
+    workspaceId: string | null,
+    isNewEvent: boolean,
+  ): Promise<void> {
+    const url = new URL('/calendar', process.env.FRONTEND_URL ?? 'http://localhost:5173');
+    url.searchParams.set('eventId', eventId);
+    if (workspaceId) url.searchParams.set('workspaceId', workspaceId);
+    const safeTitle = title.replace(/[\r\n\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160);
+    const safeBody = body.replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
+    const subjectPrefix = isNewEvent ? 'New IMARA calendar event' : 'IMARA calendar event updated';
+    const intro = isNewEvent
+      ? 'A calendar event has been shared with you.'
+      : 'A shared calendar event has been updated.';
+    await this.deliver(
+      to,
+      `${subjectPrefix}: ${safeTitle}`,
+      `${intro}${safeBody ? `\n\n${safeBody}` : ''}\n\nOpen the event: ${url.toString()}`,
+      url,
+      true,
       true,
     );
   }

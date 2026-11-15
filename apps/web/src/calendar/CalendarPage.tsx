@@ -296,7 +296,7 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
             </label>
             {shared && <fieldset className="calendar-member-picker">
               <legend>Notify team members <span className="calendar-optional">OPTIONAL</span></legend>
-              <p>Tagged members will receive this reminder by email, in-app, and browser notification.</p>
+              <p>Tagged members receive an email and in-app update when this event is saved, plus the scheduled reminder if selected.</p>
               {membersQuery.isLoading ? <span className="calendar-member-status">Loading workspace members…</span>
                 : membersQuery.isError ? <span className="calendar-form-error" role="alert">Workspace members couldn’t load. {membersQuery.error.message}</span>
                   : activeMembers.length === 0 ? <span className="calendar-member-status">No active team members to tag.</span>
