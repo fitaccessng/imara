@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, FolderUp, LoaderCircle, Upload, X } from "lucide-react";
+import { PlanLimitMessage } from "./PlanLimitMessage";
 
 interface FolderReference {
   id: string;
@@ -90,7 +91,7 @@ export function BatchUploadControls({
     if (oversizedFiles.length) {
       const firstFile = oversizedFiles[0];
       setFailures([
-        `${firstFile.name} is ${formatBytes(firstFile.size)}. Your plan allows uploads up to ${formatBytes(maxFileSizeBytes)} per file. Upgrade your plan to upload larger files.`,
+        `${firstFile.name} is ${formatBytes(firstFile.size)}. Your plan allows uploads up to ${formatBytes(maxFileSizeBytes)} per file. Upgrade your plan at /pricing to upload larger files.`,
         ...(oversizedFiles.length > 1 ? [`${oversizedFiles.length - 1} other selected file${oversizedFiles.length === 2 ? "" : "s"} also exceed the limit.`] : []),
       ]);
       setProgress("No files were uploaded.");
@@ -262,7 +263,7 @@ export function BatchUploadControls({
         <div className="upload-progress-count"><strong>{busy ? processed : uploaded} of {batchSize}</strong><span>{busy ? "files processed" : "files uploaded"}</span></div>
         {failures.length > 0 && <div className="upload-progress-errors" role="alert" aria-label="Upload errors">
           <strong>{failures.length} {failures.length === 1 ? "file could" : "files could"} not be uploaded</strong>
-          <ul>{failures.map((failure, index) => <li key={`${failure}-${index}`}>{failure}</li>)}</ul>
+          <ul>{failures.map((failure, index) => <li key={`${failure}-${index}`}><PlanLimitMessage message={failure} /></li>)}</ul>
         </div>}
         {busy
           ? <button className="button button-outline upload-progress-done" type="button" onClick={cancelUploads} disabled={cancelling}>{cancelling ? "Cancelling…" : "Cancel uploads"}</button>

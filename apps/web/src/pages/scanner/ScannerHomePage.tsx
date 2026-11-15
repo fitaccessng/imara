@@ -206,7 +206,7 @@ export function ScannerHomePage() {
       return;
     }
     if (previewBlob.size > uploadLimitBytes) {
-      setError(`This PDF is larger than your plan’s ${Math.round(uploadLimitBytes / 1024 ** 2)} MiB upload limit. Remove some pages or upgrade your plan.`);
+      setError(`This PDF is larger than your plan’s ${Math.round(uploadLimitBytes / 1024 ** 2)} MiB upload limit. Remove some pages or upgrade your plan at /pricing.`);
       return;
     }
     setSaving(true);

@@ -18,7 +18,7 @@ jest.mock('@nestjs/common', () => {
 import { PayloadTooLargeException } from '@nestjs/common';
 import { FileCategory, StoredFileStatus, StoredFileUploadSource } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
-import { rm, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { assertSameFileExtension, parseUploadDirectoryPath, StorageService } from './storage.service';
@@ -144,6 +144,16 @@ describe('StorageService quota-safe uploads', () => {
   const objects = {
     assertConfigured: jest.fn(),
     put: jest.fn().mockResolvedValue(undefined),
+    putAndHash: jest.fn(async (_key: string, body: Buffer | { buffer?: Buffer; path?: string }) => {
+      const contents = Buffer.isBuffer(body)
+        ? body
+        : Buffer.isBuffer(body.buffer)
+          ? body.buffer
+          : body.path
+            ? await readFile(body.path)
+            : Buffer.alloc(0);
+      return createHash('sha256').update(contents).digest('hex');
+    }),
     delete: jest.fn().mockResolvedValue(undefined),
     get: jest.fn(),
   } as unknown as ObjectStorageService;
@@ -367,7 +377,7 @@ describe('StorageService quota-safe uploads', () => {
       },
       data: { storageReservedBytes: { increment: 12n } },
     });
-    expect(objects.put).toHaveBeenCalledWith(fileRow.objectKey, body, 'application/pdf');
+    expect(objects.putAndHash).toHaveBeenCalledWith(fileRow.objectKey, body, 'application/pdf');
     const finalizedData = jest.mocked(transactionClient.storedFile.updateMany).mock.calls
       .find(([args]) => 'contentHash' in args.data)?.[0].data;
     expect(finalizedData?.category).toBe(FileCategory.PERSONAL);
@@ -413,7 +423,7 @@ describe('StorageService quota-safe uploads', () => {
         size: body.length,
       });
 
-      expect(objects.put).toHaveBeenCalledWith(
+      expect(objects.putAndHash).toHaveBeenCalledWith(
         fileRow.objectKey,
         expect.objectContaining({ path: temporaryPath, size: body.length }),
         'application/pdf',

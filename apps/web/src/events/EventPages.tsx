@@ -174,7 +174,7 @@ function EventUploadFailures({ failures }: { failures: EventUploadFailure[] }) {
         {failures.map((failure, index) => (
           <li key={`${failure.fileName}-${index}`}>
             <strong title={failure.fileName}>{failure.fileName}</strong>
-            <span>{failure.message}</span>
+            <span><PlanLimitMessage message={failure.message} /></span>
           </li>
         ))}
       </ul>
@@ -809,7 +809,7 @@ export function CaptureEventPage() {
       setUploadError("");
       setUploadFailures([{
         fileName: file.name,
-        message: `This file is ${formatBytes(file.size)}. The event limit is ${formatUploadLimit(maxUploadBytes)}.`,
+        message: `This file is ${formatBytes(file.size)}. The event limit is ${formatUploadLimit(maxUploadBytes)}. Upgrade your plan at /pricing for larger uploads.`,
       }]);
       setUploadMessage("");
       return;

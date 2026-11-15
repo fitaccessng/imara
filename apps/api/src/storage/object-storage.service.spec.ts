@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -68,6 +69,19 @@ describe('ObjectStorageService drivers', () => {
     }
 
     expect(Buffer.concat(chunks)).toEqual(bytes);
+  });
+
+  it('hashes a disk-backed upload while streaming it to storage', async () => {
+    const bytes = Buffer.alloc(1024, 9);
+    const sourcePath = path.join(directory, 'hashed-upload');
+    await writeFile(sourcePath, bytes);
+
+    await expect(storage.putAndHash(
+      'user-id/event-id/hashed-upload.bin',
+      { path: sourcePath, size: bytes.length },
+      'application/octet-stream',
+    )).resolves.toBe(createHash('sha256').update(bytes).digest('hex'));
+    expect(await readFile(path.join(directory, 'user-id/event-id/hashed-upload.bin'))).toEqual(bytes);
   });
 
   it('rejects object keys that escape the storage root', async () => {
@@ -144,6 +158,41 @@ describe('ObjectStorageService drivers', () => {
       'https://storage.example.test/objects/user-id/workspaces/workspace-id/file-id',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+
+  it('hashes a disk-backed HivePod upload as its stream is sent', async () => {
+    const bytes = Buffer.alloc(1024, 5);
+    const sourcePath = path.join(directory, 'hivepod-upload');
+    await writeFile(sourcePath, bytes);
+    const token = 'b'.repeat(64);
+    const fetchMock = jest.spyOn(global, 'fetch');
+    process.env.NODE_ENV = 'production';
+    process.env.OBJECT_STORAGE_DRIVER = 'hivepod';
+    process.env.HIVEPOD_STORAGE_URL = 'https://storage.example.test';
+    process.env.HIVEPOD_STORAGE_TOKEN = token;
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/health')) return new Response(null, { status: 200 });
+      const requestBody = init?.body as ReadableStream<Uint8Array> | null;
+      if (!requestBody || typeof requestBody.getReader !== 'function') {
+        throw new Error('Expected a streamed HivePod request body.');
+      }
+      const reader = requestBody.getReader();
+      const chunks: Buffer[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(Buffer.from(value));
+      }
+      expect(Buffer.concat(chunks)).toEqual(bytes);
+      return new Response(null, { status: 201 });
+    });
+
+    await storage.assertConfigured();
+    await expect(storage.putAndHash(
+      'user-id/event-id/hivepod-upload.bin',
+      { path: sourcePath, size: bytes.length },
+      'application/octet-stream',
+    )).resolves.toBe(createHash('sha256').update(bytes).digest('hex'));
   });
 
   it('requires an HTTPS HivePod URL and a 32-byte hex service token in production', async () => {

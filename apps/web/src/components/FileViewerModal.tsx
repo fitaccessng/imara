@@ -5,6 +5,7 @@ import { OfficePreviewEditor } from "./OfficePreviewEditor";
 import { saveOfflineFile } from "../offline/offlineFiles";
 import { useAuth } from "../auth/AuthProvider";
 import { extractDocumentText, type OcrProgress } from "../document-tools/ocr";
+import { PlanLimitMessage } from "./PlanLimitMessage";
 
 export interface ViewableFile {
   id: string;
@@ -195,7 +196,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
       return;
     }
     if (selected.size > maxUploadBytes) {
-      setReplacementError(`${selected.name} exceeds your plan’s ${Math.round(maxUploadBytes / 1024 ** 2)} MiB upload limit. Upgrade your plan for larger files.`);
+      setReplacementError(`${selected.name} exceeds your plan’s ${Math.round(maxUploadBytes / 1024 ** 2)} MiB upload limit. Upgrade your plan at /pricing for larger files.`);
       setReplacement(null);
       return;
     }
@@ -324,14 +325,14 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
           <section className="file-replace-dialog" role="dialog" aria-modal="true" aria-labelledby="file-replace-title">
             <h3 id="file-replace-title">Replace this file?</h3>
             <p><strong>{replacement.name}</strong> will replace the current {file.name} version. This can’t be undone.</p>
-            {replacementError && <p className="form-alert" role="alert">{replacementError}</p>}
+            {replacementError && <p className="form-alert" role="alert"><PlanLimitMessage message={replacementError} /></p>}
             <div className="folder-move-actions">
               <button className="button button-outline" onClick={() => saving ? uploadController.current?.abort() : (setReplacement(null), setReplacementError(""))}>{saving ? "Cancel upload" : "Cancel"}</button>
               <button className="button button-green" onClick={() => void uploadReplacement()} disabled={saving}>{saving ? "Uploading…" : "Replace file"}</button>
             </div>
           </section>
         </div>}
-        {!replacement && replacementError && <p className="form-alert file-viewer-error" role="alert">{replacementError}</p>}
+        {!replacement && replacementError && <p className="form-alert file-viewer-error" role="alert"><PlanLimitMessage message={replacementError} /></p>}
       </section>
     </div>
   );

@@ -715,8 +715,7 @@ export class StorageService {
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
     const category = this.categorizeFile(name, mimeType);
     try {
-      const contentHash = await hashUploadInput(file);
-      await this.objects.put(reserved.objectKey, file.buffer ?? file, mimeType);
+      const contentHash = await this.objects.putAndHash(reserved.objectKey, file.buffer ?? file, mimeType);
       return await this.prisma.$transaction(async (tx) => {
         const finalized = await tx.storedFile.updateMany({
           where: { id: reserved.id, userId, workspaceId: null, status: StoredFileStatus.UPLOADING, createdAt: { gte: new Date(Date.now() - RESERVATION_TTL_MS) } },
@@ -789,8 +788,7 @@ export class StorageService {
     const nextSize = BigInt(replacement.size);
     const delta = nextSize - current.sizeBytes;
     const contentType = (replacement.mimetype || 'application/octet-stream').slice(0, 255);
-    const contentHash = await hashUploadInput(replacement);
-    await this.objects.put(nextKey, replacement.buffer ?? replacement, contentType);
+    const contentHash = await this.objects.putAndHash(nextKey, replacement.buffer ?? replacement, contentType);
     try {
       await this.prisma.$transaction(async (tx) => {
         const subscription = await tx.subscription.findUnique({ where: { userId } });

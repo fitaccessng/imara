@@ -1,5 +1,6 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { createHash, type Hash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { access, copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -150,6 +151,16 @@ export class ObjectStorageService {
   }
 
   async put(key: string, body: StorageUpload, contentType: string): Promise<void> {
+    await this.write(key, body, contentType);
+  }
+
+  async putAndHash(key: string, body: StorageUpload, contentType: string): Promise<string> {
+    const hash = createHash('sha256');
+    await this.write(key, body, contentType, hash);
+    return hash.digest('hex');
+  }
+
+  private async write(key: string, body: StorageUpload, contentType: string, hash?: Hash): Promise<void> {
     const buffer = Buffer.isBuffer(body) ? body : body.buffer;
     const sourcePath = Buffer.isBuffer(body) ? undefined : body.path;
     const size = Buffer.isBuffer(body) ? body.length : body.size;
@@ -164,6 +175,7 @@ export class ObjectStorageService {
         throw new BadRequestException('The uploaded file size is invalid.');
       }
     }
+    if (buffer && hash) hash.update(buffer);
     if (this.driver() === 'hivepod') {
       const response = await this.requestHivePod(this.objectPath(key), {
         method: 'PUT',
@@ -173,7 +185,9 @@ export class ObjectStorageService {
         },
         body: buffer
           ? new Uint8Array(buffer)
-          : Readable.toWeb(createReadStream(sourcePath!)) as ReadableStream,
+          : Readable.toWeb(hash
+            ? Readable.from(this.readUpload(sourcePath!, size, hash))
+            : createReadStream(sourcePath!)) as ReadableStream,
         ...(buffer ? {} : { duplex: 'half' }),
       } as RequestInit, 30 * 60 * 1000);
       if (!response.ok) throw new ServiceUnavailableException('HivePod file storage could not save the file.');
@@ -185,16 +199,33 @@ export class ObjectStorageService {
       const filePath = this.localPath(key);
       await mkdir(path.dirname(filePath), { recursive: true });
       if (buffer) await writeFile(filePath, buffer);
-      else await copyFile(sourcePath!, filePath);
+      else if (hash) {
+        await copyFile(sourcePath!, filePath);
+        for await (const chunk of this.readUpload(sourcePath!, size)) hash.update(chunk);
+      } else {
+        await copyFile(sourcePath!, filePath);
+      }
       return;
     }
     await this.getClient().send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
-      Body: buffer ?? createReadStream(sourcePath!),
+      Body: buffer ?? (hash
+        ? Readable.from(this.readUpload(sourcePath!, size, hash))
+        : createReadStream(sourcePath!)),
       ContentLength: size,
       ContentType: contentType,
     }));
+  }
+
+  private async *readUpload(sourcePath: string, size: number, hash?: Hash): AsyncGenerator<Buffer> {
+    let actualSize = 0;
+    for await (const chunk of createReadStream(sourcePath)) {
+      actualSize += chunk.length;
+      hash?.update(chunk);
+      yield chunk;
+    }
+    if (actualSize !== size) throw new BadRequestException('The uploaded file size is invalid.');
   }
 
   async get(key: string): Promise<{ body: Readable; contentType?: string }> {
