@@ -31,7 +31,7 @@ const safeName = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[^\p{L}
 
 function makeImageDocx(pages: Array<{ bytes: Uint8Array; width: number; height: number }>) {
   const firstPage = pages[0];
-  const lastPage = pages.at(-1);
+  const lastPage = pages[pages.length - 1];
   if (!firstPage || !lastPage) throw new Error("No PDF pages were available to convert.");
 
   const zip = new JSZip();
