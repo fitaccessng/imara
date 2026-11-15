@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { CalendarClock, Download, FileText, LoaderCircle, Printer, Save, Upload, X, CloudDownload, Check, ScanText } from "lucide-react";
 import { apiBlob, apiRequest } from "../lib/api";
 import { OfficePreviewEditor } from "./OfficePreviewEditor";
-import { saveOfflineFile } from "../offline/offlineFiles";
+import { saveOfflineFile, type OfflineScope } from "../offline/offlineFiles";
 import { useAuth } from "../auth/AuthProvider";
 import { extractDocumentText, type OcrProgress } from "../document-tools/ocr";
 import { PlanLimitMessage } from "./PlanLimitMessage";
@@ -25,6 +25,8 @@ interface FileViewerModalProps {
   onDownload: () => void;
   maxUploadBytes?: number;
   manageExpiry?: boolean;
+  offlineScope?: OfflineScope;
+  offlineFolderId?: string | null;
 }
 
 function isEditableText(file: ViewableFile) {
@@ -40,7 +42,7 @@ function isOfficeDocument(file: ViewableFile) {
   return ["csv", "doc", "docx", "pdf", "ppt", "pptx", "xls", "xlsx"].includes(extension ?? "");
 }
 
-export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes, manageExpiry = false }: FileViewerModalProps) {
+export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes, manageExpiry = false, offlineScope, offlineFolderId = null }: FileViewerModalProps) {
   const { user } = useAuth();
   const [blob, setBlob] = useState<Blob | null>(null);
   const [text, setText] = useState("");
@@ -152,6 +154,10 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
     setSavingOffline(true);
     setOfflineError("");
     try {
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      if (canEdit && ["xlsx", "xls", "csv", "tsv"].includes(extension ?? "")) await import("@e965/xlsx");
+      if (canEdit && ["docx", "pptx"].includes(extension ?? "")) await import("jszip");
+      if (canEdit && extension === "pdf") await import("pdf-lib");
       await saveOfflineFile({
         id: file.id,
         userId: user?.id ?? "",
@@ -159,6 +165,10 @@ export function FileViewerModal({ file, readUrl, saveUrl, onClose, onSaved, canE
         mimeType: file.mimeType,
         sizeBytes: blob.size,
         blob,
+        folderId: offlineFolderId,
+        scope: offlineScope ?? { type: "personal" },
+        canEdit,
+        canDownload,
       });
       setOfflineSaved(true);
     } catch (reason) {

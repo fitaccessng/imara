@@ -362,6 +362,8 @@ export function WorkspaceStoragePage() {
         readUrl={`/workspaces/${workspaceId}/files/${viewingFile.id}/download`}
         saveUrl={`/workspaces/${workspaceId}/files/${viewingFile.id}/content`}
         maxUploadBytes={uploadLimitBytes}
+        offlineScope={{ type: "workspace", workspaceId, workspaceName: workspace.name }}
+        offlineFolderId={viewingFile.folderId}
         canEdit={isAdministrator || currentPermissions.includes("editFiles")}
         canDownload={isAdministrator || currentPermissions.includes("downloadFiles")}
         onClose={() => setViewingFile(null)}

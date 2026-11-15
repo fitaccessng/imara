@@ -517,6 +517,7 @@ export function FilesPage() {
         saveUrl={`/files/${viewingFile.id}/content`}
         maxUploadBytes={uploadLimitBytes}
         manageExpiry
+        offlineFolderId={viewingFile.folderId}
         canEdit
         canDownload
         onClose={() => setViewingFile(null)}
