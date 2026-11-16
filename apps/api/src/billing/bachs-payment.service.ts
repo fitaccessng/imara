@@ -12,6 +12,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 
 const WEBHOOK_TOLERANCE_SECONDS = 300;
+const CHECKOUT_VERIFICATION_INTERVAL_MS = 10_000;
+
+type PaymentAttemptForFulfillment = {
+  id: string;
+  userId: string;
+  checkoutId: string | null;
+  plan: Plan;
+  amountMinor: bigint;
+  currency: string;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -46,6 +56,8 @@ function addOneUtcMonth(date: Date): Date {
 @Injectable()
 export class BachsPaymentService {
   private readonly logger = new Logger(BachsPaymentService.name);
+  private readonly checkoutVerificationTimes = new Map<string, number>();
+  private readonly checkoutVerifications = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -178,9 +190,11 @@ export class BachsPaymentService {
   }
 
   async getPayment(userId: string, checkoutId: string) {
-    const attempt = await this.prisma.paymentAttempt.findFirst({
+    let attempt = await this.prisma.paymentAttempt.findFirst({
       where: { userId, checkoutId },
       select: {
+        id: true,
+        userId: true,
         checkoutId: true,
         plan: true,
         amountMinor: true,
@@ -192,6 +206,25 @@ export class BachsPaymentService {
       },
     });
     if (!attempt) throw new NotFoundException('Payment not found');
+    if (attempt.status === PaymentAttemptStatus.PENDING) {
+      await this.verifyPendingCheckout(attempt);
+      attempt = await this.prisma.paymentAttempt.findFirst({
+        where: { userId, checkoutId },
+        select: {
+          id: true,
+          userId: true,
+          checkoutId: true,
+          plan: true,
+          amountMinor: true,
+          currency: true,
+          status: true,
+          createdAt: true,
+          paidAt: true,
+          periodEnd: true,
+        },
+      });
+      if (!attempt) throw new NotFoundException('Payment not found');
+    }
     return {
       ...attempt,
       amountMinor: attempt.amountMinor.toString(),
@@ -250,54 +283,82 @@ export class BachsPaymentService {
     if (!matches) throw new UnauthorizedException('Bachs signature is invalid.');
   }
 
-  async handleWebhook(rawBody: Buffer | undefined, signature: string | undefined): Promise<void> {
-    if (!rawBody) throw new BadRequestException('Webhook request body is missing.');
-    this.verifySignature(rawBody, signature);
+  private async verifyPendingCheckout(attempt: PaymentAttemptForFulfillment): Promise<void> {
+    if (!attempt.checkoutId) return;
+    const checkoutId = attempt.checkoutId;
+    const inFlight = this.checkoutVerifications.get(checkoutId);
+    if (inFlight) {
+      await inFlight;
+      return;
+    }
+    const lastCheckedAt = this.checkoutVerificationTimes.get(checkoutId) ?? 0;
+    if (Date.now() - lastCheckedAt < CHECKOUT_VERIFICATION_INTERVAL_MS) return;
 
-    let event: unknown;
+    if (this.checkoutVerificationTimes.size >= 1_000 && !this.checkoutVerificationTimes.has(checkoutId)) {
+      const oldestCheckoutId = this.checkoutVerificationTimes.keys().next().value;
+      if (oldestCheckoutId) this.checkoutVerificationTimes.delete(oldestCheckoutId);
+    }
+    this.checkoutVerificationTimes.set(checkoutId, Date.now());
+    const verification = this.fetchAndVerifyCheckout(attempt);
+    this.checkoutVerifications.set(checkoutId, verification);
     try {
-      event = JSON.parse(rawBody.toString('utf8')) as unknown;
-    } catch {
-      throw new BadRequestException('Webhook payload is invalid.');
+      await verification;
+    } finally {
+      this.checkoutVerifications.delete(checkoutId);
     }
-    if (!isRecord(event) || typeof event.type !== 'string' || !isRecord(event.data)) {
-      throw new BadRequestException('Webhook payload is invalid.');
-    }
-    if (event.type === 'checkout.expired') {
-      const checkoutId = event.data.checkout_id;
-      if (typeof checkoutId !== 'string' || !/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
-        throw new BadRequestException('Webhook checkout ID is invalid.');
-      }
-      await this.prisma.paymentAttempt.updateMany({
-        where: { checkoutId, status: PaymentAttemptStatus.PENDING },
-        data: { status: PaymentAttemptStatus.EXPIRED },
+  }
+
+  private async fetchAndVerifyCheckout(attempt: PaymentAttemptForFulfillment): Promise<void> {
+    const checkoutId = attempt.checkoutId;
+    if (!checkoutId) return;
+    const { key, apiUrl } = this.config();
+
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/v1/checkout-sessions/${encodeURIComponent(checkoutId)}`, {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(10_000),
       });
-      return;
-    }
-    const paidCollection = event.type === 'collection.succeeded' && event.data.status === 'SUCCEEDED';
-    const paidCheckout = event.type === 'checkout.completed'
-      && event.data.status === 'completed'
-      && event.data.payment_status === 'paid';
-    if (!paidCollection && !paidCheckout) return;
-
-    const checkoutId = event.data.checkout_id;
-    if (typeof checkoutId !== 'string' || !/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
-      throw new BadRequestException('Webhook checkout ID is invalid.');
+    } catch (error) {
+      this.logger.error(`Bachs checkout verification failed for attempt ${attempt.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`);
+      throw new ServiceUnavailableException('Could not verify payment with Bachs. Please try again.');
     }
 
-    const attempt = await this.prisma.paymentAttempt.findUnique({ where: { checkoutId } });
-    if (!attempt) {
-      this.logger.warn(`Ignoring Bachs payment for unknown checkout ${checkoutId}`);
-      return;
+    if (!response.ok) {
+      this.logger.error(`Bachs checkout verification returned status ${response.status} for attempt ${attempt.id}`);
+      throw new ServiceUnavailableException('Could not verify payment with Bachs. Please try again.');
     }
+
+    let checkout: unknown;
+    try {
+      checkout = await response.json() as unknown;
+    } catch {
+      throw new ServiceUnavailableException('Bachs returned an unreadable checkout response.');
+    }
+    if (!isRecord(checkout) || checkout.checkout_id !== checkoutId) {
+      throw new ServiceUnavailableException('Bachs returned an invalid checkout response.');
+    }
+    const charge = checkout.charge;
+    const paid = checkout.status === 'completed'
+      && (checkout.payment_status === 'succeeded' || checkout.payment_status === 'paid')
+      && isRecord(charge)
+      && (charge.status === 'succeeded' || charge.status === 'SUCCEEDED');
+    if (!paid) return;
+
     if (attempt.plan === Plan.FREE || attempt.amountMinor <= 0n) {
       throw new BadRequestException('Only paid plan checkouts can activate a subscription.');
     }
-    if (event.data.currency !== attempt.currency
-      || parseAmount(event.data.amount) !== attempt.amountMinor) {
+    if (checkout.currency !== attempt.currency
+      || parseAmount(checkout.amount) !== attempt.amountMinor) {
+      this.logger.error(`Bachs checkout amount or currency mismatch for attempt ${attempt.id}`);
       throw new BadRequestException('Payment amount or currency does not match the checkout.');
     }
+    await this.fulfillAttempt(attempt);
+  }
 
+  private async fulfillAttempt(attempt: PaymentAttemptForFulfillment): Promise<void> {
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
       const claimed = await tx.paymentAttempt.updateMany({
@@ -335,5 +396,56 @@ export class BachsPaymentService {
         data: { periodEnd },
       });
     });
+  }
+
+  async handleWebhook(rawBody: Buffer | undefined, signature: string | undefined): Promise<void> {
+    if (!rawBody) throw new BadRequestException('Webhook request body is missing.');
+    this.verifySignature(rawBody, signature);
+
+    let event: unknown;
+    try {
+      event = JSON.parse(rawBody.toString('utf8')) as unknown;
+    } catch {
+      throw new BadRequestException('Webhook payload is invalid.');
+    }
+    if (!isRecord(event) || typeof event.type !== 'string' || !isRecord(event.data)) {
+      throw new BadRequestException('Webhook payload is invalid.');
+    }
+    if (event.type === 'checkout.expired') {
+      const checkoutId = event.data.checkout_id;
+      if (typeof checkoutId !== 'string' || !/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
+        throw new BadRequestException('Webhook checkout ID is invalid.');
+      }
+      await this.prisma.paymentAttempt.updateMany({
+        where: { checkoutId, status: PaymentAttemptStatus.PENDING },
+        data: { status: PaymentAttemptStatus.EXPIRED },
+      });
+      return;
+    }
+    const paidCollection = event.type === 'collection.succeeded' && event.data.status === 'SUCCEEDED';
+    const paidCheckout = event.type === 'checkout.completed'
+      && event.data.status === 'completed'
+      && (event.data.payment_status === 'succeeded' || event.data.payment_status === 'paid');
+    if (!paidCollection && !paidCheckout) return;
+
+    const checkoutId = event.data.checkout_id;
+    if (typeof checkoutId !== 'string' || !/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
+      throw new BadRequestException('Webhook checkout ID is invalid.');
+    }
+
+    const attempt = await this.prisma.paymentAttempt.findUnique({ where: { checkoutId } });
+    if (!attempt) {
+      this.logger.warn(`Ignoring Bachs payment for unknown checkout ${checkoutId}`);
+      return;
+    }
+    if (attempt.plan === Plan.FREE || attempt.amountMinor <= 0n) {
+      throw new BadRequestException('Only paid plan checkouts can activate a subscription.');
+    }
+    if (event.data.currency !== attempt.currency
+      || parseAmount(event.data.amount) !== attempt.amountMinor) {
+      throw new BadRequestException('Payment amount or currency does not match the checkout.');
+    }
+
+    await this.fulfillAttempt(attempt);
   }
 }

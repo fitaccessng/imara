@@ -33,6 +33,7 @@ describe('BachsPaymentService', () => {
   const paymentAttemptCreate = jest.fn();
   const paymentAttemptUpdate = jest.fn();
   const paymentAttemptFindUnique = jest.fn();
+  const paymentAttemptFindFirst = jest.fn();
   const transaction = jest.fn();
   const getPlan = jest.fn();
   const prisma = {
@@ -42,6 +43,7 @@ describe('BachsPaymentService', () => {
       create: paymentAttemptCreate,
       update: paymentAttemptUpdate,
       findUnique: paymentAttemptFindUnique,
+      findFirst: paymentAttemptFindFirst,
     },
     $transaction: transaction,
   };
@@ -187,7 +189,7 @@ describe('BachsPaymentService', () => {
     }));
   });
 
-  it('activates a plan from a signed paid checkout.completed event', async () => {
+  it('activates a plan from a signed successful checkout.completed event', async () => {
     paymentAttemptFindUnique.mockResolvedValue({
       id: 'attempt-id',
       userId: 'user-id',
@@ -218,7 +220,7 @@ describe('BachsPaymentService', () => {
       data: {
         checkout_id: 'chk_checkout123',
         status: 'completed',
-        payment_status: 'paid',
+        payment_status: 'succeeded',
         amount: '3000.00',
         currency: 'NGN',
       },
@@ -231,6 +233,74 @@ describe('BachsPaymentService', () => {
 
     await service.handleWebhook(rawBody, `t=${timestamp},v1=${signature}`);
 
+    expect(subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-id' },
+      data: expect.objectContaining({ plan: Plan.PRO, storageLimitBytes: 10_000_000_000n }),
+    }));
+  });
+
+  it('reconciles a pending payment from the authenticated Bachs checkout-session API', async () => {
+    const pendingAttempt = {
+      id: 'attempt-id',
+      userId: 'user-id',
+      checkoutId: 'chk_checkout123',
+      plan: Plan.PRO,
+      amountMinor: 300_000n,
+      currency: 'NGN',
+      status: PaymentAttemptStatus.PENDING,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      paidAt: null,
+      periodEnd: null,
+    };
+    const succeededAttempt = { ...pendingAttempt, status: PaymentAttemptStatus.SUCCEEDED };
+    paymentAttemptFindFirst
+      .mockResolvedValueOnce(pendingAttempt)
+      .mockResolvedValueOnce(succeededAttempt);
+    const subscriptionUpdate = jest.fn().mockResolvedValue({});
+    const attemptClaim = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      paymentAttempt: { updateMany: attemptClaim, update: jest.fn().mockResolvedValue({}) },
+      subscription: {
+        findUnique: jest.fn().mockResolvedValue({
+          plan: Plan.FREE,
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+        }),
+        update: subscriptionUpdate,
+      },
+      workspace: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    };
+    transaction.mockImplementation((callback: (client: typeof tx) => Promise<void>) => callback(tx));
+    getPlan.mockResolvedValue({ storageLimitBytes: 10_000_000_000n });
+    const fetch = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({
+        checkout_id: 'chk_checkout123',
+        status: 'completed',
+        payment_status: 'succeeded',
+        amount: '3000.00',
+        currency: 'NGN',
+        charge: { status: 'succeeded' },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(service.getPayment('user-id', 'chk_checkout123')).resolves.toEqual({
+      ...succeededAttempt,
+      amountMinor: '300000',
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://sandbox-api.bachs.io/v1/checkout-sessions/chk_checkout123',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer sk_sandbox_test' },
+      }),
+    );
+    expect(attemptClaim).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: 'attempt-id',
+        status: { in: [PaymentAttemptStatus.PENDING, PaymentAttemptStatus.EXPIRED] },
+      },
+    }));
     expect(subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId: 'user-id' },
       data: expect.objectContaining({ plan: Plan.PRO, storageLimitBytes: 10_000_000_000n }),

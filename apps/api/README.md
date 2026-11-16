@@ -281,10 +281,13 @@ Authenticated frontend contracts:
 Paid plans use Bachs hosted checkout with NGN one-time payments. A confirmed
 payment grants one calendar month of the selected plan; it does not auto-renew.
 The API activates access from a signed `collection.succeeded` webhook or a
-signed `checkout.completed` webhook with `payment_status: "paid"`, and checks
-the exact amount and currency against the saved checkout attempt. Subscribe the
-Bachs endpoint to both payment-success events and `checkout.expired`. Expired
-paid plans revert to Free on the account's next authenticated API request.
+signed `checkout.completed` webhook with `payment_status: "succeeded"` or
+`"paid"`, and checks the exact amount and currency against the saved checkout
+attempt. If a webhook is delayed or missed, the authenticated payment-status
+route retrieves a still-pending checkout directly from Bachs and applies the
+same checks before granting access. Subscribe the Bachs endpoint to both
+payment-success events and `checkout.expired`. Expired paid plans revert to
+Free on the account's next authenticated API request.
 
 Configure `BACHS_MODE=sandbox`, a sandbox `BACHS_API_KEY`, and
 `BACHS_WEBHOOK_SECRET` in the API environment. Set `BACHS_FRONTEND_URL` to a
