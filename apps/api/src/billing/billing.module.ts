@@ -8,5 +8,6 @@ import { BachsPaymentService } from './bachs-payment.service';
   imports: [PlanCatalogueModule],
   controllers: [BillingController],
   providers: [BachsPaymentService, SessionGuard],
+  exports: [BachsPaymentService],
 })
 export class BillingModule {}

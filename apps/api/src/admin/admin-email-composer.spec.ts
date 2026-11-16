@@ -6,6 +6,7 @@ jest.mock('@nestjs/common', () => ({
   Injectable: () => (target: unknown) => target,
   InternalServerErrorException: class InternalServerErrorException extends Error {},
   NotFoundException: class NotFoundException extends Error {},
+  Optional: () => () => undefined,
   ServiceUnavailableException: class ServiceUnavailableException extends Error {},
 }));
 jest.mock('../prisma/prisma.service', () => ({ PrismaService: class PrismaService {} }));

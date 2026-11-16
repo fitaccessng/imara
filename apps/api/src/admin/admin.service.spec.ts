@@ -4,6 +4,7 @@ jest.mock('@nestjs/common', () => ({
   Injectable: () => (target: unknown) => target,
   InternalServerErrorException: class InternalServerErrorException extends Error {},
   NotFoundException: class NotFoundException extends Error {},
+  Optional: () => () => undefined,
 }));
 jest.mock('../prisma/prisma.service', () => ({ PrismaService: class PrismaService {} }));
 
@@ -120,6 +121,56 @@ describe('AdminService read APIs', () => {
       revenueByCurrency: [{ currency: 'NGN', amountMinor: '80000', paymentCount: 2 }],
       countsByStatus: [{ status: 'SUCCEEDED', count: 2 }, { status: 'PENDING', count: 1 }],
     });
+  });
+
+  it('audits a finance-admin Bachs verification request and confirmed result', async () => {
+    const auditCreate = jest.fn().mockResolvedValue({ id: 'audit-id' });
+    const verifyCheckoutForAdmin = jest.fn().mockResolvedValue({
+      checkoutId: 'chk_verified123',
+      userId: 'customer-id',
+      plan: 'PRO',
+      status: 'SUCCEEDED',
+      activated: true,
+    });
+    const service = new AdminService({
+      platformAdminAuditLog: { create: auditCreate },
+      paymentAttempt: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'attempt-id',
+          userId: 'customer-id',
+          checkoutId: 'chk_verified123',
+          plan: 'PRO',
+          amountMinor: 125_000n,
+          currency: 'NGN',
+          status: 'PENDING',
+        }),
+      },
+    } as unknown as PrismaService, undefined, undefined, { verifyCheckoutForAdmin } as never);
+
+    await expect(service.verifyPaymentWithBachs('chk_verified123', makeRequest()))
+      .resolves.toMatchObject({ status: 'SUCCEEDED', activated: true });
+
+    expect(verifyCheckoutForAdmin).toHaveBeenCalledWith('chk_verified123');
+    expect(auditCreate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'admin.payment.verify_with_bachs.requested',
+        metadata: expect.objectContaining({
+          attemptId: 'attempt-id',
+          userId: 'customer-id',
+          amountMinor: '125000',
+          attemptStatus: 'PENDING',
+        }),
+      }),
+    }));
+    expect(auditCreate).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'admin.payment.verify_with_bachs.completed',
+        metadata: expect.objectContaining({
+          providerStatus: 'SUCCEEDED',
+          activated: true,
+        }),
+      }),
+    }));
   });
 
   it('updates administrator access in a transaction and audits the role change', async () => {

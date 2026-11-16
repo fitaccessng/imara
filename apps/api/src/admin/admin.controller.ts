@@ -169,6 +169,16 @@ export class AdminController {
     return this.admin.payments(query, request);
   }
 
+  @Post('payments/:checkoutId/verify')
+  @RequirePlatformAdminPermission(PlatformAdminPermission.PAYMENTS_VERIFY)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  verifyPaymentWithBachs(
+    @Param('checkoutId') checkoutId: string,
+    @Req() request: PlatformAdminRequest,
+  ) {
+    return this.admin.verifyPaymentWithBachs(checkoutId, request);
+  }
+
   @Get('platform-admins/permissions')
   @RequirePlatformAdminPermission(PlatformAdminPermission.PLATFORM_ADMINS_READ)
   platformAdminPermissions(@Req() request: PlatformAdminRequest) {

@@ -16,6 +16,7 @@ export enum PlatformAdminPermission {
   PLAN_CATALOGUE_UPDATE = 'admin.plans.update',
   SUBSCRIPTIONS_READ = 'admin.subscriptions.read',
   PAYMENTS_READ = 'admin.payments.read',
+  PAYMENTS_VERIFY = 'admin.payments.verify',
   PLATFORM_ADMINS_READ = 'admin.platform-admins.read',
   PLATFORM_ADMINS_UPDATE = 'admin.platform-admins.update',
   ANNOUNCEMENTS_READ = 'admin.announcements.read',
@@ -48,6 +49,7 @@ export const PLATFORM_ADMIN_PERMISSIONS: Readonly<
     PlatformAdminPermission.PLAN_CATALOGUE_UPDATE,
     PlatformAdminPermission.SUBSCRIPTIONS_READ,
     PlatformAdminPermission.PAYMENTS_READ,
+    PlatformAdminPermission.PAYMENTS_VERIFY,
   ],
   [PlatformAdminRole.SUPPORT_ADMIN]: [
     PlatformAdminPermission.DASHBOARD_OVERVIEW_READ,

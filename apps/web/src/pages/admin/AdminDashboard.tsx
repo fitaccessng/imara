@@ -1778,7 +1778,7 @@ export function AdminDashboard({ identity, onSignOut, signingOut, signOutError }
             <Route path="audit-logs" element={canViewAudit(role) ? <AdminAuditLogs /> : <AdminRouteBlocked />} />
             <Route path="plans" element={canViewBilling(role) ? <PlanManagementPage /> : <AdminRouteBlocked />} />
             <Route path="subscriptions" element={canViewBilling(role) ? <SubscriptionManagementPage /> : <AdminRouteBlocked />} />
-            <Route path="payments" element={canViewBilling(role) ? <PaymentManagementPage /> : <AdminRouteBlocked />} />
+            <Route path="payments" element={canViewBilling(role) ? <PaymentManagementPage canVerifyPayments={role === "SUPER_ADMIN" || role === "FINANCE_ADMIN"} /> : <AdminRouteBlocked />} />
             <Route path="settings" element={canManagePlatformAdmins(role) ? <PlatformSettingsPage canManageRoles={canManagePlatformAdmins(role)} /> : <AdminRouteBlocked />} />
             <Route path="roles" element={canManagePlatformAdmins(role) ? <AdminRolesPage currentUserId={identity.id} /> : <AdminRouteBlocked />} />
             <Route path="*" element={<AdminRouteBlocked />} />

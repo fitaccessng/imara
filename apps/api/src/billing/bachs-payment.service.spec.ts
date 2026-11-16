@@ -307,6 +307,121 @@ describe('BachsPaymentService', () => {
     }));
   });
 
+  it('lets finance admins verify and fulfill only a checkout matching the saved account and price', async () => {
+    paymentAttemptFindUnique.mockResolvedValue({
+      id: 'attempt-id',
+      userId: 'user-id',
+      checkoutId: 'chk_checkout123',
+      plan: Plan.PRO,
+      amountMinor: 300_000n,
+      currency: 'NGN',
+      status: PaymentAttemptStatus.PENDING,
+    });
+    userFindUnique.mockResolvedValue({ email: 'person@example.com' });
+    const subscriptionUpdate = jest.fn().mockResolvedValue({});
+    const tx = {
+      paymentAttempt: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      subscription: {
+        findUnique: jest.fn().mockResolvedValue({
+          plan: Plan.FREE,
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+        }),
+        update: subscriptionUpdate,
+      },
+      workspace: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    };
+    transaction.mockImplementation((callback: (client: typeof tx) => Promise<void>) => callback(tx));
+    getPlan.mockResolvedValue({ storageLimitBytes: 10_000_000_000n });
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({
+        checkout_id: 'chk_checkout123',
+        status: 'completed',
+        payment_status: 'succeeded',
+        amount: '3000.00',
+        currency: 'NGN',
+        charge: { status: 'succeeded' },
+        customer_details: { email: 'PERSON@example.com' },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(service.verifyCheckoutForAdmin('chk_checkout123')).resolves.toEqual({
+      checkoutId: 'chk_checkout123',
+      userId: 'user-id',
+      plan: Plan.PRO,
+      status: 'SUCCEEDED',
+      activated: true,
+    });
+    expect(subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-id' },
+      data: expect.objectContaining({ plan: Plan.PRO }),
+    }));
+  });
+
+  it('does not fulfill an admin-verified checkout when customer identity mismatches', async () => {
+    paymentAttemptFindUnique.mockResolvedValue({
+      id: 'attempt-id',
+      userId: 'user-id',
+      checkoutId: 'chk_checkout123',
+      plan: Plan.PRO,
+      amountMinor: 300_000n,
+      currency: 'NGN',
+      status: PaymentAttemptStatus.PENDING,
+    });
+    userFindUnique.mockResolvedValue({ email: 'person@example.com' });
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({
+        checkout_id: 'chk_checkout123',
+        status: 'completed',
+        payment_status: 'succeeded',
+        amount: '3000.00',
+        currency: 'NGN',
+        charge: { status: 'succeeded' },
+        customer: { email: 'different@example.com' },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(service.verifyCheckoutForAdmin('chk_checkout123'))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['amount', { amount: '2999.00', currency: 'NGN' }],
+    ['currency', { amount: '3000.00', currency: 'USD' }],
+  ])('does not fulfill an admin-verified checkout when the %s mismatches', async (_field, price) => {
+    paymentAttemptFindUnique.mockResolvedValue({
+      id: 'attempt-id',
+      userId: 'user-id',
+      checkoutId: 'chk_checkout123',
+      plan: Plan.PRO,
+      amountMinor: 300_000n,
+      currency: 'NGN',
+      status: PaymentAttemptStatus.PENDING,
+    });
+    userFindUnique.mockResolvedValue({ email: 'person@example.com' });
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({
+        checkout_id: 'chk_checkout123',
+        status: 'completed',
+        payment_status: 'succeeded',
+        ...price,
+        charge: { status: 'succeeded' },
+        customer_details: { email: 'person@example.com' },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    await expect(service.verifyCheckoutForAdmin('chk_checkout123'))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('does not activate a plan from a completed checkout with no collected payment', async () => {
     const rawBody = Buffer.from(JSON.stringify({
       type: 'checkout.completed',

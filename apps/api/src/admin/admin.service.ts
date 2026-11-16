@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
@@ -48,6 +49,7 @@ import {
   PLATFORM_ADMIN_PERMISSIONS,
   PlatformAdminPermission,
 } from './platform-admin.permissions';
+import { BachsPaymentService } from '../billing/bachs-payment.service';
 
 const PLAN_VALUES = [Plan.FREE, Plan.PRO, Plan.BUSINESS] as const;
 const READY_FILE = { status: StoredFileStatus.READY } as const;
@@ -139,6 +141,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly mailer?: MailerService,
     private readonly objectStorage?: ObjectStorageService,
+    @Optional() private readonly bachsPayments?: BachsPaymentService,
   ) {}
 
   async overview(request: PlatformAdminRequest) {
@@ -430,6 +433,47 @@ export class AdminService {
       })),
       page: pageMetadata(query, totalItems),
     };
+  }
+
+  async verifyPaymentWithBachs(checkoutId: string, request: PlatformAdminRequest) {
+    if (!this.bachsPayments) {
+      throw new ServiceUnavailableException('Bachs payment verification is not available.');
+    }
+    const attempt = await this.prisma.paymentAttempt.findUnique({
+      where: { checkoutId },
+      select: {
+        id: true,
+        userId: true,
+        checkoutId: true,
+        plan: true,
+        amountMinor: true,
+        currency: true,
+        status: true,
+      },
+    });
+    if (!attempt) throw new NotFoundException('Payment attempt not found');
+    await this.auditRead(request, 'admin.payment.verify_with_bachs.requested', 'payment-attempt', {
+      attemptId: attempt.id,
+      checkoutId: attempt.checkoutId,
+      userId: attempt.userId,
+      plan: attempt.plan,
+      amountMinor: attempt.amountMinor.toString(),
+      currency: attempt.currency,
+      attemptStatus: attempt.status,
+    });
+
+    const result = await this.bachsPayments.verifyCheckoutForAdmin(checkoutId);
+    await this.auditRead(request, 'admin.payment.verify_with_bachs.completed', 'payment-attempt', {
+      attemptId: attempt.id,
+      checkoutId: result.checkoutId,
+      userId: result.userId,
+      plan: result.plan,
+      amountMinor: attempt.amountMinor.toString(),
+      currency: attempt.currency,
+      providerStatus: result.status,
+      activated: result.activated,
+    });
+    return result;
   }
 
   async platformAdminPermissions(request: PlatformAdminRequest) {

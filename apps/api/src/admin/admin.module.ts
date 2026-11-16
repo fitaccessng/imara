@@ -12,9 +12,10 @@ import { StorageModule } from '../storage/storage.module';
 import { SupportTicketModule } from '../support/support-ticket.module';
 import { AuthModule } from '../auth/auth.module';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
-  imports: [AuthModule, PlanCatalogueModule, StorageModule, SupportTicketModule, ReferralsModule],
+  imports: [AuthModule, BillingModule, PlanCatalogueModule, StorageModule, SupportTicketModule, ReferralsModule],
   controllers: [AdminController],
   providers: [
     AdminService,

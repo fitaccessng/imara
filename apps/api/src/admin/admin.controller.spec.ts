@@ -72,6 +72,11 @@ describe('AdminController', () => {
       updatePlan: jest.fn().mockResolvedValue({ plan: 'PRO' }),
       subscriptions: jest.fn().mockResolvedValue({ items: [], page: {} }),
       payments: jest.fn().mockResolvedValue({ items: [], revenueByCurrency: [] }),
+      verifyPaymentWithBachs: jest.fn().mockResolvedValue({
+        checkoutId: 'chk_verified123',
+        status: 'PENDING',
+        activated: false,
+      }),
       platformAdminPermissions: jest.fn().mockResolvedValue({ roles: [] }),
       platformAdmins: jest.fn().mockResolvedValue({ items: [], page: {} }),
       updatePlatformAdmin: jest.fn().mockResolvedValue({ userId: 'admin-id' }),
@@ -123,6 +128,11 @@ describe('AdminController', () => {
       .resolves.toEqual({ items: [], page: {} });
     await expect(controller.payments({ page: 1, pageSize: 10 } as never, request))
       .resolves.toEqual({ items: [], revenueByCurrency: [] });
+    await expect(controller.verifyPaymentWithBachs('chk_verified123', request)).resolves.toMatchObject({
+      status: 'PENDING',
+      activated: false,
+    });
+    expect(adminService.verifyPaymentWithBachs).toHaveBeenCalledWith('chk_verified123', request);
     await expect(controller.platformAdminPermissions(request)).resolves.toEqual({ roles: [] });
     await expect(controller.platformAdmins({ page: 1, pageSize: 10 } as never, request))
       .resolves.toEqual({ items: [], page: {} });

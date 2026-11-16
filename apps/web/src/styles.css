@@ -845,6 +845,11 @@ input, select, textarea { max-width: 100%; }
 .admin-action-error { border-color: #efd6d2; background: #fff8f7; color: #98483e; }
 .admin-button-danger { border-color: #f0d7d1; background: #fff8f7; color: #a54638; }
 .admin-button-danger:hover:not(:disabled) { border-color: #dda9a1; background: #fff1ee; }
+.admin-payment-verify-result, .admin-payment-verify-error { max-width: 180px; line-height: 1.4; white-space: normal; }
+.admin-payment-verify-result { color: #168138 !important; }
+.admin-payment-verify-error { color: #a54638 !important; }
+.admin-payment-verify-spin { animation: admin-payment-verify-spin 1s linear infinite; }
+@keyframes admin-payment-verify-spin { to { transform: rotate(360deg); } }
 .admin-management-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; }
 .admin-plan-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
 .admin-plan-editor > .admin-action-notice, .admin-plan-editor > .admin-action-error, .admin-plan-editor > .admin-form-actions { grid-column: 1 / -1; }

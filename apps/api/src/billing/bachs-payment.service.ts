@@ -23,6 +23,14 @@ type PaymentAttemptForFulfillment = {
   currency: string;
 };
 
+export type AdminCheckoutVerification = {
+  checkoutId: string;
+  userId: string;
+  plan: Plan;
+  status: 'SUCCEEDED' | 'PENDING' | 'EXPIRED' | 'NOT_PAID';
+  activated: boolean;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -57,7 +65,7 @@ function addOneUtcMonth(date: Date): Date {
 export class BachsPaymentService {
   private readonly logger = new Logger(BachsPaymentService.name);
   private readonly checkoutVerificationTimes = new Map<string, number>();
-  private readonly checkoutVerifications = new Map<string, Promise<void>>();
+  private readonly checkoutVerifications = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -231,6 +239,31 @@ export class BachsPaymentService {
     };
   }
 
+  async verifyCheckoutForAdmin(checkoutId: string): Promise<AdminCheckoutVerification> {
+    if (!/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
+      throw new BadRequestException('Bachs checkout ID is invalid.');
+    }
+    const attempt = await this.prisma.paymentAttempt.findUnique({ where: { checkoutId } });
+    if (!attempt) throw new NotFoundException('Payment attempt not found');
+    if (attempt.plan === Plan.FREE || attempt.amountMinor <= 0n) {
+      throw new BadRequestException('Only paid plan checkouts can activate a subscription.');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: attempt.userId },
+      select: { email: true },
+    });
+    if (!user) throw new NotFoundException('Payment account not found');
+
+    const verification = await this.fetchAndVerifyCheckout(attempt, user.email);
+    return {
+      checkoutId,
+      userId: attempt.userId,
+      plan: attempt.plan,
+      status: verification.status,
+      activated: verification.activated,
+    };
+  }
+
   async listPayments(userId: string) {
     const attempts = await this.prisma.paymentAttempt.findMany({
       where: { userId },
@@ -308,9 +341,12 @@ export class BachsPaymentService {
     }
   }
 
-  private async fetchAndVerifyCheckout(attempt: PaymentAttemptForFulfillment): Promise<void> {
+  private async fetchAndVerifyCheckout(
+    attempt: PaymentAttemptForFulfillment,
+    expectedUserEmail?: string,
+  ): Promise<{ status: AdminCheckoutVerification['status']; activated: boolean }> {
     const checkoutId = attempt.checkoutId;
-    if (!checkoutId) return;
+    if (!checkoutId) throw new BadRequestException('Bachs checkout ID is missing.');
     const { key, apiUrl } = this.config();
 
     let response: Response;
@@ -345,7 +381,14 @@ export class BachsPaymentService {
       && (checkout.payment_status === 'succeeded' || checkout.payment_status === 'paid')
       && isRecord(charge)
       && (charge.status === 'succeeded' || charge.status === 'SUCCEEDED');
-    if (!paid) return;
+    if (!paid) {
+      return {
+        status: checkout.status === 'expired'
+          ? 'EXPIRED'
+          : checkout.payment_status === 'processing' ? 'PENDING' : 'NOT_PAID',
+        activated: false,
+      };
+    }
 
     if (attempt.plan === Plan.FREE || attempt.amountMinor <= 0n) {
       throw new BadRequestException('Only paid plan checkouts can activate a subscription.');
@@ -355,12 +398,22 @@ export class BachsPaymentService {
       this.logger.error(`Bachs checkout amount or currency mismatch for attempt ${attempt.id}`);
       throw new BadRequestException('Payment amount or currency does not match the checkout.');
     }
-    await this.fulfillAttempt(attempt);
+    if (expectedUserEmail !== undefined) {
+      const emails = [
+        isRecord(checkout.customer) ? checkout.customer.email : undefined,
+        isRecord(checkout.customer_details) ? checkout.customer_details.email : undefined,
+      ].filter((email): email is string => typeof email === 'string' && email.trim().length > 0);
+      if (!emails.length || emails.some((email) => email.trim().toLowerCase() !== expectedUserEmail.trim().toLowerCase())) {
+        throw new BadRequestException('Bachs checkout customer does not match the payment account.');
+      }
+    }
+    const activated = await this.fulfillAttempt(attempt);
+    return { status: 'SUCCEEDED', activated };
   }
 
-  private async fulfillAttempt(attempt: PaymentAttemptForFulfillment): Promise<void> {
+  private async fulfillAttempt(attempt: PaymentAttemptForFulfillment): Promise<boolean> {
     const now = new Date();
-    await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       const claimed = await tx.paymentAttempt.updateMany({
         where: {
           id: attempt.id,
@@ -368,7 +421,7 @@ export class BachsPaymentService {
         },
         data: { status: PaymentAttemptStatus.SUCCEEDED, paidAt: now },
       });
-      if (!claimed.count) return;
+      if (!claimed.count) return false;
 
       const subscription = await tx.subscription.findUnique({ where: { userId: attempt.userId } });
       if (!subscription) throw new NotFoundException('Account subscription not found');
@@ -395,6 +448,7 @@ export class BachsPaymentService {
         where: { id: attempt.id },
         data: { periodEnd },
       });
+      return true;
     });
   }
 

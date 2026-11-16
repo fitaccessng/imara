@@ -157,6 +157,7 @@ decimal strings.
 | PATCH | `/api/v1/admin/plans/:plan` | Update plan price, limits, and entitlements with an audit record |
 | GET | `/api/v1/admin/subscriptions` | Paginated subscription records and plan/status metadata |
 | GET | `/api/v1/admin/payments` | Paginated payment attempts and server-verified successful receipts, summarized by currency |
+| POST | `/api/v1/admin/payments/:checkoutId/verify` | Finance-admin-only live Bachs verification; matches checkout, account email, plan amount, and currency before idempotent fulfillment, with request/result audit records |
 | GET | `/api/v1/admin/storage-inventory` | Ready-file count/bytes, largest uploader accounts/workspaces, and MIME-type aggregates; no filenames |
 | GET | `/api/v1/admin/upload-monitoring` | Persisted upload/deletion states, stale operation count, source counts (including scan uploads), and MIME-type aggregates |
 | GET | `/api/v1/admin/system-health` | Live database, configured object-storage driver and SMTP checks; reports external backup/OCR/malware-scanning integrations |
@@ -288,6 +289,11 @@ route retrieves a still-pending checkout directly from Bachs and applies the
 same checks before granting access. Subscribe the Bachs endpoint to both
 payment-success events and `checkout.expired`. Expired paid plans revert to
 Free on the account's next authenticated API request.
+Finance admins and Super Admins can verify an individual checkout from the
+admin payment ledger. Verification reads the session directly from Bachs and
+requires a completed paid charge, the saved checkout ID, the customer's
+account email, and the exact saved amount and currency; it never trusts an
+admin-supplied paid status.
 
 Configure `BACHS_MODE=sandbox`, a sandbox `BACHS_API_KEY`, and
 `BACHS_WEBHOOK_SECRET` in the API environment. Set `BACHS_FRONTEND_URL` to a

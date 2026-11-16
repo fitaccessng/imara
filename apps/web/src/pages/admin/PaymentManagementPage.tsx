@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { CircleDollarSign, Search } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, CircleDollarSign, LoaderCircle, Search, ShieldCheck } from "lucide-react";
 import { type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiRequest } from "../../lib/api";
@@ -36,6 +36,14 @@ interface PaymentPage {
   page: AdminPageMetadata;
 }
 
+interface BachsVerification {
+  checkoutId: string;
+  userId: string;
+  plan: Plan;
+  status: "SUCCEEDED" | "PENDING" | "EXPIRED" | "NOT_PAID";
+  activated: boolean;
+}
+
 function dateParam(value: string, inclusiveEnd: boolean) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -43,7 +51,8 @@ function dateParam(value: string, inclusiveEnd: boolean) {
   return date.toISOString();
 }
 
-export function PaymentManagementPage() {
+export function PaymentManagementPage({ canVerifyPayments }: { canVerifyPayments: boolean }) {
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const q = searchParams.get("q") ?? "";
@@ -62,6 +71,13 @@ export function PaymentManagementPage() {
       if (to) params.set("to", dateParam(to, true));
       return apiRequest<PaymentPage>(`/admin/payments?${params}`);
     },
+  });
+  const verifyPayment = useMutation({
+    mutationFn: (checkoutId: string) => apiRequest<BachsVerification>(
+      `/admin/payments/${encodeURIComponent(checkoutId)}/verify`,
+      { method: "POST" },
+    ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-payments"] }),
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -85,7 +101,7 @@ export function PaymentManagementPage() {
       <AdminManagementHeader
         eyebrow="BILLING · RECONCILIATION"
         title="Payments & revenue"
-        description="Gross collected amounts are calculated from successful payment attempts only and grouped by currency. Pending checkouts are excluded; the current ledger does not track refunds or provider fees."
+        description="Gross collected amounts are calculated from successful payment attempts only and grouped by currency. Authorized finance admins can verify pending checkouts directly with Bachs; the current ledger does not track refunds or provider fees."
       />
       <section className="admin-revenue-summary">
         <div className="admin-panel">
@@ -118,13 +134,13 @@ export function PaymentManagementPage() {
           <label><span>Through (UTC)</span><input type="date" name="to" defaultValue={to} /></label>
           <button className="admin-button admin-button-primary" type="submit"><Search size={14} />Apply filters</button>
         </form>
-        <div className="admin-panel-heading"><div><span className="admin-eyebrow">PAYMENT ATTEMPTS</span><h2>{adminNumber(result.page.totalItems)} records</h2></div><span className="admin-readonly-chip">Read only · provider actions are not available</span></div>
+        <div className="admin-panel-heading"><div><span className="admin-eyebrow">PAYMENT ATTEMPTS</span><h2>{adminNumber(result.page.totalItems)} records</h2></div><span className="admin-readonly-chip"><ShieldCheck size={13} /> {canVerifyPayments ? "Verification is provider-confirmed and audited" : "Read only · finance permission required"}</span></div>
         {result.items.length === 0 ? (
           <div className="admin-empty-state"><CircleDollarSign size={20} /><strong>No payment attempts match</strong><span>Try another customer, status, plan, or date range.</span></div>
         ) : (
           <div className="admin-table-wrap">
             <table className="admin-table">
-              <thead><tr><th>Customer</th><th>Amount</th><th>Plan</th><th>Status</th><th>Created</th><th>Paid</th><th>Checkout reference</th></tr></thead>
+              <thead><tr><th>Customer</th><th>Amount</th><th>Plan</th><th>Status</th><th>Created</th><th>Paid</th><th>Checkout reference</th>{canVerifyPayments && <th>Provider check</th>}</tr></thead>
               <tbody>{result.items.map((payment) => (
                 <tr key={payment.id}>
                   <td><strong>{payment.user.name}</strong><small>{payment.user.email}</small></td>
@@ -134,6 +150,38 @@ export function PaymentManagementPage() {
                   <td>{adminDate(payment.createdAt)}</td>
                   <td>{adminDate(payment.paidAt)}</td>
                   <td><small>{payment.checkoutId ?? "Not assigned"}</small></td>
+                  {canVerifyPayments && <td>
+                    {payment.checkoutId && payment.status !== "SUCCEEDED" ? (
+                      <button
+                        type="button"
+                        className="admin-button admin-button-secondary"
+                        disabled={verifyPayment.isPending}
+                        onClick={() => payment.checkoutId && verifyPayment.mutate(payment.checkoutId)}
+                        aria-label={`Verify ${payment.checkoutId} with Bachs`}
+                      >
+                        {verifyPayment.isPending && verifyPayment.variables === payment.checkoutId
+                          ? <LoaderCircle size={13} className="admin-payment-verify-spin" />
+                          : <CheckCircle2 size={13} />}
+                        {verifyPayment.isPending && verifyPayment.variables === payment.checkoutId ? "Checking…" : "Verify with Bachs"}
+                      </button>
+                    ) : <span className="admin-readonly-chip">—</span>}
+                    {verifyPayment.data?.checkoutId === payment.checkoutId && (
+                      <small className="admin-payment-verify-result" role="status">
+                        {verifyPayment.data.status === "SUCCEEDED"
+                          ? verifyPayment.data.activated ? "Paid · plan activated" : "Paid · already active"
+                          : verifyPayment.data.status === "PENDING"
+                            ? "Payment is processing at Bachs"
+                            : verifyPayment.data.status === "EXPIRED"
+                              ? "Checkout expired at Bachs"
+                              : "Bachs has not confirmed payment"}
+                      </small>
+                    )}
+                    {verifyPayment.isError && verifyPayment.variables === payment.checkoutId && (
+                      <small className="admin-payment-verify-error" role="alert">
+                        {verifyPayment.error instanceof Error ? verifyPayment.error.message : "Could not verify with Bachs."}
+                      </small>
+                    )}
+                  </td>}
                 </tr>
               ))}</tbody>
             </table>
