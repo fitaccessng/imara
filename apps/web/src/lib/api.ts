@@ -1,7 +1,7 @@
 const API_URL = (
   import.meta.env.VITE_API_URL ??
   (import.meta.env.PROD
-    ? "https://spidey-sango-3at3.dockhive.app/api/v1"
+    ? "https://api.useimara.space/api/v1"
     : "/api/v1")
 ).replace(/\/$/, "");
 

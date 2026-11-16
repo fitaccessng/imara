@@ -447,8 +447,8 @@ export function LandingPage() {
               Organise documents, share folders with your team, and bring every event photo into one shared gallery.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link to="/register" className="inline-flex min-h-12 items-center justify-center gap-3 rounded-lg bg-[#20AD43] px-6 py-3 text-sm font-bold text-white shadow-[0_8px_20px_rgba(32,173,67,0.18)] transition hover:-translate-y-0.5 hover:bg-[#199438]">
-                Create your account <ArrowRight size={17} />
+              <Link to="/login" className="inline-flex min-h-12 items-center justify-center gap-3 rounded-lg bg-[#20AD43] px-6 py-3 text-sm font-bold text-white shadow-[0_8px_20px_rgba(32,173,67,0.18)] transition hover:-translate-y-0.5 hover:bg-[#199438]">
+                Log in <ArrowRight size={17} />
               </Link>
               <Link to="/features" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#DCE5DF] bg-white px-5 py-3 text-sm font-semibold text-[#102B46] hover:border-[#20AD43]">
                 Explore IMARA
@@ -580,8 +580,8 @@ export function LandingPage() {
           <p className="mx-auto mt-4 max-w-[540px] text-sm leading-7 text-white/65">
             Start organising your documents, sharing with your team or collecting event memories with IMARA.
           </p>
-          <Link to="/register" className="mt-7 inline-flex items-center gap-3 rounded-lg bg-[#20AD43] px-7 py-4 text-sm font-bold text-white transition hover:bg-[#199438]">
-            Create your account <ArrowRight size={16} />
+          <Link to="/login" className="mt-7 inline-flex items-center gap-3 rounded-lg bg-[#20AD43] px-7 py-4 text-sm font-bold text-white transition hover:bg-[#199438]">
+            Log in <ArrowRight size={16} />
           </Link>
         </div>
       </section>

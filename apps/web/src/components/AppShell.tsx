@@ -240,6 +240,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     let timer: number | undefined;
 
     const active = () => running;
+    const scheduleIndexing = (delay: number) => {
+      timer = window.setTimeout(() => void indexLibrary(), delay);
+    };
     const indexLibrary = async () => {
       try {
         const personalFiles = await apiRequest<UnindexedFile[]>("/files/unindexed");
@@ -262,11 +265,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       } catch (error) {
         console.warn("Automatic search indexing could not check for files.", error);
       } finally {
-        if (running) timer = window.setTimeout(() => void indexLibrary(), 60_000);
+        if (running) scheduleIndexing(60_000);
       }
     };
 
-    void indexLibrary();
+    scheduleIndexing(10_000);
     return () => {
       running = false;
       if (timer !== undefined) window.clearTimeout(timer);

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
 import { App } from "./App";
+import { ApiError } from "./lib/api";
 import "./styles.css";
 
 if ("serviceWorker" in navigator && window.isSecureContext) {
@@ -37,10 +38,11 @@ window.addEventListener("vite:preloadError", (event) => {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (failureCount, error) =>
+        error instanceof ApiError &&
+        (error.status === 0 || error.status >= 500) &&
+        failureCount < 1,
       refetchOnWindowFocus: true,
-      refetchInterval: 30_000,
-      refetchIntervalInBackground: false,
       staleTime: 20_000,
     },
   },

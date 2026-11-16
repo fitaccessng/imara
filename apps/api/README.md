@@ -216,9 +216,14 @@ origin `http://localhost:5173`. Browser requests must use credentials
 (`fetch(..., { credentials: 'include' })`). The API also rejects disallowed `Origin`
 headers on requests. In production set `COOKIE_SECURE=true`, use HTTPS, use a
 production frontend origin, and keep SMTP/database secrets outside source control.
-Production defaults to `COOKIE_SAME_SITE=none` with `COOKIE_SECURE=true` so the
-session cookie is sent when the frontend and API are on different sites. Override
-this with `COOKIE_SAME_SITE=lax` only when both are hosted on the same site.
+For production, prefer hosting the API on a custom hostname under the frontend's
+site (for example `api.useimara.space` for `www.useimara.space`). Configure the
+frontend to call that HTTPS hostname, allow the exact frontend origins in
+`CORS_ORIGINS`, and set `COOKIE_SECURE=true` with `COOKIE_SAME_SITE=lax`. This keeps
+the HttpOnly session cookie first-party while still allowing credentialed API calls.
+The `none` setting is available for intentionally cross-site deployments, but those
+sessions depend on browser third-party-cookie policies and may not persist in browsers
+that block third-party cookies.
 
 ## Calendar reminders and browser push
 

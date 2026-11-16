@@ -71,6 +71,41 @@ describe('SessionGuard activity tracking', () => {
     }));
   });
 
+  it('accepts a session from the configured custom cookie name', async () => {
+    const previousCookieName = process.env.SESSION_COOKIE_NAME;
+    process.env.SESSION_COOKIE_NAME = 'custom_session';
+    const customRequest = { cookies: { custom_session: token } };
+    const customContext = {
+      switchToHttp: () => ({ getRequest: () => customRequest }),
+    } as unknown as ExecutionContext;
+    const session = {
+      id: 'session-id',
+      userId: 'user-id',
+      tokenHash: hashToken(token),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      lastSeenAt: new Date(),
+      user: { accountStatus: 'ACTIVE' },
+    };
+    const prisma = {
+      session: {
+        findUnique: jest.fn().mockResolvedValue(session),
+        updateMany: jest.fn(),
+      },
+    };
+    const guard = new SessionGuard(prisma as unknown as PrismaService, plans as never);
+
+    try {
+      await expect(guard.canActivate(customContext)).resolves.toBe(true);
+      expect(prisma.session.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+        where: { tokenHash: hashToken(token) },
+      }));
+    } finally {
+      if (previousCookieName === undefined) delete process.env.SESSION_COOKIE_NAME;
+      else process.env.SESSION_COOKIE_NAME = previousCookieName;
+    }
+  });
+
   it('rejects a still-unrevoked session when its account is suspended', async () => {
     const prisma = {
       session: {
@@ -90,6 +125,31 @@ describe('SessionGuard activity tracking', () => {
 
     await expect(guard.canActivate(context)).rejects.toThrow('Session is invalid or expired');
     expect(prisma.session.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects expired or revoked sessions before recording activity', async () => {
+    for (const invalidState of [
+      { expiresAt: new Date(Date.now() - 1), revokedAt: null },
+      { expiresAt: new Date(Date.now() + 60_000), revokedAt: new Date() },
+    ]) {
+      const prisma = {
+        session: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'session-id',
+            userId: 'user-id',
+            tokenHash: hashToken(token),
+            ...invalidState,
+            lastSeenAt: new Date(Date.now() - 6 * 60_000),
+            user: { accountStatus: 'ACTIVE' },
+          }),
+          updateMany: jest.fn(),
+        },
+      };
+      const guard = new SessionGuard(prisma as unknown as PrismaService, plans as never);
+
+      await expect(guard.canActivate(context)).rejects.toThrow('Session is invalid or expired');
+      expect(prisma.session.updateMany).not.toHaveBeenCalled();
+    }
   });
 
   it('expires paid access and applies the Free storage allowance', async () => {

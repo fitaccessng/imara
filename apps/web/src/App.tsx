@@ -1,56 +1,61 @@
 import { lazy, Suspense } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "./auth/AuthProvider";
-import { AuthPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./pages/AuthPages";
-import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
-import { DocsPage } from "./pages/public/DocsPage";
-import { ProfilePage } from "./pages/ProfilePage";
-import { ActiveSessionsPage } from "./pages/settings/ActiveSessionsPage";
-import { SupportPage } from "./pages/SupportPage";
-import { FilesPage } from "./pages/FilesPage";
-import { ScannerHomePage } from "./pages/scanner/ScannerHomePage";
-import { SearchResultsPage, StarredFilesPage, TrashPage } from "./pages/dashboard";
-import NotificationsPage from "./pages/dashboard/NotificationsPage";
-import { CheckoutPage, PaymentStatusPage, PricingPlansPage, SubscriptionOverviewPage } from "./pages/billing";
 import { AppShell } from "./components/AppShell";
-import { ApprovalsPage } from "./approvals/ApprovalsPage";
-import { RemindersPage } from "./reminders/RemindersPage";
-import { CalendarPage } from "./calendar/CalendarPage";
-import { SmartFilesPage } from "./smart-files/SmartFilesPage";
-import { SignaturesPage } from "./signatures/SignaturesPage";
-import {
-  AboutPage,
-  AccessibilityPage,
-  ContactPage,
-  FAQPage,
-  FeaturesPage,
-  HelpCenterPage,
-  HomePage,
-  HowItWorksPage,
-  PricingPage,
-  PrivacyPage,
-  SecurityPage,
-  TermsPage,
-} from "./pages/public";
-import {
-  AcceptWorkspaceInvitationPage,
-  WorkspaceActivityPage,
-  WorkspaceInvitationsPage,
-  WorkspaceInvitePage,
-  WorkspaceMemberPage,
-  WorkspacePermissionsPage,
-  WorkspaceRolesPage,
-  WorkspaceTeamPage,
-} from "./workspaces/WorkspaceAdminPages";
-import { WorkspaceStoragePage } from "./workspaces/WorkspaceStoragePage";
-import { WorkspaceChatPage } from "./workspaces/WorkspaceChatPage";
-import { WorkspaceFileDeliveriesPage } from "./workspaces/WorkspaceFileDeliveriesPage";
-import { AdminLoginPage } from "./pages/admin/AdminLoginPage";
-import { AdminPortal } from "./pages/admin/AdminPortal";
-import { SharedFilePreviewPage } from "./pages/sharing/SharedFilePreviewPage";
-import { OfflineAccessPage } from "./offline/OfflineAccessPage";
-import { NotesPage } from "./notes/NotesPage";
+
+const AuthPage = lazy(() => import("./pages/AuthPages").then((pages) => ({ default: pages.AuthPage })));
+const ForgotPasswordPage = lazy(() => import("./pages/AuthPages").then((pages) => ({ default: pages.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import("./pages/AuthPages").then((pages) => ({ default: pages.ResetPasswordPage })));
+const VerifyEmailPage = lazy(() => import("./pages/AuthPages").then((pages) => ({ default: pages.VerifyEmailPage })));
+const DashboardPage = lazy(() => import("./pages/DashboardPage").then((pages) => ({ default: pages.DashboardPage })));
+const DocsPage = lazy(() => import("./pages/public/DocsPage").then((pages) => ({ default: pages.DocsPage })));
+const ProfilePage = lazy(() => import("./pages/ProfilePage").then((pages) => ({ default: pages.ProfilePage })));
+const ActiveSessionsPage = lazy(() => import("./pages/settings/ActiveSessionsPage").then((pages) => ({ default: pages.ActiveSessionsPage })));
+const SupportPage = lazy(() => import("./pages/SupportPage").then((pages) => ({ default: pages.SupportPage })));
+const FilesPage = lazy(() => import("./pages/FilesPage").then((pages) => ({ default: pages.FilesPage })));
+const ScannerHomePage = lazy(() => import("./pages/scanner/ScannerHomePage").then((pages) => ({ default: pages.ScannerHomePage })));
+const SearchResultsPage = lazy(() => import("./pages/dashboard/SearchResultsPage").then((pages) => ({ default: pages.default })));
+const StarredFilesPage = lazy(() => import("./pages/dashboard/StarredFilesPage").then((pages) => ({ default: pages.default })));
+const TrashPage = lazy(() => import("./pages/dashboard/TrashPage").then((pages) => ({ default: pages.default })));
+const NotificationsPage = lazy(() => import("./pages/dashboard/NotificationsPage").then((pages) => ({ default: pages.default })));
+const CheckoutPage = lazy(() => import("./pages/billing/CheckoutPage").then((pages) => ({ default: pages.default })));
+const PaymentStatusPage = lazy(() => import("./pages/billing/PaymentStatusPage").then((pages) => ({ default: pages.default })));
+const PricingPlansPage = lazy(() => import("./pages/billing/PricingPlansPage").then((pages) => ({ default: pages.default })));
+const SubscriptionOverviewPage = lazy(() => import("./pages/billing/SubscriptionOverviewPage").then((pages) => ({ default: pages.default })));
+const ApprovalsPage = lazy(() => import("./approvals/ApprovalsPage").then((pages) => ({ default: pages.ApprovalsPage })));
+const RemindersPage = lazy(() => import("./reminders/RemindersPage").then((pages) => ({ default: pages.RemindersPage })));
+const CalendarPage = lazy(() => import("./calendar/CalendarPage").then((pages) => ({ default: pages.CalendarPage })));
+const SmartFilesPage = lazy(() => import("./smart-files/SmartFilesPage").then((pages) => ({ default: pages.SmartFilesPage })));
+const SignaturesPage = lazy(() => import("./signatures/SignaturesPage").then((pages) => ({ default: pages.SignaturesPage })));
+const AboutPage = lazy(() => import("./pages/public/AboutPage").then((pages) => ({ default: pages.default })));
+const AccessibilityPage = lazy(() => import("./pages/public/AccessibilityPage").then((pages) => ({ default: pages.default })));
+const ContactPage = lazy(() => import("./pages/public/ContactPage").then((pages) => ({ default: pages.default })));
+const FAQPage = lazy(() => import("./pages/public/FAQPage").then((pages) => ({ default: pages.default })));
+const FeaturesPage = lazy(() => import("./pages/public/FeaturesPage").then((pages) => ({ default: pages.default })));
+const HelpCenterPage = lazy(() => import("./pages/public/HelpCenterPage").then((pages) => ({ default: pages.default })));
+const HomePage = lazy(() => import("./pages/public/HomePage").then((pages) => ({ default: pages.default })));
+const HowItWorksPage = lazy(() => import("./pages/public/HowItWorksPage").then((pages) => ({ default: pages.default })));
+const PricingPage = lazy(() => import("./pages/public/PricingPage").then((pages) => ({ default: pages.default })));
+const PrivacyPage = lazy(() => import("./pages/public/PrivacyPage").then((pages) => ({ default: pages.default })));
+const SecurityPage = lazy(() => import("./pages/public/SecurityPage").then((pages) => ({ default: pages.default })));
+const TermsPage = lazy(() => import("./pages/public/TermsPage").then((pages) => ({ default: pages.default })));
+const AcceptWorkspaceInvitationPage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.AcceptWorkspaceInvitationPage })));
+const WorkspaceActivityPage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.WorkspaceActivityPage })));
+const WorkspaceInvitationsPage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.WorkspaceInvitationsPage })));
+const WorkspaceInvitePage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.WorkspaceInvitePage })));
+const WorkspaceMemberPage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.WorkspaceMemberPage })));
+const WorkspacePermissionsPage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.WorkspacePermissionsPage })));
+const WorkspaceRolesPage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.WorkspaceRolesPage })));
+const WorkspaceTeamPage = lazy(() => import("./workspaces/WorkspaceAdminPages").then((pages) => ({ default: pages.WorkspaceTeamPage })));
+const WorkspaceStoragePage = lazy(() => import("./workspaces/WorkspaceStoragePage").then((pages) => ({ default: pages.WorkspaceStoragePage })));
+const WorkspaceChatPage = lazy(() => import("./workspaces/WorkspaceChatPage").then((pages) => ({ default: pages.WorkspaceChatPage })));
+const WorkspaceFileDeliveriesPage = lazy(() => import("./workspaces/WorkspaceFileDeliveriesPage").then((pages) => ({ default: pages.WorkspaceFileDeliveriesPage })));
+const AdminLoginPage = lazy(() => import("./pages/admin/AdminLoginPage").then((pages) => ({ default: pages.AdminLoginPage })));
+const AdminPortal = lazy(() => import("./pages/admin/AdminPortal").then((pages) => ({ default: pages.AdminPortal })));
+const SharedFilePreviewPage = lazy(() => import("./pages/sharing/SharedFilePreviewPage").then((pages) => ({ default: pages.default })));
+const OfflineAccessPage = lazy(() => import("./offline/OfflineAccessPage").then((pages) => ({ default: pages.default })));
+const NotesPage = lazy(() => import("./notes/NotesPage").then((pages) => ({ default: pages.NotesPage })));
 
 const EventsPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.EventsPage })));
 const CreateEventPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.CreateEventPage })));

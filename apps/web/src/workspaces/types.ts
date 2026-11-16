@@ -120,6 +120,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
 export const PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
   "View only": ["viewFolder", "viewFiles"],
   "Upload access": ["viewFolder", "viewFiles", "uploadFiles"],
+  "Upload + folder import": ["viewFolder", "viewFiles", "uploadFiles", "createSubfolders"],
   Editor: ["viewFolder", "viewFiles", "uploadFiles", "editFiles", "renameFiles", "createSubfolders", "manageContents"],
   "Full control": [...PERMISSION_KEYS],
 };

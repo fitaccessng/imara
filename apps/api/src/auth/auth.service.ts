@@ -22,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MailerService } from './mailer.service';
 import { hashPassword, verifyPassword } from './password';
 import { createOpaqueToken, hashToken } from './token';
+import { getSessionConfig } from './session-config';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { serializePlanEntitlements } from '../subscriptions/plan-entitlements';
 import { creditVerifiedReferral } from '../referrals/referrals.service';
@@ -305,7 +306,7 @@ export class AuthService {
     userAgent?: string,
   ) {
     const rawToken = createOpaqueToken();
-    const ttlDays = Number(process.env.SESSION_TTL_DAYS ?? 30);
+    const ttlDays = getSessionConfig().ttlDays;
     const expiresAt = new Date(Date.now() + ttlDays * 86_400_000);
     const session = await this.prisma.$transaction(async (tx) => {
       // Take a write lock on the account row so that a concurrent suspension

@@ -5,6 +5,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from './auth.types';
 import { AuthService } from './auth.service';
+import { getSessionConfig } from './session-config';
 import { ChangePasswordDto, EmailDto, LoginDto, RegisterDto, ResetPasswordCodeDto, ResetPasswordDto, TokenDto, VerifyEmailCodeDto } from './dto';
 import { SessionGuard } from './session.guard';
 
@@ -13,21 +14,21 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   private cookieOptions() {
-    const sameSite = process.env.COOKIE_SAME_SITE
-      ?? (process.env.NODE_ENV === 'production' ? 'none' : 'lax');
+    const config = getSessionConfig();
     return {
       httpOnly: true,
-      secure: process.env.COOKIE_SECURE === 'true',
-      sameSite: (sameSite === 'none' ? 'none' : sameSite === 'strict' ? 'strict' : 'lax') as 'lax' | 'strict' | 'none',
+      secure: config.cookieSecure,
+      sameSite: config.cookieSameSite,
       path: '/',
     };
   }
 
   private setSessionCookie(res: Response, session: { token: string; expiresAt: Date }) {
-    const days = Number(process.env.SESSION_TTL_DAYS ?? 30);
-    res.cookie(process.env.SESSION_COOKIE_NAME ?? 'imara_session', session.token, {
+    const { cookieName } = getSessionConfig();
+    res.cookie(cookieName, session.token, {
       ...this.cookieOptions(),
-      maxAge: days * 86_400_000,
+      // The database session and browser cookie must expire at the same instant.
+      // Supplying maxAge makes Express derive a second, response-time expiry.
       expires: session.expiresAt,
     });
   }
@@ -53,7 +54,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Req() req: AuthenticatedRequest, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.auth.sessionId);
-    res.clearCookie(process.env.SESSION_COOKIE_NAME ?? 'imara_session', this.cookieOptions());
+    res.clearCookie(getSessionConfig().cookieName, this.cookieOptions());
   }
 
   @Post('verify-email')
@@ -119,7 +120,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async changePassword(@Req() req: AuthenticatedRequest, @Body() dto: ChangePasswordDto, @Res({ passthrough: true }) res: Response) {
     await this.auth.changePassword(req.auth.userId, dto.currentPassword, dto.newPassword);
-    res.clearCookie(process.env.SESSION_COOKIE_NAME ?? 'imara_session', this.cookieOptions());
+    res.clearCookie(getSessionConfig().cookieName, this.cookieOptions());
   }
 
   @Get('sessions')
@@ -138,7 +139,7 @@ export class AuthController {
   ) {
     await this.auth.revokeSession(req.auth.userId, id);
     if (id === req.auth.sessionId) {
-      res.clearCookie(process.env.SESSION_COOKIE_NAME ?? 'imara_session', this.cookieOptions());
+      res.clearCookie(getSessionConfig().cookieName, this.cookieOptions());
     }
   }
 }

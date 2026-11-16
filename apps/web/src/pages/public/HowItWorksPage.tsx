@@ -496,10 +496,10 @@ export function HowItWorksPage() {
           </div>
 
           <Link
-            to="/register"
+            to="/login"
             className="inline-flex min-h-12 items-center justify-center gap-2 self-start rounded-lg bg-[#20AD43] px-5 text-sm font-bold text-white transition hover:bg-[#199438] lg:self-center"
           >
-            Get started <ArrowRight size={16} />
+            Log in <ArrowRight size={16} />
           </Link>
         </section>
 
@@ -702,7 +702,7 @@ export function HowItWorksPage() {
         {/* CTA */}
         <MarketingCTA
           title="Ready to put IMARA to work?"
-          description="Create your account to organise documents, invite your business team, or start collecting event memories."
+          description="Log in to organise documents, invite your business team, or collect event memories."
         />
 
         <div className="flex justify-center">

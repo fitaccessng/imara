@@ -118,15 +118,19 @@ production credentials. For production, use managed PostgreSQL, HTTPS, a product
 frontend origin in `CORS_ORIGINS`, `COOKIE_SECURE=true`, and real SMTP credentials.
 Review the API README for cross-site cookie configuration and operational caveats.
 
-For the `www.useimara.space` web deployment, set `VITE_PUBLIC_APP_URL` to
+For the `www.useimara.space` web deployment, map `api.useimara.space` to the
+DockHive API service and serve it over HTTPS. Set `VITE_API_URL` to
+`https://api.useimara.space/api/v1` in the web build environment, and allow the
+frontend origins below in the API's `CORS_ORIGINS`. Use `COOKIE_SECURE=true` and
+`COOKIE_SAME_SITE=lax`; keeping the API on the same site avoids browsers' third-party
+cookie restrictions. Until the custom API domain is active, production builds should
+not be deployed with this endpoint.
+
+Set `VITE_PUBLIC_APP_URL` to
 `https://www.useimara.space` in the web build environment. Set `FRONTEND_URL` to the
 same URL in the API environment so email links point to the deployed app, and set
 `CORS_ORIGINS=https://www.useimara.space,https://useimara.space` if both hostnames
-serve the app. Production builds default to
-`https://spidey-sango-3at3.dockhive.app/api/v1`. The API must allow the web origins
-above in `CORS_ORIGINS` and use `COOKIE_SECURE=true` with
-`COOKIE_SAME_SITE=none` for credentialed cross-site requests. Set `VITE_API_URL`
-only when the API is deployed at a different address.
+serve the app.
 
 For email, set `EMAIL_DELIVERY=smtp`, `SMTP_HOST=smtp-relay.brevo.com`,
 `SMTP_PORT=587`, `SMTP_SECURE=false`, and `SMTP_USER` to the SMTP login provided by

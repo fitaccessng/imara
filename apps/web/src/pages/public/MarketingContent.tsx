@@ -106,8 +106,8 @@ export function FeatureStory({
   reverse = false,
   spotlight = false,
   benefits,
-  actionTo = "/register",
-  actionLabel = "Create a free account",
+  actionTo = "/login",
+  actionLabel = "Log in",
 }: {
   eyebrow: string;
   title: string;
@@ -325,8 +325,8 @@ export function MarketingCTA({ title, description }: { title: string; descriptio
         <h2>{title}</h2>
         <p>{description}</p>
       </div>
-      <Link to="/register" className="button button-green">
-        Get started free <ArrowRight size={16} aria-hidden="true" />
+      <Link to="/login" className="button button-green">
+        Log in <ArrowRight size={16} aria-hidden="true" />
       </Link>
     </section>
   );

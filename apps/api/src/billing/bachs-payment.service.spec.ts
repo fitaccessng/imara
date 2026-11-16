@@ -109,12 +109,12 @@ describe('BachsPaymentService', () => {
     });
   });
 
-  it('activates a month only from a signed, amount-matched success webhook and handles retries once', async () => {
+  it('grants the full purchased plan only from a signed, amount-matched success webhook and handles retries once', async () => {
     paymentAttemptFindUnique.mockResolvedValue({
       id: 'attempt-id',
       userId: 'user-id',
-      plan: Plan.PRO,
-      amountMinor: 300_000n,
+      plan: Plan.BUSINESS,
+      amountMinor: 1_000_000n,
       currency: 'NGN',
     });
     const attemptClaim = jest.fn()
@@ -134,12 +134,20 @@ describe('BachsPaymentService', () => {
       workspace: { updateMany: workspaceUpdateMany },
     };
     transaction.mockImplementation((callback: (client: typeof tx) => Promise<void>) => callback(tx));
-    getPlan.mockResolvedValue({ storageLimitBytes: 15_000_000_000n });
+    getPlan.mockResolvedValue({
+      plan: Plan.BUSINESS,
+      staffLimit: 30,
+      activeEventLimit: 20,
+      storageLimitBytes: 25_000_000_000n,
+      canEditDocuments: true,
+      canScanDocuments: true,
+      advancedTeamManagement: true,
+    });
 
     const rawBody = Buffer.from(JSON.stringify({
       id: 'evt_test',
       type: 'collection.succeeded',
-      data: { checkout_id: 'chk_checkout123', amount: '3000.00', currency: 'NGN' },
+      data: { checkout_id: 'chk_checkout123', amount: '10000.00', currency: 'NGN' },
     }));
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
@@ -156,12 +164,17 @@ describe('BachsPaymentService', () => {
     expect(subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId: 'user-id' },
       data: expect.objectContaining({
-        plan: Plan.PRO,
-        storageLimitBytes: 15_000_000_000n,
+        plan: Plan.BUSINESS,
+        storageLimitBytes: 25_000_000_000n,
         currentPeriodEnd: expect.any(Date),
       }),
     }));
+    expect(getPlan).toHaveBeenCalledWith(Plan.BUSINESS, tx);
     expect(workspaceUpdateMany).toHaveBeenCalledTimes(1);
+    expect(workspaceUpdateMany).toHaveBeenCalledWith({
+      where: { ownerUserId: 'user-id' },
+      data: { storageLimitBytes: 25_000_000_000n },
+    });
     expect(attemptUpdate).toHaveBeenCalledWith({
       where: { id: 'attempt-id' },
       data: { periodEnd: expect.any(Date) },
@@ -172,6 +185,60 @@ describe('BachsPaymentService', () => {
         status: { in: [PaymentAttemptStatus.PENDING, PaymentAttemptStatus.EXPIRED] },
       },
     }));
+  });
+
+  it('does not activate a free or zero-value checkout from a signed success event', async () => {
+    paymentAttemptFindUnique.mockResolvedValue({
+      id: 'attempt-id',
+      userId: 'user-id',
+      plan: Plan.FREE,
+      amountMinor: 0n,
+      currency: 'NGN',
+    });
+    const rawBody = Buffer.from(JSON.stringify({
+      type: 'collection.succeeded',
+      data: { checkout_id: 'chk_checkout123', amount: '0.00', currency: 'NGN' },
+    }));
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
+      .update(`${timestamp}.`)
+      .update(rawBody)
+      .digest('hex');
+
+    await expect(service.handleWebhook(rawBody, `t=${timestamp},v1=${signature}`))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(getPlan).not.toHaveBeenCalled();
+  });
+
+  it('does not grant a plan for an invalid signature or a non-success event', async () => {
+    const rawBody = Buffer.from(JSON.stringify({
+      type: 'collection.succeeded',
+      data: { checkout_id: 'chk_checkout123', amount: '3000.00', currency: 'NGN' },
+    }));
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const validSignature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
+      .update(`${timestamp}.`)
+      .update(rawBody)
+      .digest('hex');
+
+    const invalidSignature = `${validSignature.slice(0, -1)}${validSignature.endsWith('0') ? '1' : '0'}`;
+    await expect(service.handleWebhook(rawBody, `t=${timestamp},v1=${invalidSignature}`))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(transaction).not.toHaveBeenCalled();
+
+    const unsuccessfulBody = Buffer.from(JSON.stringify({
+      type: 'collection.failed',
+      data: { checkout_id: 'chk_checkout123' },
+    }));
+    const unsuccessfulSignature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
+      .update(`${timestamp}.`)
+      .update(unsuccessfulBody)
+      .digest('hex');
+    await service.handleWebhook(unsuccessfulBody, `t=${timestamp},v1=${unsuccessfulSignature}`);
+
+    expect(paymentAttemptFindUnique).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it('rejects a signed success event if the amount or currency does not match the saved attempt', async () => {

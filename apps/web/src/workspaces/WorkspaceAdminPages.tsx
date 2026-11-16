@@ -738,12 +738,14 @@ export function WorkspacePermissionsPage() {
   }
 
   function selectPreset(folderId: string, presetName: string) {
+    const currentRule = drafts[folderId];
+    const inherit = currentRule?.effect === "NONE" ? true : currentRule?.inherit ?? true;
     if (presetName === "No direct rule") {
       updateDraft(folderId, { effect: "NONE", permissionKeys: [] });
     } else if (presetName === "Restricted") {
-      updateDraft(folderId, { effect: "RESTRICT", permissionKeys: [...PERMISSION_KEYS] });
+      updateDraft(folderId, { effect: "RESTRICT", permissionKeys: [...PERMISSION_KEYS], inherit });
     } else {
-      updateDraft(folderId, { effect: "GRANT", permissionKeys: PERMISSION_PRESETS[presetName] });
+      updateDraft(folderId, { effect: "GRANT", permissionKeys: PERMISSION_PRESETS[presetName], inherit });
     }
   }
 
@@ -806,7 +808,7 @@ export function WorkspacePermissionsPage() {
                           const choice = event.target.value;
                           if (choice === "No direct rule") selectPreset(folder.id, choice);
                           else if (choice === "Revoke access") selectPreset(folder.id, "Restricted");
-                          else updateDraft(folder.id, { effect: "GRANT", permissionKeys: draft.permissionKeys.length ? draft.permissionKeys : PERMISSION_PRESETS.Editor });
+                          else updateDraft(folder.id, { effect: "GRANT", permissionKeys: draft.permissionKeys.length ? draft.permissionKeys : PERMISSION_PRESETS.Editor, inherit: draft.effect === "NONE" ? true : draft.inherit });
                         }}>
                           <option>No direct rule</option><option>Custom grant</option><option>Revoke access</option>
                         </select></label>
@@ -815,7 +817,7 @@ export function WorkspacePermissionsPage() {
                         }}>
                           {Object.keys(PERMISSION_PRESETS).map((presetName) => <option key={presetName}>{presetName}</option>)}<option>Custom</option>
                         </select></label>
-                        <label className="workspace-checkbox-line permission-inherit"><input type="checkbox" checked={draft.inherit} disabled={draft.effect === "NONE"} onChange={(event) => updateDraft(folder.id, { inherit: event.target.checked })} /><span>Include subfolders</span></label>
+                        <label className="workspace-checkbox-line permission-inherit"><input type="checkbox" checked={draft.inherit} disabled={draft.effect === "NONE"} onChange={(event) => updateDraft(folder.id, { inherit: event.target.checked })} /><span>Include current and future subfolders</span></label>
                       </div>
                       {draft.effect === "GRANT" && (
                         <div className="permission-key-grid">

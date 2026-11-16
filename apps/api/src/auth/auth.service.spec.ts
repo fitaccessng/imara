@@ -98,6 +98,7 @@ describe('registration and login', () => {
       }),
     });
     expect(sessionCreate.mock.calls[0][0].data.tokenHash).not.toBe(result.token);
+    expect(sessionCreate.mock.calls[0][0].data.expiresAt).toEqual(result.expiresAt);
     expect(accountLock).toHaveBeenCalledWith({
       where: { id: user.id, accountStatus: 'ACTIVE' },
       data: { updatedAt: expect.any(Date) },

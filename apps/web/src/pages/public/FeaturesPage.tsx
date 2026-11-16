@@ -744,8 +744,8 @@ export function FeaturesPage() {
           eyebrow="DIGITAL DRIVE"
           title="Keep every important document in its place."
           description="Upload your documents, create folders and subfolders, and search by file name when you need something. Open supported files, download copies, and edit supported formats when your plan allows it."
-          actionTo="/register"
-          actionLabel="Start your Digital Drive"
+          actionTo="/login"
+          actionLabel="Log in"
           benefits={[
             "Upload files and organise them in nested folders.",
             "Search for files and folders by name.",
@@ -763,8 +763,8 @@ export function FeaturesPage() {
           eyebrow="FILE & FOLDER SHARING"
           title="Give each teammate access to the folders they need."
           description="Create a business workspace and invite staff by email. Share folders with workspace members and set permissions for viewing, uploading, editing supported files and downloading. Change or remove access when responsibilities change."
-          actionTo="/register"
-          actionLabel="Set up a business workspace"
+          actionTo="/login"
+          actionLabel="Log in"
           reverse
           benefits={[
             "Invite staff into your business workspace.",
@@ -800,8 +800,8 @@ export function FeaturesPage() {
           eyebrow="EVENT CREATION & QR CODE"
           title="Set up your event and give guests one QR code."
           description="Add an event name and date, then choose how people can access its finished gallery: private, by link or with a passcode. IMARA generates a unique guest-upload QR code and capture link for the event. Download or print the code for invitations, signs or tables."
-          actionTo="/register"
-          actionLabel="Create an event workspace"
+          actionTo="/login"
+          actionLabel="Log in"
           benefits={[
             "Add event details and choose gallery access settings.",
             "Generate a dedicated guest-upload QR code.",
@@ -937,7 +937,7 @@ export function FeaturesPage() {
           <div className="mx-auto max-w-[1200px]">
             <MarketingCTA
               title="Bring your files and event memories into IMARA."
-              description="Create an account to organise documents, invite business teammates and build QR-powered event galleries."
+              description="Log in to organise documents, invite business teammates and build QR-powered event galleries."
             />
           </div>
         </section>

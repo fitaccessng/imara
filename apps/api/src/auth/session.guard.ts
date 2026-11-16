@@ -7,6 +7,7 @@ import {
 import { Plan, UserAccountStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
+import { getSessionConfig } from './session-config';
 import { hashToken } from './token';
 
 const SESSION_ACTIVITY_INTERVAL_MS = 5 * 60_000;
@@ -20,7 +21,7 @@ export class SessionGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
-    const token = req.cookies?.[process.env.SESSION_COOKIE_NAME ?? 'imara_session'];
+    const token = req.cookies?.[getSessionConfig().cookieName];
     if (typeof token !== 'string' || token.length < 32) throw new UnauthorizedException('Authentication required');
 
     const tokenHash = hashToken(token);

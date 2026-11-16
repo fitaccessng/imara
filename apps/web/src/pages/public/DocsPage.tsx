@@ -402,8 +402,8 @@ export function DocsPage() {
             </p>
 
             <div className="docs-cover-links">
-              <Link to="/register">
-                Create an account <ArrowUpRight size={14} />
+              <Link to="/login">
+                Log in <ArrowUpRight size={14} />
               </Link>
 
               <Link to="/pricing">

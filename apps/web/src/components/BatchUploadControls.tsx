@@ -226,6 +226,7 @@ export function BatchUploadControls({
         event.currentTarget.value = "";
       }} />
     </label>
+    {!canCreateFolders && <p className="batch-upload-permission-note">Folder import needs “Create subfolders” access. Ask a workspace admin to grant it.</p>}
     <div
       className={`batch-upload-drop-target${draggingFiles ? " is-dragging" : ""}${isDisabled ? " is-disabled" : ""}`}
       onDragEnter={(event) => {

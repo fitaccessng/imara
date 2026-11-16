@@ -4,13 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
+  BellRing,
   Camera,
   CalendarDays,
+  ClipboardCheck,
   Cloud,
   CloudDownload,
+  FileSignature,
   FileText,
   FolderPlus,
+  LockKeyhole,
   MailPlus,
+  MessageCircle,
   NotebookPen,
   ShieldCheck,
   Sparkles,
@@ -23,6 +28,8 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError, apiRequest, type DashboardSummary } from "../lib/api";
 import { StorageOverviewCard } from "./dashboard/StorageOverviewCard";
+import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
+import { workspaceHref, type Workspace } from "../workspaces/types";
 
 interface WeeklyInsights {
   period: {
@@ -86,6 +93,39 @@ function SectionHeading({
   );
 }
 
+const businessTools = [
+  { title: "Shared files", path: "/workspace", icon: FileText },
+  { title: "Team calendar", path: "/workspace/calendar", icon: CalendarDays },
+  { title: "Private files", path: "/workspace/file-deliveries", icon: LockKeyhole },
+  { title: "Signatures", path: "/workspace/signatures", icon: FileSignature },
+  { title: "Approvals", path: "/workspace/approvals", icon: ClipboardCheck },
+  { title: "Reminders", path: "/workspace/reminders", icon: BellRing },
+  { title: "Team chat", path: "/workspace/chat", icon: MessageCircle },
+];
+
+function DashboardBusinessTools({ workspace }: { workspace: Workspace }) {
+  return (
+    <section className="dashboard-business-tools overflow-hidden rounded-2xl border border-[#DDEBE0] bg-white p-4 shadow-[0_3px_18px_rgba(16,43,70,0.025)] sm:p-5 lg:p-6">
+      <SectionHeading eyebrow="BUSINESS WORKSPACE" title={workspace.name} />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        {businessTools.map(({ title, path, icon: Icon }) => (
+          <Link
+            key={path}
+            to={workspaceHref(path, workspace.id)}
+            className="dashboard-business-tool group flex min-w-0 items-center gap-2.5 rounded-xl border border-[#E8EFE9] bg-[#F8FBF8] p-3 transition hover:border-[#B9DCC1] hover:bg-[#F1F9F3] sm:p-3.5"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#EAF7ED] text-[#168D34]">
+              <Icon size={17} />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[#34495B]">{title}</span>
+            <ArrowRight size={14} className="hidden shrink-0 text-[#9AA7B5] transition group-hover:translate-x-0.5 group-hover:text-[#20AD43] sm:block" />
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /* Quick access tools */
 
 const quickTools = [
@@ -141,7 +181,7 @@ const quickTools = [
 
 function DashboardQuickTools({ online }: { online: boolean }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-4 shadow-[0_3px_18px_rgba(16,43,70,0.025)] sm:p-5 lg:p-6">
+    <section className="dashboard-quick-tools overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white p-4 shadow-[0_3px_18px_rgba(16,43,70,0.025)] sm:p-5 lg:p-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#20AD43]">
@@ -493,6 +533,7 @@ function OrganisationInsights({
 export function DashboardPage() {
   const { setUser } = useAuth();
   const [online, setOnline] = useState(navigator.onLine);
+  const { workspace } = useWorkspaceScope();
 
   const {
     data,
@@ -564,7 +605,7 @@ export function DashboardPage() {
   }).format(new Date());
 
   return (
-    <main className="mx-auto w-full min-w-0 max-w-[1500px] space-y-5 overflow-x-clip pb-8 sm:space-y-7">
+    <main className="dashboard-overview mx-auto w-full min-w-0 max-w-[1500px] space-y-5 overflow-x-clip pb-8 sm:space-y-7">
 
       {/* Header */}
       <header
@@ -584,8 +625,8 @@ export function DashboardPage() {
             <span className="text-[#20AD43]">.</span>
           </h1>
 
-          <p className="mt-2 max-w-lg text-xs leading-6 text-[#718096] sm:text-sm">
-            Welcome back. Your files and everything important are right here.
+          <p className="dashboard-welcome-copy mt-2 max-w-lg text-xs leading-6 text-[#718096] sm:text-sm">
+            Your files and tools, at a glance.
           </p>
         </div>
 
@@ -681,6 +722,8 @@ export function DashboardPage() {
       {/* Quick tools */}
       <DashboardQuickTools online={online} />
 
+      {workspace && <DashboardBusinessTools workspace={workspace} />}
+
       {/* File library */}
       <section
         data-tour="library"
@@ -715,8 +758,7 @@ export function DashboardPage() {
         />
 
         <p className="text-[11px] leading-5 text-[#A0AEC0]">
-          Storage figures are updated from your account. In-progress
-          uploads count against your available storage quota.
+          Storage updates from your account; uploads count toward your quota.
         </p>
       </div>
     </main>

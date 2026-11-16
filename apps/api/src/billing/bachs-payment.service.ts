@@ -282,6 +282,9 @@ export class BachsPaymentService {
       this.logger.warn(`Ignoring Bachs payment for unknown checkout ${checkoutId}`);
       return;
     }
+    if (attempt.plan === Plan.FREE || attempt.amountMinor <= 0n) {
+      throw new BadRequestException('Only paid plan checkouts can activate a subscription.');
+    }
     if (event.data.currency !== attempt.currency
       || parseAmount(event.data.amount) !== attempt.amountMinor) {
       throw new BadRequestException('Payment amount or currency does not match the checkout.');
