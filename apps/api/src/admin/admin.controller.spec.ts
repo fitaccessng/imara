@@ -102,7 +102,7 @@ describe('AdminController', () => {
     };
     const authService = {
       requestPasswordResetForUser: jest.fn().mockResolvedValue(undefined),
-      resendVerificationForUser: jest.fn().mockResolvedValue(true),
+      resendVerificationLinkForUser: jest.fn().mockResolvedValue(true),
     };
     const controller = new AdminController(
       adminService as unknown as AdminService,
@@ -136,10 +136,10 @@ describe('AdminController', () => {
     expect(authService.requestPasswordResetForUser).toHaveBeenCalledWith('user-id');
     await expect(controller.resendUserVerification('user-id', request)).resolves.toEqual({
       sent: true,
-      message: 'A verification code was sent to the customer email address.',
+      message: 'A verification link was sent to the customer email address.',
     });
     expect(adminService.auditVerificationResendRequest).toHaveBeenCalledWith('user-id', request);
-    expect(authService.resendVerificationForUser).toHaveBeenCalledWith('user-id');
+    expect(authService.resendVerificationLinkForUser).toHaveBeenCalledWith('user-id');
     await expect(controller.setUserStatus('user-id', { status: 'SUSPENDED' } as never, request))
       .resolves.toEqual({ id: 'user-id', status: 'SUSPENDED' });
     await expect(controller.revokeUserSession('user-id', 'session-id', request))

@@ -752,10 +752,10 @@ function AdminUserDetail({ role }: { role: AdminRole }) {
           disabled={verificationResend.isPending}
           type="button"
           onClick={() => {
-            if (window.confirm(`Send an email verification code to ${account.email}?`)) verificationResend.mutate();
+            if (window.confirm(`Send an email verification link to ${account.email}?`)) verificationResend.mutate();
           }}
         >
-          {verificationResend.isPending ? "Sending…" : <><Mail size={14} /> Resend verification code</>}
+          {verificationResend.isPending ? "Sending…" : <><Mail size={14} /> Resend verification link</>}
         </button>}
         {account.role === "ADMIN" && <p className="admin-panel-note">Platform administrator accounts are not suspended from customer controls.</p>}
       </section>

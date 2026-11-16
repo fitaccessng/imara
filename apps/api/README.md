@@ -280,23 +280,28 @@ Authenticated frontend contracts:
 
 Paid plans use Bachs hosted checkout with NGN one-time payments. A confirmed
 payment grants one calendar month of the selected plan; it does not auto-renew.
-The API only activates access from a signed `collection.succeeded` webhook and
-checks the exact amount and currency against the saved checkout attempt. Expired
+The API activates access from a signed `collection.succeeded` webhook or a
+signed `checkout.completed` webhook with `payment_status: "paid"`, and checks
+the exact amount and currency against the saved checkout attempt. Subscribe the
+Bachs endpoint to both payment-success events and `checkout.expired`. Expired
 paid plans revert to Free on the account's next authenticated API request.
 
 Configure `BACHS_MODE=sandbox`, a sandbox `BACHS_API_KEY`, and
 `BACHS_WEBHOOK_SECRET` in the API environment. Set `BACHS_FRONTEND_URL` to a
 public HTTPS URL (an HTTPS tunnel is needed for local checkout; Bachs rejects
 localhost return URLs). Register `POST https://<api-host>/api/v1/billing/webhook`
-in the Bachs developer portal and subscribe to `collection.succeeded` and
-`checkout.expired`. Start with sandbox keys and switch to `BACHS_MODE=live`
-and an `sk_live_` key only after testing and verifying the Bachs account.
+in the Bachs developer portal and subscribe to `collection.succeeded`,
+`checkout.completed`, and `checkout.expired`. Start with sandbox keys and switch
+to `BACHS_MODE=live` and an `sk_live_` key only after testing and verifying the
+Bachs account.
 
 Email is not simulated. Registration, resend-verification and forgot-password return
 503 until all SMTP variables are supplied. A configured but failing SMTP service will
 also return 503. Email verification and password recovery use six-digit, single-use
 codes with a configurable 10-minute expiry, up to five attempts per code, and SHA-256
-digests stored in the database. Legacy verification and reset links remain accepted.
+digests stored in the database. Administrators can resend an unverified user's
+single-use verification link from the user detail page; verification and reset links
+are stored as token digests and expire using the configured email-token lifetime.
 Invitation tokens are random, single-use, time-limited, and stored only as SHA-256 digests.
 Operational delivery retry/queueing for authentication email is not
 implemented. Platform-announcement emails use a separate persisted queue and

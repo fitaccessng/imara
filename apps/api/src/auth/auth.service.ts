@@ -47,8 +47,10 @@ export class AuthService {
     }
   }
 
-  private async createEmailToken(userId: string, type: 'verify' | 'reset') {
-    const raw = type === 'verify' || type === 'reset'
+  private async createEmailToken(userId: string, type: 'verify' | 'reset', useLink = false) {
+    const raw = type === 'verify' && useLink
+      ? createOpaqueToken()
+      : type === 'verify' || type === 'reset'
       ? randomInt(100_000, 1_000_000).toString()
       : createOpaqueToken();
     const expiresMinutes = Number(
@@ -181,7 +183,7 @@ export class AuthService {
     await this.sendVerificationCode(user);
   }
 
-  async resendVerificationForUser(userId: string): Promise<boolean> {
+  async resendVerificationLinkForUser(userId: string): Promise<boolean> {
     this.requireMailer();
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -189,7 +191,12 @@ export class AuthService {
     });
     if (!user) throw new NotFoundException('Customer not found');
     if (user.emailVerifiedAt) return false;
-    await this.sendVerificationCode(user);
+    const token = await this.createEmailToken(user.id, 'verify', true);
+    try {
+      await this.mailer.sendVerification(user.email, token);
+    } catch {
+      throw new ServiceUnavailableException('Verification email could not be delivered.');
+    }
     return true;
   }
 

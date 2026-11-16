@@ -147,7 +147,7 @@ describe('BachsPaymentService', () => {
     const rawBody = Buffer.from(JSON.stringify({
       id: 'evt_test',
       type: 'collection.succeeded',
-      data: { checkout_id: 'chk_checkout123', amount: '10000.00', currency: 'NGN' },
+      data: { checkout_id: 'chk_checkout123', status: 'SUCCEEDED', amount: '10000.00', currency: 'NGN' },
     }));
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
@@ -187,6 +187,79 @@ describe('BachsPaymentService', () => {
     }));
   });
 
+  it('activates a plan from a signed paid checkout.completed event', async () => {
+    paymentAttemptFindUnique.mockResolvedValue({
+      id: 'attempt-id',
+      userId: 'user-id',
+      plan: Plan.PRO,
+      amountMinor: 300_000n,
+      currency: 'NGN',
+    });
+    const subscriptionUpdate = jest.fn().mockResolvedValue({});
+    const attemptClaim = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      paymentAttempt: { updateMany: attemptClaim, update: jest.fn().mockResolvedValue({}) },
+      subscription: {
+        findUnique: jest.fn().mockResolvedValue({
+          plan: Plan.FREE,
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+        }),
+        update: subscriptionUpdate,
+      },
+      workspace: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    };
+    transaction.mockImplementation((callback: (client: typeof tx) => Promise<void>) => callback(tx));
+    getPlan.mockResolvedValue({ storageLimitBytes: 10_000_000_000n });
+
+    const rawBody = Buffer.from(JSON.stringify({
+      id: 'evt_checkout',
+      type: 'checkout.completed',
+      data: {
+        checkout_id: 'chk_checkout123',
+        status: 'completed',
+        payment_status: 'paid',
+        amount: '3000.00',
+        currency: 'NGN',
+      },
+    }));
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
+      .update(`${timestamp}.`)
+      .update(rawBody)
+      .digest('hex');
+
+    await service.handleWebhook(rawBody, `t=${timestamp},v1=${signature}`);
+
+    expect(subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-id' },
+      data: expect.objectContaining({ plan: Plan.PRO, storageLimitBytes: 10_000_000_000n }),
+    }));
+  });
+
+  it('does not activate a plan from a completed checkout with no collected payment', async () => {
+    const rawBody = Buffer.from(JSON.stringify({
+      type: 'checkout.completed',
+      data: {
+        checkout_id: 'chk_checkout123',
+        status: 'completed',
+        payment_status: 'no_payment_required',
+        amount: '0',
+        currency: 'NGN',
+      },
+    }));
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
+      .update(`${timestamp}.`)
+      .update(rawBody)
+      .digest('hex');
+
+    await service.handleWebhook(rawBody, `t=${timestamp},v1=${signature}`);
+
+    expect(paymentAttemptFindUnique).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('does not activate a free or zero-value checkout from a signed success event', async () => {
     paymentAttemptFindUnique.mockResolvedValue({
       id: 'attempt-id',
@@ -197,7 +270,7 @@ describe('BachsPaymentService', () => {
     });
     const rawBody = Buffer.from(JSON.stringify({
       type: 'collection.succeeded',
-      data: { checkout_id: 'chk_checkout123', amount: '0.00', currency: 'NGN' },
+      data: { checkout_id: 'chk_checkout123', status: 'SUCCEEDED', amount: '0.00', currency: 'NGN' },
     }));
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
@@ -214,7 +287,7 @@ describe('BachsPaymentService', () => {
   it('does not grant a plan for an invalid signature or a non-success event', async () => {
     const rawBody = Buffer.from(JSON.stringify({
       type: 'collection.succeeded',
-      data: { checkout_id: 'chk_checkout123', amount: '3000.00', currency: 'NGN' },
+      data: { checkout_id: 'chk_checkout123', status: 'SUCCEEDED', amount: '3000.00', currency: 'NGN' },
     }));
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const validSignature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)
@@ -251,7 +324,7 @@ describe('BachsPaymentService', () => {
     });
     const rawBody = Buffer.from(JSON.stringify({
       type: 'collection.succeeded',
-      data: { checkout_id: 'chk_checkout123', amount: '1.00', currency: 'USD' },
+      data: { checkout_id: 'chk_checkout123', status: 'SUCCEEDED', amount: '1.00', currency: 'USD' },
     }));
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = createHmac('sha256', process.env.BACHS_WEBHOOK_SECRET!)

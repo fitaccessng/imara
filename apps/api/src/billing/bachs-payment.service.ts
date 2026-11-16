@@ -263,19 +263,27 @@ export class BachsPaymentService {
     if (!isRecord(event) || typeof event.type !== 'string' || !isRecord(event.data)) {
       throw new BadRequestException('Webhook payload is invalid.');
     }
-    const checkoutId = event.data.checkout_id;
-    if (typeof checkoutId !== 'string' || !/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
-      throw new BadRequestException('Webhook checkout ID is invalid.');
-    }
-
     if (event.type === 'checkout.expired') {
+      const checkoutId = event.data.checkout_id;
+      if (typeof checkoutId !== 'string' || !/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
+        throw new BadRequestException('Webhook checkout ID is invalid.');
+      }
       await this.prisma.paymentAttempt.updateMany({
         where: { checkoutId, status: PaymentAttemptStatus.PENDING },
         data: { status: PaymentAttemptStatus.EXPIRED },
       });
       return;
     }
-    if (event.type !== 'collection.succeeded') return;
+    const paidCollection = event.type === 'collection.succeeded' && event.data.status === 'SUCCEEDED';
+    const paidCheckout = event.type === 'checkout.completed'
+      && event.data.status === 'completed'
+      && event.data.payment_status === 'paid';
+    if (!paidCollection && !paidCheckout) return;
+
+    const checkoutId = event.data.checkout_id;
+    if (typeof checkoutId !== 'string' || !/^chk_[A-Za-z0-9_-]+$/.test(checkoutId)) {
+      throw new BadRequestException('Webhook checkout ID is invalid.');
+    }
 
     const attempt = await this.prisma.paymentAttempt.findUnique({ where: { checkoutId } });
     if (!attempt) {

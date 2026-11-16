@@ -370,11 +370,11 @@ describe('session management', () => {
       jest.clearAllMocks();
     });
 
-    it('sends verification code to a specific unverified account', async () => {
-      const sendVerificationCode = jest.fn().mockResolvedValue(undefined);
+    it('sends an expiring verification link to an unverified account', async () => {
+      const sendVerification = jest.fn().mockResolvedValue(undefined);
       const create = jest.fn().mockResolvedValue({});
       const deleteMany = jest.fn().mockResolvedValue({ count: 0 });
-      const sendService = new AuthService(
+      const linkService = new AuthService(
         {
           user: {
             findUnique: jest.fn().mockResolvedValue({
@@ -388,18 +388,22 @@ describe('session management', () => {
         } as unknown as PrismaService,
         {
           isConfigured: () => true,
-          sendVerificationCode,
+          sendVerification,
         } as unknown as MailerService,
         planService as never,
       );
 
-      await expect(sendService.resendVerificationForUser('user-id')).resolves.toBe(true);
-      expect(sendVerificationCode).toHaveBeenCalledWith(
-        'person@example.com',
-        expect.stringMatching(/^\d{6}$/),
-      );
+      await expect(linkService.resendVerificationLinkForUser('user-id')).resolves.toBe(true);
+
+      const [email, token] = sendVerification.mock.calls[0];
+      expect(email).toBe('person@example.com');
+      expect(token).toMatch(/^[A-Za-z0-9_-]{40,}$/);
       expect(create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ userId: 'user-id', expiresAt: expect.any(Date) }),
+        data: expect.objectContaining({
+          userId: 'user-id',
+          tokenHash: hashToken(token),
+          expiresAt: expect.any(Date),
+        }),
       });
     });
 

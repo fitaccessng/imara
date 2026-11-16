@@ -331,11 +331,11 @@ export class AdminController {
     @Req() request: PlatformAdminRequest,
   ) {
     await this.admin.auditVerificationResendRequest(id, request);
-    const sent = await this.auth.resendVerificationForUser(id);
+    const sent = await this.auth.resendVerificationLinkForUser(id);
     return {
       sent,
       message: sent
-        ? 'A verification code was sent to the customer email address.'
+        ? 'A verification link was sent to the customer email address.'
         : 'This customer email is already verified.',
     };
   }

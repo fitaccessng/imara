@@ -1969,7 +1969,7 @@ export class AdminService {
       request,
       'admin.user.verification.resend',
       'user',
-      { userId, delivery: 'email-verification-code' },
+      { userId, delivery: 'email-verification-link' },
     );
   }
 
