@@ -255,7 +255,7 @@ export class WorkspaceStorageService {
           throw new NotFoundException('One or more selected team members are not eligible');
         }
         if (assignedMembers.length) {
-          const permissionKeys = ['viewFolder', 'viewFiles', 'downloadFiles', 'uploadFiles'];
+          const permissionKeys = ['viewFolder', 'viewFiles', 'downloadFiles', 'uploadFiles', 'createSubfolders'];
           await tx.folderPermission.createMany({
             data: assignedMembers.map((member) => ({
               workspaceId,

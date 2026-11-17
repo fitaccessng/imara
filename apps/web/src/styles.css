@@ -1543,6 +1543,8 @@ input, select, textarea { max-width: 100%; }
 .workspace-activity-copy strong { color: #50635a; font-size: 10px; font-weight: 600; text-transform: capitalize; }
 .workspace-activity-copy small, .workspace-activity-row time { color: #929d95; font-size: 8px; }
 .permission-tree-count { border-radius: 16px; background: #eef2e9; padding: 6px 9px; color: #6d806f; font-size: 8px; white-space: nowrap; }
+.workspace-member-activity { margin-top: 14px; }
+.workspace-member-activity-note { margin: -4px 0 12px; color: #788981; font-size: 10px; line-height: 1.5; }
 .permissions-person { display: flex; align-items: center; gap: 10px; border: 1px solid #e4e7df; background: #fcfbf7; padding: 11px 14px; }
 .permissions-person > span { display: grid; gap: 4px; }
 .permissions-person strong { color: #3c554a; font-size: 10px; }

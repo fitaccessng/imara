@@ -58,6 +58,15 @@ export class WorkspacesController {
     return this.workspaces.getMember(workspaceId, memberId, req.auth.userId);
   }
 
+  @Get('workspaces/:workspaceId/members/:memberId/activity')
+  memberActivity(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ) {
+    return this.workspaces.memberActivity(workspaceId, memberId, req.auth.userId);
+  }
+
   @Post('workspaces/:workspaceId/invitations')
   @HttpCode(HttpStatus.CREATED)
   invite(

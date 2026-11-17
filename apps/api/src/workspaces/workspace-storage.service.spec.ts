@@ -279,7 +279,7 @@ describe('workspace storage authorization', () => {
         folderId: 'folder-a',
         memberId: 'member-staff',
         effect: 'GRANT',
-        permissionKeys: ['viewFolder', 'viewFiles', 'downloadFiles', 'uploadFiles'],
+        permissionKeys: ['viewFolder', 'viewFiles', 'downloadFiles', 'uploadFiles', 'createSubfolders'],
         inherit: true,
         createdById: 'owner-a',
         updatedById: 'owner-a',

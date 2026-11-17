@@ -34,7 +34,7 @@ const configs = {
     storageLimitBytes: 15_000n,
     canEditDocuments: true,
     canScanDocuments: true,
-    advancedTeamManagement: false,
+    advancedTeamManagement: true,
     monthlyPriceMinor: 300_000n,
     currency: 'NGN',
     updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -67,7 +67,7 @@ describe('PlanCatalogueService', () => {
       maxUploadBytes: 250 * 1024 * 1024,
       canEditDocuments: true,
       canScanDocuments: true,
-      advancedTeamManagement: false,
+      advancedTeamManagement: true,
     });
     expect(findUnique).toHaveBeenCalledWith({ where: { plan: Plan.PRO } });
   });
@@ -101,7 +101,7 @@ describe('PlanCatalogueService', () => {
     } as unknown as PrismaService);
 
     await expect(service.requireAdvancedTeamManagement(Plan.PRO))
-      .rejects.toBeInstanceOf(ForbiddenException);
+      .resolves.toBeUndefined();
     await expect(service.requireAdvancedTeamManagement(Plan.BUSINESS))
       .resolves.toBeUndefined();
   });
@@ -142,7 +142,7 @@ describe('PlanCatalogueService', () => {
           features: {
             canEditDocuments: true,
             canScanDocuments: true,
-            advancedTeamManagement: false,
+            advancedTeamManagement: true,
           },
         },
         {

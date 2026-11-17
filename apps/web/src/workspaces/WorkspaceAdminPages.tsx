@@ -471,6 +471,15 @@ export function WorkspaceMemberPage() {
     queryFn: () => apiRequest<WorkspaceMember>(`/workspaces/${workspace?.id}/members/${memberId}`),
     enabled: Boolean(workspace && memberId),
   });
+  const memberActivityQuery = useQuery({
+    queryKey: ["workspace-member-activity", workspace?.id, memberId],
+    queryFn: () => apiRequest<WorkspaceActivity[]>(`/workspaces/${workspace?.id}/members/${memberId}/activity`),
+    enabled: Boolean(
+      workspace
+      && memberId
+      && (workspace.role === "OWNER" || workspace.role === "ADMIN"),
+    ),
+  });
 
   useEffect(() => {
     const incoming = memberQuery.data;
@@ -506,25 +515,24 @@ export function WorkspaceMemberPage() {
       ]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to update the member.");
-    throw reason;
     }
   }
 
   function requestMemberDetailAction(action: "suspend" | "restore" | "remove") {
     if (action === "restore") {
-    void performAction(action).catch(() => undefined);
-    return;
+      void performAction(action);
+      return;
     }
     const display = member?.displayName || member?.user.name || "this member";
     setActionModal({
-    title: action === "remove" ? "Remove team member" : "Suspend access",
-    description: `${action === "remove" ? `Remove ${display} from this workspace?` : `Suspend ${display}'s workspace access?`} This change takes effect immediately.`,
-    confirmLabel: action === "remove" ? "Remove member" : "Suspend access",
-    danger: true,
-    onConfirm: async () => {
-      await performAction(action);
-      setActionModal(null);
-    },
+      title: action === "remove" ? "Remove team member" : "Suspend access",
+      description: `${action === "remove" ? `Remove ${display} from this workspace?` : `Suspend ${display}'s workspace access?`} This change takes effect immediately.`,
+      confirmLabel: action === "remove" ? "Remove member" : "Suspend access",
+      danger: true,
+      onConfirm: async () => {
+        await performAction(action);
+        setActionModal(null);
+      },
     });
   }
 
@@ -570,6 +578,7 @@ export function WorkspaceMemberPage() {
       {workspace && <WorkspaceHeader workspace={workspace} workspaces={workspaces} selectWorkspace={selectWorkspace} eyebrow="BUSINESS · PEOPLE" title="Member details" subtitle="Review workspace role and folder access." />}
       <Link className="back-link workspace-back-link" to={workspaceHref("/workspace/team", workspace?.id)}><ArrowLeft size={14} /> Back to team</Link>
       {memberQuery.isLoading ? <PageLoading label="Loading member…" /> : memberQuery.isError ? <WorkspaceLoadError error={memberQuery.error} retry={() => void memberQuery.refetch()} /> : member && (
+        <>
         <section className="workspace-member-detail">
           <div className="workspace-detail-person">
             <div className="workspace-member-avatar workspace-member-avatar-large">{(member.displayName || member.user.name).split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
@@ -614,6 +623,35 @@ export function WorkspaceMemberPage() {
             </div>
           )}
         </section>
+        <section className="workspace-panel workspace-member-activity">
+          <div className="workspace-panel-heading">
+            <div><span className="eyebrow">MEMBER HISTORY</span><h2>Activity log</h2></div>
+            <Link className="subtle-link" to={workspaceHref("/workspace/activity", workspace.id)}>Workspace activity <ArrowRight size={13} /></Link>
+          </div>
+          <p className="workspace-member-activity-note">Recent events performed by this person or recorded against their membership, from the latest 100 workspace events.</p>
+          {memberActivityQuery.isLoading ? <PageLoading label="Loading member activity…" />
+            : memberActivityQuery.isError ? <WorkspaceLoadError error={memberActivityQuery.error} retry={() => void memberActivityQuery.refetch()} />
+              : (() => {
+                const events = memberActivityQuery.data ?? [];
+                return events.length ? (
+                  <div className="workspace-activity-list">
+                    {events.map((event) => (
+                      <article className="workspace-activity-row" key={event.id}>
+                        <span className="activity-mark"><Shield size={15} /></span>
+                        <span className="workspace-activity-copy">
+                          <strong>{event.action.replace(/_/g, " ").toLowerCase()}</strong>
+                          <small>{event.targetType}{event.targetId ? ` · ${event.targetId}` : ""}</small>
+                        </span>
+                        <time dateTime={event.createdAt}>{dateTimeFormat.format(new Date(event.createdAt))}</time>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="workspace-list-empty"><Clock3 size={20} /><strong>No member activity in recent history</strong><span>Events appear here when this member performs an action or a change is recorded against their membership.</span></div>
+                );
+              })()}
+        </section>
+        </>
       )}
       {actionModal && <ActionModal request={actionModal} onClose={() => setActionModal(null)} />}
     </div>

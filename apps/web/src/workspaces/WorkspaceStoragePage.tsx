@@ -57,7 +57,7 @@ export function WorkspaceStoragePage() {
   const membersQuery = useQuery({
     queryKey: ["workspace-members", workspaceId],
     queryFn: () => apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`),
-    enabled: Boolean(workspaceId && isAdministrator && createFolderOpen),
+    enabled: Boolean(workspaceId && isAdministrator && createFolderOpen && !folderId),
   });
   const assignableMembers = (membersQuery.data ?? []).filter((member) =>
     member.status === "ACTIVE" && (member.role === "MANAGER" || member.role === "STAFF"));
@@ -394,7 +394,11 @@ export function WorkspaceStoragePage() {
               <div><span className="eyebrow">SHARED FILES</span><h2 id="create-shared-folder-title">Create a folder</h2></div>
               <button className="icon-button" type="button" aria-label="Close dialog" disabled={createFolder.isPending} onClick={() => setCreateFolderOpen(false)}><X size={18} /></button>
             </div>
-            <p>Name the folder{isAdministrator ? " and choose which team members can access it." : "."}</p>
+            <p>{folderId
+              ? "People who already have access to this parent folder will inherit the same access here."
+              : isAdministrator
+                ? "Name the folder and choose which team members can access it."
+                : "Name the folder to create it here."}</p>
             <form onSubmit={(event) => void submitFolder(event)}>
               <label className="field" htmlFor="shared-folder-name">Folder name</label>
               <input
@@ -408,7 +412,7 @@ export function WorkspaceStoragePage() {
                 value={folderName}
                 onChange={(event) => setFolderName(event.target.value)}
               />
-              {isAdministrator && (
+              {isAdministrator && !folderId && (
                 <section className="folder-staff-assignment" aria-labelledby="folder-staff-heading">
                   <div className="folder-staff-heading">
                     <span className="folder-staff-icon"><Users size={16} /></span>
@@ -444,10 +448,16 @@ export function WorkspaceStoragePage() {
                       ) : <p className="folder-staff-status">No active staff or managers yet. You can create the folder without assigning anyone.</p>}
                 </section>
               )}
+              {isAdministrator && folderId && (
+                <div className="workspace-admin-notice">
+                  <ShieldCheck size={16} />
+                  <span>Parent folder access carries into this subfolder. You can add or restrict specific people from Team & access → Manage folder access.</span>
+                </div>
+              )}
               {createFolder.error && <p className="form-alert" role="alert">{createFolder.error instanceof Error ? createFolder.error.message : "Unable to create the folder."}</p>}
               <div className="folder-move-actions">
                 <button className="button button-outline" type="button" onClick={() => setCreateFolderOpen(false)} disabled={createFolder.isPending}>Cancel</button>
-                <button className="button button-green" type="submit" disabled={createFolder.isPending || !folderName.trim() || membersQuery.isLoading || (isAdministrator && membersQuery.isError)}>
+                <button className="button button-green" type="submit" disabled={createFolder.isPending || !folderName.trim() || (isAdministrator && !folderId && (membersQuery.isLoading || membersQuery.isError))}>
                   {createFolder.isPending ? "Creating…" : "Create folder"}
                 </button>
               </div>

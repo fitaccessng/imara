@@ -37,6 +37,27 @@ describe('folder permission evaluation', () => {
     expect(evaluateFolderPermission('STAFF', 'downloadFiles', path.slice(0, 2), rules)).toBe(false);
   });
 
+  it('inherits shared-folder access and subfolder-creation rights through descendants', () => {
+    const rules = [{
+      folderId: 'root',
+      effect: 'GRANT' as const,
+      permissionKeys: ['viewFolder', 'viewFiles', 'createSubfolders'],
+      inherit: true,
+    }];
+    expect(evaluateFolderPermission('STAFF', 'viewFolder', path, rules)).toBe(true);
+    expect(evaluateFolderPermission('STAFF', 'viewFiles', path, rules)).toBe(true);
+    expect(evaluateFolderPermission('STAFF', 'createSubfolders', path, rules)).toBe(true);
+  });
+
+  it('does not allow a descendant grant to override a restriction on the same folder', () => {
+    const rules = [
+      { folderId: 'root', effect: 'GRANT' as const, permissionKeys: ['viewFiles'], inherit: true },
+      { folderId: 'department', effect: 'RESTRICT' as const, permissionKeys: ['viewFiles'], inherit: true },
+      { folderId: 'department', effect: 'GRANT' as const, permissionKeys: ['viewFiles'], inherit: true },
+    ];
+    expect(evaluateFolderPermission('STAFF', 'viewFiles', path, rules)).toBe(false);
+  });
+
   it('allows a deliberate descendant grant to re-grant a restricted permission', () => {
     const rules = [
       { folderId: 'root', effect: 'GRANT' as const, permissionKeys: ['uploadFiles'], inherit: true },

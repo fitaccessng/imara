@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Plan, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { createDatabaseConnectionConfig } from '../src/prisma/database-connection';
 
@@ -12,6 +12,12 @@ async function main() {
   // User subscriptions are provisioned atomically during registration.
   // This seed is intentionally idempotent and does not create demo credentials.
   await prisma.$queryRaw`SELECT 1`;
+  // Keep paid-plan feature defaults current without resetting administrator-
+  // configured catalogue prices, limits, or other feature flags.
+  await prisma.planCatalogue.updateMany({
+    where: { plan: { in: [Plan.PRO, Plan.BUSINESS] } },
+    data: { advancedTeamManagement: true },
+  });
   console.log('Database connection verified; no demo users created.');
 }
 

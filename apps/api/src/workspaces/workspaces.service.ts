@@ -610,18 +610,33 @@ export class WorkspacesService {
     if (!role && displayName === undefined) return this.getMember(workspaceId, memberId, actorId);
     const updated = await this.prisma.$transaction(async (tx) => {
       if (role) await this.assertManagerRoleAvailable(tx, actor.workspace.ownerUserId, role);
-      return tx.workspaceMember.update({
+      const result = await tx.workspaceMember.update({
         where: { id: target.id },
         data: { ...(role ? { role } : {}), ...(displayName !== undefined ? { displayName: displayName.trim() } : {}) },
       });
+      if (role) {
+        await tx.auditLog.create({
+          data: {
+            workspaceId, actorId, action: 'MEMBER_ROLE_CHANGED', targetType: 'WorkspaceMember', targetId: memberId,
+            metadata: { from: target.role, to: role } satisfies Prisma.InputJsonValue,
+          },
+        });
+      }
+      if (displayName !== undefined) {
+        await tx.auditLog.create({
+          data: {
+            workspaceId, actorId, action: 'MEMBER_PROFILE_UPDATED', targetType: 'WorkspaceMember', targetId: memberId,
+            metadata: { displayName: result.displayName } satisfies Prisma.InputJsonValue,
+          },
+        });
+      }
+      return result;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     if (role) {
-      await this.audit(workspaceId, actorId, 'MEMBER_ROLE_CHANGED', 'WorkspaceMember', memberId, { from: target.role, to: role });
       await this.notifyMember(workspaceId, target.userId, 'ROLE_CHANGED', 'Your workspace role was changed');
       await this.notifyWorkspaceOwner(workspaceId, 'MEMBER_ROLE_CHANGED', 'A workspace member role changed', { memberId, role });
     }
     if (displayName !== undefined) {
-      await this.audit(workspaceId, actorId, 'MEMBER_PROFILE_UPDATED', 'WorkspaceMember', memberId, { displayName: updated.displayName });
       await this.notifyWorkspaceOwner(workspaceId, 'MEMBER_PROFILE_UPDATED', 'A workspace member profile was updated', { memberId });
     }
     return { id: updated.id, role: updated.role, status: updated.status, displayName: updated.displayName };
@@ -872,6 +887,28 @@ export class WorkspacesService {
     await this.requireAdmin(workspaceId, actorId);
     return this.prisma.auditLog.findMany({
       where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 100,
+      include: { actor: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async memberActivity(workspaceId: string, memberId: string, actorId: string) {
+    await this.requireAdmin(workspaceId, actorId);
+    const member = await this.prisma.workspaceMember.findFirst({
+      where: { workspaceId, id: memberId },
+      select: { id: true, userId: true },
+    });
+    if (!member) throw new NotFoundException('Workspace member not found');
+    return this.prisma.auditLog.findMany({
+      where: {
+        workspaceId,
+        OR: [
+          { actorId: member.userId },
+          { targetId: member.id },
+          { targetId: member.userId },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
       include: { actor: { select: { id: true, name: true, email: true } } },
     });
   }
