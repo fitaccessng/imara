@@ -12,22 +12,22 @@ import {
   CloudDownload,
   FileSignature,
   FileText,
+  Folder,
   FolderPlus,
   LockKeyhole,
   MailPlus,
   MessageCircle,
   NotebookPen,
   ShieldCheck,
-  Sparkles,
   Upload,
   WandSparkles,
-  Files,
   Clock3,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { ApiError, apiRequest, type DashboardSummary } from "../lib/api";
+import { ApiError, apiRequest, downloadFile, type DashboardRecentItem, type DashboardSummary } from "../lib/api";
 import { StorageOverviewCard } from "./dashboard/StorageOverviewCard";
+import { FileViewerModal } from "../components/FileViewerModal";
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
 import { workspaceHref, type Workspace } from "../workspaces/types";
 
@@ -325,45 +325,73 @@ function ErrorState({
   );
 }
 
-/* Empty file library */
+/* Recent cloud library */
 
-function EmptyLibrary({
-  documentCount,
+function RecentLibrary({
+  items,
+  onOpenFile,
 }: {
-  documentCount: number;
+  items: DashboardRecentItem[];
+  onOpenFile: (file: Extract<DashboardRecentItem, { type: "file" }>) => void;
 }) {
-  const hasDocuments = documentCount > 0;
+  const recentItems = items.slice(0, 6);
+
+  if (!recentItems.length) {
+    return (
+      <div className="flex flex-col items-center px-4 py-10 text-center sm:py-14">
+        <div className="mb-5 flex h-[76px] w-[76px] items-center justify-center rounded-[22px] border border-[#DDEFE2] bg-[#F0F8F2]">
+          <Cloud size={32} strokeWidth={1.5} className="text-[#20AD43]" />
+        </div>
+        <h3 className="text-base font-bold text-[#172B3A] sm:text-lg">Nothing recent yet</h3>
+        <p className="mt-2 max-w-sm text-xs leading-6 text-[#718096] sm:text-sm">
+          Files and folders you add or update in your personal library will show up here.
+        </p>
+        <Link
+          to="/files"
+          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#189638]"
+        >
+          <Upload size={16} />
+          Open file library
+          <ArrowRight size={15} />
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center px-4 py-10 text-center sm:py-14">
-      <div className="relative mb-5 flex h-[76px] w-[76px] items-center justify-center rounded-[22px] border border-[#DDEFE2] bg-[#F0F8F2]">
-        <Files size={32} strokeWidth={1.5} className="text-[#20AD43]" />
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      {recentItems.map((item) => {
+        const isFolder = item.type === "folder";
+        const Icon = isFolder ? Folder : FileText;
+        const details = item.type === "folder"
+          ? "Folder"
+          : item.folderName ?? `${item.mimeType.split("/").pop()?.toUpperCase() ?? "File"} file`;
+        const content = (
+          <>
+            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isFolder ? "bg-[#FFF5E7] text-[#C7862C]" : "bg-[#EAF7ED] text-[#20AD43]"}`}>
+              <Icon size={18} strokeWidth={1.8} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <strong className="block truncate text-xs font-semibold text-[#263B4A]">{item.name}</strong>
+              <small className="mt-1 block truncate text-[10px] text-[#89969B]">{details}</small>
+            </span>
+            <span className="shrink-0 text-[9px] font-medium text-[#89969B]">
+              {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(item.updatedAt))}
+            </span>
+          </>
+        );
+        const className = "group flex min-w-0 items-center gap-3 rounded-xl border border-[#EDF1F5] bg-[#FCFDFC] p-3 text-left transition hover:border-[#CFE8D4] hover:bg-[#F6FBF7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#20AD43]";
 
-        <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-white bg-[#20AD43] text-white">
-          <Sparkles size={12} />
-        </span>
-      </div>
-
-      <h3 className="text-base font-bold text-[#172B3A] sm:text-lg">
-        {hasDocuments
-          ? `${documentCount} documents saved`
-          : "Your cloud library is ready"}
-      </h3>
-
-      <p className="mt-2 max-w-sm text-xs leading-6 text-[#718096] sm:text-sm">
-        {hasDocuments
-          ? "Your documents are waiting in your file library. Open it to continue."
-          : "Upload your first document and start organising everything in one secure place."}
-      </p>
-
-      <Link
-        to="/files"
-        className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20AD43] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#189638]"
-      >
-        <Upload size={16} />
-        {hasDocuments ? "Open file library" : "Upload your first file"}
-        <ArrowRight size={15} />
-      </Link>
+        return item.type === "folder" ? (
+          <Link className={className} key={`${item.type}-${item.id}`} to={`/files?folder=${encodeURIComponent(item.id)}`}>
+            {content}
+          </Link>
+        ) : (
+          <button className={className} key={`${item.type}-${item.id}`} type="button" onClick={() => onOpenFile(item)}>
+            {content}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -533,6 +561,8 @@ function OrganisationInsights({
 export function DashboardPage() {
   const { setUser } = useAuth();
   const [online, setOnline] = useState(navigator.onLine);
+  const [viewingRecentFile, setViewingRecentFile] = useState<Extract<DashboardRecentItem, { type: "file" }> | null>(null);
+  const [recentFileError, setRecentFileError] = useState("");
   const { workspace } = useWorkspaceScope();
 
   const {
@@ -597,6 +627,15 @@ export function DashboardPage() {
 
   const firstName =
     data.user.name.trim().split(/\s+/)[0] || data.user.name;
+
+  async function downloadRecentFile(file: Extract<DashboardRecentItem, { type: "file" }>) {
+    setRecentFileError("");
+    try {
+      await downloadFile(`/files/${file.id}/download`, file.name);
+    } catch (reason) {
+      setRecentFileError(reason instanceof Error ? reason.message : "Unable to download this file.");
+    }
+  }
 
   const today = new Intl.DateTimeFormat("en", {
     weekday: "long",
@@ -731,7 +770,7 @@ export function DashboardPage() {
       >
         <SectionHeading
           eyebrow="YOUR CLOUD LIBRARY"
-          title="Recently added"
+          title="Recently worked on"
           action={
             <Link
               to="/files"
@@ -742,10 +781,21 @@ export function DashboardPage() {
           }
         />
 
-        <EmptyLibrary
-          documentCount={data.overview.documentsCount}
-        />
+        <RecentLibrary items={data.overview.recentActivity} onOpenFile={setViewingRecentFile} />
+        {recentFileError && <p className="mt-3 text-xs text-[#A35449]" role="alert">{recentFileError}</p>}
       </section>
+      {viewingRecentFile && (
+        <FileViewerModal
+          file={viewingRecentFile}
+          readUrl={`/files/${viewingRecentFile.id}/download`}
+          saveUrl={`/files/${viewingRecentFile.id}/content`}
+          onClose={() => setViewingRecentFile(null)}
+          onSaved={async () => { await refetch(); }}
+          canEdit
+          canDownload
+          onDownload={() => { void downloadRecentFile(viewingRecentFile); }}
+        />
+      )}
 
       {/* Organisation insights */}
       <OrganisationInsights insightsQuery={insightsQuery} />

@@ -516,7 +516,7 @@ export class AuthService {
   }
 
   async getDashboard(userId: string) {
-    const [user, subscription, documentsCount, recentActivity] = await Promise.all([
+    const [user, subscription, documentsCount, recentFiles, recentFolders] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
         select: { id: true, name: true, email: true, emailVerifiedAt: true },
@@ -524,24 +524,52 @@ export class AuthService {
       this.getSubscription(userId),
       this.prisma.storedFile.count({ where: { userId, status: StoredFileStatus.READY, deletedAt: null } }),
       this.prisma.storedFile.findMany({
-        where: { userId, status: StoredFileStatus.READY, deletedAt: null },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
+        where: {
+          userId, workspaceId: null, eventId: null, status: StoredFileStatus.READY, deletedAt: null,
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 6,
+        select: {
+          id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true, updatedAt: true,
+          folder: { select: { name: true } },
+        },
+      }),
+      this.prisma.folder.findMany({
+        where: { userId, workspaceId: null },
+        orderBy: { updatedAt: 'desc' },
+        take: 6,
+        select: { id: true, name: true, parentFolderId: true, createdAt: true, updatedAt: true },
       }),
     ]);
+    const recentActivity = [
+      ...recentFiles.map((file) => ({
+        type: 'file' as const,
+        id: file.id,
+        name: file.originalName,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes.toString(),
+        folderId: file.folderId,
+        folderName: file.folder?.name ?? null,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+      })),
+      ...recentFolders.map((folder) => ({
+        type: 'folder' as const,
+        id: folder.id,
+        name: folder.name,
+        parentFolderId: folder.parentFolderId,
+        createdAt: folder.createdAt,
+        updatedAt: folder.updatedAt,
+      })),
+    ]
+      .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+      .slice(0, 6);
     return {
       user: { id: user.id, name: user.name, email: user.email, emailVerified: Boolean(user.emailVerifiedAt) },
       subscription,
       overview: {
         documentsCount,
-        recentActivity: recentActivity.map((file) => ({
-          id: file.id,
-          name: file.originalName,
-          mimeType: file.mimeType,
-          sizeBytes: file.sizeBytes.toString(),
-          createdAt: file.createdAt,
-        })),
+        recentActivity,
       },
     };
   }

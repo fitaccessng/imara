@@ -73,6 +73,72 @@ describe('registration and login', () => {
     jest.clearAllMocks();
   });
 
+  describe('dashboard recent cloud library', () => {
+    const fileFindMany = jest.fn();
+    const folderFindMany = jest.fn();
+    const service = new AuthService(
+      {
+        user: {
+          findUniqueOrThrow: jest.fn().mockResolvedValue({
+            id: 'user-id',
+            name: 'Person Example',
+            email: 'person@example.com',
+            emailVerifiedAt: new Date('2026-11-01T10:00:00.000Z'),
+          }),
+        },
+        storedFile: {
+          count: jest.fn().mockResolvedValue(10),
+          findMany: fileFindMany,
+        },
+        folder: { findMany: folderFindMany },
+      } as unknown as PrismaService,
+      {} as MailerService,
+      planService as never,
+    );
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      jest.spyOn(service, 'getSubscription').mockResolvedValue({} as never);
+    });
+
+    it('combines recently updated personal files and folders and caps the result at six', async () => {
+      const updatedAt = (day: number) => new Date(`2026-11-${String(day).padStart(2, '0')}T12:00:00.000Z`);
+      fileFindMany.mockResolvedValue([
+        { id: 'file-1', originalName: 'Latest.pdf', mimeType: 'application/pdf', sizeBytes: 120n, folderId: null, folder: null, createdAt: updatedAt(1), updatedAt: updatedAt(17) },
+        { id: 'file-2', originalName: 'Older.pdf', mimeType: 'application/pdf', sizeBytes: 130n, folderId: null, folder: null, createdAt: updatedAt(2), updatedAt: updatedAt(15) },
+        { id: 'file-3', originalName: 'Middle.pdf', mimeType: 'application/pdf', sizeBytes: 140n, folderId: null, folder: null, createdAt: updatedAt(3), updatedAt: updatedAt(13) },
+      ]);
+      folderFindMany.mockResolvedValue([
+        { id: 'folder-1', name: 'Recent folder', parentFolderId: null, createdAt: updatedAt(4), updatedAt: updatedAt(16) },
+        { id: 'folder-2', name: 'Old folder', parentFolderId: null, createdAt: updatedAt(5), updatedAt: updatedAt(11) },
+        { id: 'folder-3', name: 'Another folder', parentFolderId: null, createdAt: updatedAt(6), updatedAt: updatedAt(14) },
+      ]);
+
+      const result = await service.getDashboard('user-id');
+
+      expect(result.overview.recentActivity).toHaveLength(6);
+      expect(result.overview.recentActivity.map(({ id }) => id)).toEqual([
+        'file-1', 'folder-1', 'file-2', 'folder-3', 'file-3', 'folder-2',
+      ]);
+      expect(result.overview.recentActivity[0]).toMatchObject({
+        type: 'file',
+        name: 'Latest.pdf',
+        sizeBytes: '120',
+        updatedAt: updatedAt(17),
+      });
+      expect(fileFindMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ userId: 'user-id', workspaceId: null, eventId: null }),
+        orderBy: { updatedAt: 'desc' },
+        take: 6,
+      }));
+      expect(folderFindMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { userId: 'user-id', workspaceId: null },
+        orderBy: { updatedAt: 'desc' },
+        take: 6,
+      }));
+    });
+  });
+
   it('creates a server-side session with only a token digest after verified credentials', async () => {
     userFindUnique.mockResolvedValue(user);
     accountLock.mockResolvedValue({ count: 1 });

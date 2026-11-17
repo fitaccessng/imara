@@ -192,9 +192,28 @@ export interface DashboardSummary {
   };
   overview: {
     documentsCount: number;
-    recentActivity: unknown[];
+    recentActivity: DashboardRecentItem[];
   };
 }
+
+export type DashboardRecentItem = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+} & (
+  | {
+      type: "file";
+      mimeType: string;
+      sizeBytes: string;
+      folderId: string | null;
+      folderName: string | null;
+    }
+  | {
+      type: "folder";
+      parentFolderId: string | null;
+    }
+);
 
 export interface AuthSession {
   id: string;
