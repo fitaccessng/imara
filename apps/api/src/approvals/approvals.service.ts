@@ -17,6 +17,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import { ApprovalAction, CreateApprovalRequestDto, CreateApprovalTemplateDto } from './approvals.dto';
+import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscription.service';
 
 type ApprovalView = 'mine' | 'pending' | 'history';
 type ApprovalTransaction = Prisma.TransactionClient;
@@ -52,6 +53,7 @@ export class ApprovalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly workspaces: WorkspacesService,
+    private readonly workspaceSubscriptions: WorkspaceSubscriptionService,
   ) {}
 
   private cleanText(value: string | undefined): string | undefined {
@@ -119,6 +121,7 @@ export class ApprovalsService {
   }
 
   async createTemplate(workspaceId: string, userId: string, dto: CreateApprovalTemplateDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.requireAdministrator(workspaceId, userId);
     await this.validateTemplateSteps(workspaceId, dto.steps);
     return this.prisma.$transaction(async (tx) => {
@@ -157,6 +160,7 @@ export class ApprovalsService {
   }
 
   async updateTemplate(workspaceId: string, templateId: string, userId: string, isActive: boolean) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.requireAdministrator(workspaceId, userId);
     const updated = await this.prisma.approvalTemplate.updateMany({
       where: { id: templateId, workspaceId },
@@ -188,6 +192,7 @@ export class ApprovalsService {
   }
 
   async createRequest(workspaceId: string, userId: string, dto: CreateApprovalRequestDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.membership(workspaceId, userId);
     const title = this.cleanText(dto.title);
     if (!title) throw new BadRequestException('Request title is required');
@@ -350,6 +355,7 @@ export class ApprovalsService {
   }
 
   async comment(workspaceId: string, requestId: string, userId: string, comment?: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.membership(workspaceId, userId);
     const normalizedComment = this.requireText(comment, 'Comment');
     const request = await this.prisma.approvalRequest.findFirst({
@@ -383,6 +389,7 @@ export class ApprovalsService {
     decision: ApprovalAction,
     comment?: string,
   ) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.membership(workspaceId, userId);
     const normalizedComment = this.cleanText(comment);
     if (decision !== ApprovalAction.APPROVED && !normalizedComment) {
@@ -492,6 +499,7 @@ export class ApprovalsService {
   }
 
   async resubmit(workspaceId: string, requestId: string, userId: string, comment?: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.membership(workspaceId, userId);
     const normalizedComment = this.cleanText(comment);
     return this.prisma.$transaction(async (tx) => {
@@ -534,6 +542,7 @@ export class ApprovalsService {
   }
 
   async cancel(workspaceId: string, requestId: string, userId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.membership(workspaceId, userId);
     const isAdmin = member.role === WorkspaceRole.OWNER || member.role === WorkspaceRole.ADMIN;
     return this.prisma.$transaction(async (tx) => {

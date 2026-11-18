@@ -49,6 +49,7 @@ describe('workspace storage authorization', () => {
     { get: getObject } as unknown as ObjectStorageService,
     { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
     {} as never,
+    { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   beforeEach(() => {
@@ -88,6 +89,7 @@ describe('workspace storage authorization', () => {
       {} as ObjectStorageService,
       { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
       {} as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await expect(storage.listUnindexed('workspace-a', 'staff-a')).resolves.toEqual([{
@@ -133,6 +135,7 @@ describe('workspace storage authorization', () => {
       {} as ObjectStorageService,
       { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
       {} as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     const result = await storage.search('workspace-a', 'staff-a', 'invoice');
@@ -183,6 +186,7 @@ describe('workspace storage authorization', () => {
       {} as ObjectStorageService,
       { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
       {} as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await expect(storage.setOcrText('workspace-a', 'staff-a', 'file-a', 'invoice terms'))
@@ -216,6 +220,7 @@ describe('workspace storage authorization', () => {
       {} as ObjectStorageService,
       { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
       {} as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await expect(storage.setOcrText('workspace-a', 'staff-a', 'root-file', 'private text'))
@@ -351,6 +356,7 @@ describe('workspace storage authorization', () => {
       objects as unknown as ObjectStorageService,
       workspaces as unknown as WorkspacesService,
       plans as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await expect(storage.replaceContent(

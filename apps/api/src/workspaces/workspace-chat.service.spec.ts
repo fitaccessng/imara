@@ -35,7 +35,7 @@ describe('WorkspaceChatService', () => {
       ...workspaces,
     };
     return {
-      service: new WorkspaceChatService(prisma as unknown as PrismaService, workspaceService as unknown as WorkspacesService),
+      service: new WorkspaceChatService(prisma as unknown as PrismaService, workspaceService as unknown as WorkspacesService, { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never),
       workspaceService,
     };
   }

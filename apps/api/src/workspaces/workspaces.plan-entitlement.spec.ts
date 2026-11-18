@@ -34,6 +34,7 @@ describe('WorkspacesService persisted plan limits', () => {
       {} as PrismaService,
       {} as MailerService,
       { getEntitlements, currentPlan } as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined), getLifecycle: jest.fn().mockResolvedValue({ state: 'ACTIVE', restricted: false }) } as never,
     );
     const assertCapacity = (
       service as unknown as {
@@ -60,6 +61,7 @@ describe('WorkspacesService persisted plan limits', () => {
       {} as PrismaService,
       {} as MailerService,
       { requireAdvancedTeamManagement, currentPlan } as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined), getLifecycle: jest.fn().mockResolvedValue({ state: 'ACTIVE', restricted: false }) } as never,
     );
     const assertManagerRoleAvailable = (
       service as unknown as {

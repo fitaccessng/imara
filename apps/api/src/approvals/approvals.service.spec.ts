@@ -51,7 +51,7 @@ describe('ApprovalsService', () => {
     authorizeWorkspace: jest.fn(),
     authorizeFolder: jest.fn(),
   } as unknown as WorkspacesService;
-  const service = new ApprovalsService(prisma, workspaces);
+  const service = new ApprovalsService(prisma, workspaces, { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never);
 
   beforeEach(() => {
     jest.clearAllMocks();

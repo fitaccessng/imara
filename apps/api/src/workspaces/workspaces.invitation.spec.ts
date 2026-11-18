@@ -40,6 +40,7 @@ describe('workspace invitation acceptance', () => {
     prisma,
     {} as MailerService,
     {} as PlanCatalogueService,
+    { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
   );
   const rawToken = 'a'.repeat(48);
   const tokenHash = hashToken(rawToken);

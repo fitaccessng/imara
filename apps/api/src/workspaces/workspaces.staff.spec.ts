@@ -36,7 +36,7 @@ describe('workspace staff administration endpoints', () => {
     auditLog: { findMany: auditFindMany },
     notification: { create: notificationCreate },
     $transaction: transaction,
-  } as never, {} as never, {} as never);
+  } as never, {} as never, {} as never, { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never);
 
   const admin = {
     id: 'admin-member',

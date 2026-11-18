@@ -3,6 +3,7 @@ import { Prisma, StoredFileStatus, WorkspaceChatConversationType, WorkspaceMembe
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkspacesService } from './workspaces.service';
 import { CreateWorkspaceChatMessageDto } from './workspace-chat.dto';
+import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscription.service';
 
 const MESSAGE_LIMIT = 50;
 
@@ -11,6 +12,7 @@ export class WorkspaceChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly workspaces: WorkspacesService,
+    private readonly workspaceSubscriptions: WorkspaceSubscriptionService,
   ) {}
 
   private async workspaceRoom(workspaceId: string) {
@@ -132,6 +134,7 @@ export class WorkspaceChatService {
   }
 
   async getOrCreateDirectConversation(workspaceId: string, userId: string, targetMemberId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.currentMember(workspaceId, userId);
     if (member.id === targetMemberId) throw new ForbiddenException('You cannot start a conversation with yourself');
     const target = await this.prisma.workspaceMember.findFirst({
@@ -229,6 +232,7 @@ export class WorkspaceChatService {
     userId: string,
     dto: CreateWorkspaceChatMessageDto,
   ) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const { member, conversation } = await this.accessibleConversation(workspaceId, conversationId, userId);
     if (dto.fileId) await this.authorizeFileReference(workspaceId, userId, dto.fileId);
     const sender = await this.prisma.workspaceMember.findFirst({

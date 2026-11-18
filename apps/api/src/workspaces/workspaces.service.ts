@@ -8,6 +8,7 @@ import { MailerService } from '../auth/mailer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { assertPlanCapacity } from '../subscriptions/plan-entitlements';
+import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscription.service';
 import { evaluateFolderPermission, isWorkspaceAdministrator, PermissionRule, WORKSPACE_PERMISSION_KEYS } from './permissions';
 import { CreateWorkspaceDto, InviteMemberDto, SetFolderPermissionDto, UpdateWorkspaceDto, WorkspaceMemberFolderRuleDto } from './workspaces.dto';
 
@@ -44,6 +45,7 @@ export class WorkspacesService {
     private readonly prisma: PrismaService,
     private readonly mailer: MailerService,
     private readonly plans: PlanCatalogueService,
+    private readonly workspaceSubscriptions: WorkspaceSubscriptionService,
   ) {}
 
   private async membership(workspaceId: string, userId: string) {
@@ -206,14 +208,20 @@ export class WorkspacesService {
         workspaces.set(workspace.id, { ...workspace, role: WorkspaceRole.OWNER, joinedAt: workspace.createdAt });
       }
     }
-    return [...workspaces.values()].sort((left, right) => left.joinedAt.getTime() - right.joinedAt.getTime());
+    const listed = [...workspaces.values()].sort((left, right) => left.joinedAt.getTime() - right.joinedAt.getTime());
+    return Promise.all(listed.map(async (workspace) => ({
+      ...workspace,
+      subscription: await this.workspaceSubscriptions.getLifecycle(workspace.id),
+    })));
   }
 
   async getWorkspace(workspaceId: string, userId: string) {
     const membership = await this.membership(workspaceId, userId);
+    const subscription = await this.workspaceSubscriptions.getLifecycle(workspaceId);
     return {
       id: membership.workspace.id, name: membership.workspace.name, role: membership.role,
       createdAt: membership.workspace.createdAt,
+      subscription,
       ...(isWorkspaceAdministrator(membership.role) ? {
         storage: {
           limitBytes: membership.workspace.storageLimitBytes.toString(),
@@ -225,6 +233,7 @@ export class WorkspacesService {
   }
 
   async updateWorkspace(workspaceId: string, userId: string, dto: UpdateWorkspaceDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const membership = await this.membership(workspaceId, userId);
     if (membership.role !== WorkspaceRole.OWNER) throw new ForbiddenException('Workspace owner access required');
     const name = dto.name?.replace(/[\u0000-\u001f\u007f]/g, '').trim();
@@ -335,6 +344,7 @@ export class WorkspacesService {
   }
 
   async invite(workspaceId: string, actorId: string, dto: InviteMemberDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const actor = await this.requireAdmin(workspaceId, actorId);
     if (!this.mailer.isConfigured()) throw new ServiceUnavailableException('Invitation email delivery is not configured.');
     if (dto.role === WorkspaceRole.OWNER) throw new BadRequestException('Owner role cannot be assigned by invitation');
@@ -405,6 +415,7 @@ export class WorkspacesService {
   }
 
   async resendInvitation(workspaceId: string, invitationId: string, actorId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const actor = await this.requireAdmin(workspaceId, actorId);
     if (!this.mailer.isConfigured()) throw new ServiceUnavailableException('Invitation email delivery is not configured.');
     const current = await this.prisma.workspaceInvitation.findFirst({ where: { id: invitationId, workspaceId } });
@@ -445,6 +456,7 @@ export class WorkspacesService {
   }
 
   async revokeInvitation(workspaceId: string, invitationId: string, actorId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.requireAdmin(workspaceId, actorId);
     const result = await this.prisma.workspaceInvitation.updateMany({
       where: { id: invitationId, workspaceId, status: InvitationStatus.PENDING },
@@ -594,6 +606,7 @@ export class WorkspacesService {
   }
 
   async updateMember(workspaceId: string, memberId: string, actorId: string, role?: WorkspaceRole, displayName?: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const actor = await this.requireAdmin(workspaceId, actorId);
     const target = await this.prisma.workspaceMember.findFirst({
       where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } },
@@ -643,6 +656,7 @@ export class WorkspacesService {
   }
 
   async suspendMember(workspaceId: string, memberId: string, actorId: string, status: WorkspaceMemberStatus) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const actor = await this.requireAdmin(workspaceId, actorId);
     const target = await this.prisma.workspaceMember.findFirst({
       where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } },
@@ -673,6 +687,7 @@ export class WorkspacesService {
   }
 
   async removeMember(workspaceId: string, memberId: string, actorId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const actor = await this.requireAdmin(workspaceId, actorId);
     const target = await this.prisma.workspaceMember.findFirst({
       where: { workspaceId, id: memberId, status: { not: WorkspaceMemberStatus.REMOVED } },
@@ -794,6 +809,7 @@ export class WorkspacesService {
   }
 
   async replaceMemberPermissions(workspaceId: string, memberId: string, actorId: string, rules: WorkspaceMemberFolderRuleDto[]) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.requireAdmin(workspaceId, actorId);
     const member = await this.prisma.workspaceMember.findFirst({
       where: { id: memberId, workspaceId, status: WorkspaceMemberStatus.ACTIVE },
@@ -847,6 +863,7 @@ export class WorkspacesService {
   }
 
   async setFolderPermission(workspaceId: string, folderId: string, actorId: string, dto: SetFolderPermissionDto & { memberId: string }) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.requireAdmin(workspaceId, actorId);
     await this.folderPath(workspaceId, folderId);
     const member = await this.prisma.workspaceMember.findFirst({
@@ -914,6 +931,7 @@ export class WorkspacesService {
   }
 
   async removeFolderPermission(workspaceId: string, folderId: string, permissionId: string, actorId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.requireAdmin(workspaceId, actorId);
     const permission = await this.prisma.folderPermission.findFirst({ where: { id: permissionId, workspaceId, folderId } });
     if (!permission) throw new NotFoundException('Folder permission not found');

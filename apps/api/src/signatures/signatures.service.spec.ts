@@ -77,6 +77,7 @@ describe('SignaturesService', () => {
       workspaces as never,
       {} as never,
       {} as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
     );
     return { service, prisma, tx, workspaces };
   }

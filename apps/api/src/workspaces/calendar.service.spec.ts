@@ -44,7 +44,7 @@ describe('CalendarService', () => {
     calendarEvent: { findFirst, findMany, create, update, delete: deleteEvent, deleteMany },
     workspaceMember: { findMany: activeMembers },
     $transaction: jest.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction)),
-  } as never, { authorizeWorkspace } as never);
+  } as never, { authorizeWorkspace } as never, { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never);
 
   beforeEach(() => {
     jest.clearAllMocks();

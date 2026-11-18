@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkspacesService } from './workspaces.service';
 import { CALENDAR_REMINDER_OPTIONS, CreateCalendarEventDto, UpdateCalendarEventDto } from './calendar.dto';
+import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscription.service';
 
 function taggedUsersInclude(workspaceId?: string) {
   return {
@@ -29,7 +30,11 @@ function taggedUsersInclude(workspaceId?: string) {
 
 @Injectable()
 export class CalendarService {
-  constructor(private readonly prisma: PrismaService, private readonly workspaces: WorkspacesService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workspaces: WorkspacesService,
+    private readonly workspaceSubscriptions: WorkspaceSubscriptionService,
+  ) {}
 
   private dates(startsAt: string | Date, endsAt: string | Date) {
     const start = new Date(startsAt);
@@ -217,6 +222,7 @@ export class CalendarService {
   }
 
   async createWorkspace(workspaceId: string, userId: string, dto: CreateCalendarEventDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.activeMember(workspaceId, userId);
     const { start, end } = this.dates(dto.startsAt, dto.endsAt);
     const taggedUserIds = await this.validateTaggedUsers(workspaceId, dto.taggedUserIds);
@@ -258,6 +264,7 @@ export class CalendarService {
   }
 
   async updateWorkspace(workspaceId: string, userId: string, eventId: string, dto: UpdateCalendarEventDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const event = await this.editableWorkspaceEvent(workspaceId, userId, eventId);
     if (!Object.keys(dto).length) throw new BadRequestException('At least one event field must be provided');
     const { start, end } = this.dates(dto.startsAt ?? event.startsAt, dto.endsAt ?? event.endsAt);
@@ -346,6 +353,7 @@ export class CalendarService {
   }
 
   async deleteWorkspace(workspaceId: string, userId: string, eventId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const event = await this.editableWorkspaceEvent(workspaceId, userId, eventId);
     await this.prisma.calendarEvent.delete({ where: { id: event.id } });
   }

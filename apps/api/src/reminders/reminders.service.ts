@@ -7,6 +7,7 @@ import {
 import { ReminderRecurrence, WorkspaceMemberStatus, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
+import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscription.service';
 import { CreateReminderDto, UpdateReminderDto } from './reminders.dto';
 
 function nextOccurrence(date: Date, recurrence: ReminderRecurrence, from: Date): Date | null {
@@ -40,6 +41,7 @@ export class RemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly workspaces: WorkspacesService,
+    private readonly workspaceSubscriptions: WorkspaceSubscriptionService,
   ) {}
 
   private clean(value: string | undefined): string | undefined {
@@ -64,6 +66,7 @@ export class RemindersService {
   }
 
   async create(workspaceId: string, userId: string, dto: CreateReminderDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.activeMember(workspaceId, userId);
     const title = this.clean(dto.title);
     const dueAt = new Date(dto.dueAt);
@@ -92,6 +95,7 @@ export class RemindersService {
   }
 
   async update(workspaceId: string, reminderId: string, userId: string, dto: UpdateReminderDto) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.activeMember(workspaceId, userId);
     const reminder = await this.findReminder(workspaceId, reminderId);
     if (reminder.createdById !== userId && !this.isAdministrator(member.role)) {
@@ -126,6 +130,7 @@ export class RemindersService {
   }
 
   async complete(workspaceId: string, reminderId: string, userId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.activeMember(workspaceId, userId);
     const reminder = await this.findReminder(workspaceId, reminderId);
     if (reminder.assignedToId !== userId && reminder.createdById !== userId && !this.isAdministrator(member.role)) {
@@ -145,6 +150,7 @@ export class RemindersService {
   }
 
   async cancel(workspaceId: string, reminderId: string, userId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.activeMember(workspaceId, userId);
     const reminder = await this.findReminder(workspaceId, reminderId);
     if (reminder.createdById !== userId && !this.isAdministrator(member.role)) {

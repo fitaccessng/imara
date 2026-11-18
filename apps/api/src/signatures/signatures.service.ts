@@ -25,6 +25,7 @@ import { getMaxUploadBytes } from '../storage/storage.service';
 import { WorkspaceStorageService } from '../workspaces/workspace-storage.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import { CreateSignatureRequestDto, SignSignatureRequestDto } from './signatures.dto';
+import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscription.service';
 
 const CONSENT_TEXT =
   'I knowingly adopt this electronic mark as my signature for this document and consent to electronic records and signatures.';
@@ -60,6 +61,7 @@ export class SignaturesService {
     private readonly workspaces: WorkspacesService,
     private readonly workspaceStorage: WorkspaceStorageService,
     private readonly objects: ObjectStorageService,
+    private readonly workspaceSubscriptions: WorkspaceSubscriptionService,
   ) {}
 
   private async activeMember(workspaceId: string, userId: string) {
@@ -284,6 +286,7 @@ export class SignaturesService {
   }
 
   async create(workspaceId: string, userId: string, dto: CreateSignatureRequestDto, context: AuditContext) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const creator = await this.activeMember(workspaceId, userId);
     const dueAt = dto.dueAt ? new Date(dto.dueAt) : null;
     if (dueAt && (!Number.isFinite(dueAt.getTime()) || dueAt <= new Date())) {
@@ -490,6 +493,7 @@ export class SignaturesService {
     dto: SignSignatureRequestDto,
     context: AuditContext,
   ) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.activeMember(workspaceId, userId);
     await this.tryFinalize(workspaceId, requestId, userId, context);
     const user = await this.prisma.user.findUnique({
@@ -598,6 +602,7 @@ export class SignaturesService {
     reason: string | undefined,
     context: AuditContext,
   ) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.activeMember(workspaceId, userId);
     try {
       await this.prisma.$transaction(async (tx) => {
@@ -645,6 +650,7 @@ export class SignaturesService {
   }
 
   async cancel(workspaceId: string, requestId: string, userId: string, context: AuditContext) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const member = await this.activeMember(workspaceId, userId);
     const request = await this.prisma.signatureRequest.findFirst({
       where: { id: requestId, workspaceId },

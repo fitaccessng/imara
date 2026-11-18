@@ -28,7 +28,7 @@ describe('RemindersService', () => {
   const workspaces = {
     authorizeWorkspace: jest.fn(),
   } as unknown as WorkspacesService;
-  const service = new RemindersService(prisma, workspaces);
+  const service = new RemindersService(prisma, workspaces, { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never);
 
   beforeEach(() => {
     jest.clearAllMocks();

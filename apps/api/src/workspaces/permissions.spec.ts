@@ -95,7 +95,7 @@ describe('workspace folder authorization', () => {
     workspace: { findFirst: workspaceFindFirst, findMany: workspaceFindMany },
     folder: { findFirst: folderFindFirst },
     folderPermission: { findMany: permissionsFindMany },
-  } as unknown as PrismaService, {} as never, {} as never);
+  } as unknown as PrismaService, {} as never, {} as never, { requireWriteAccess: jest.fn().mockResolvedValue(undefined), getLifecycle: jest.fn().mockResolvedValue({ state: 'ACTIVE', restricted: false }) } as never);
 
   beforeEach(() => {
     jest.clearAllMocks();

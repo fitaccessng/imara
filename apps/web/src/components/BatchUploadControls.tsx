@@ -219,13 +219,13 @@ export function BatchUploadControls({
         void processFiles(event.currentTarget.files);
         event.currentTarget.value = "";
       }} />
-    <label className={`button button-outline batch-upload-button ${isDisabled || !canCreateFolders ? "button-disabled" : ""}`} title={!canCreateFolders ? "You need permission to create folders here." : "Upload a folder and preserve its subfolders"}>
+    <button className={`button button-outline batch-upload-button ${isDisabled || !canCreateFolders ? "button-disabled" : ""}`} type="button" title={!canCreateFolders ? "You need permission to create folders here." : "Upload a folder and preserve its subfolders"} disabled={isDisabled || !canCreateFolders} onClick={() => directoryInput.current?.click()}>
       <FolderUp size={15} />Import folder
-      <input ref={directoryInput} type="file" multiple disabled={isDisabled || !canCreateFolders} onChange={(event) => {
-        void processFiles(event.currentTarget.files);
-        event.currentTarget.value = "";
-      }} />
-    </label>
+    </button>
+    <input ref={directoryInput} className="batch-upload-hidden-input" type="file" multiple disabled={isDisabled || !canCreateFolders} onChange={(event) => {
+      void processFiles(event.currentTarget.files);
+      event.currentTarget.value = "";
+    }} />
     {!canCreateFolders && <p className="batch-upload-permission-note">Folder import needs “Create subfolders” access. Ask a workspace admin to grant it.</p>}
     <div
       className={`batch-upload-drop-target${draggingFiles ? " is-dragging" : ""}${isDisabled ? " is-disabled" : ""}`}
@@ -240,7 +240,16 @@ export function BatchUploadControls({
       onDrop={(event) => {
         event.preventDefault();
         setDraggingFiles(false);
-        if (!isDisabled) void processFiles(event.dataTransfer.files);
+        if (!isDisabled) {
+          const droppedFiles = Array.from(event.dataTransfer.files);
+          if (!droppedFiles.length) {
+            setFailures(["A directory could not be read from this browser drop. Use “Import folder” to preserve the folder structure."]);
+            setProgress("No files were uploaded.");
+            setDialogOpen(true);
+            return;
+          }
+          void processFiles(event.dataTransfer.files);
+        }
       }}
       aria-live="polite"
     >

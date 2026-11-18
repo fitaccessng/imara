@@ -10,6 +10,7 @@ import { assertSameFileExtension, isUploadInput, UploadInput } from '../storage/
 import { WorkspacesService } from './workspaces.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { assertPlanFileSize, getPlanLimitMessage } from '../subscriptions/plan-entitlements';
+import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscription.service';
 
 const RESERVATION_TTL_MS = 60 * 60 * 1000;
 
@@ -22,6 +23,7 @@ export class WorkspaceStorageService {
     private readonly objects: ObjectStorageService,
     private readonly workspaces: WorkspacesService,
     private readonly plans: PlanCatalogueService,
+    private readonly workspaceSubscriptions: WorkspaceSubscriptionService,
   ) {}
 
   private name(input: string) {
@@ -223,6 +225,7 @@ export class WorkspaceStorageService {
     parentFolderId?: string,
     memberIds: string[] = [],
   ) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const membership = await this.workspaces.authorizeWorkspace(workspaceId, userId);
     if (parentFolderId) await this.allowedFolder(workspaceId, userId, parentFolderId, 'createSubfolders');
     else if (membership.role !== WorkspaceRole.OWNER && membership.role !== WorkspaceRole.ADMIN) {
@@ -302,6 +305,7 @@ export class WorkspaceStorageService {
   }
 
   async renameFolder(workspaceId: string, userId: string, folderId: string, name: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.allowedFolder(workspaceId, userId, folderId, 'renameFolders');
     const updated = await this.prisma.folder.update({
       where: { id: folderId }, data: { name: name.trim() },
@@ -312,6 +316,7 @@ export class WorkspaceStorageService {
   }
 
   async deleteFolder(workspaceId: string, userId: string, folderId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.allowedFolder(workspaceId, userId, folderId, 'manageContents');
     await this.prisma.$transaction(async (tx) => {
       const [children, files] = await Promise.all([
@@ -415,6 +420,7 @@ export class WorkspaceStorageService {
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
     systemGenerated = false,
   ) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     if (!isUploadInput(file)) {
       throw new BadRequestException('The uploaded file is invalid');
     }
@@ -506,6 +512,7 @@ export class WorkspaceStorageService {
   }
 
   async replaceContent(workspaceId: string, userId: string, fileId: string, replacement: UploadInput, changeSummary?: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     if (!isUploadInput(replacement)) {
       throw new BadRequestException('The uploaded file is invalid');
     }
@@ -628,6 +635,7 @@ export class WorkspaceStorageService {
   }
 
   async renameFile(workspaceId: string, userId: string, fileId: string, name: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     await this.authorizedFile(workspaceId, userId, fileId, 'renameFiles');
     const updated = await this.prisma.storedFile.updateMany({
       where: { id: fileId, workspaceId, status: StoredFileStatus.READY },
@@ -642,6 +650,7 @@ export class WorkspaceStorageService {
   }
 
   async moveFile(workspaceId: string, userId: string, fileId: string, destinationFolderId?: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const file = await this.authorizedFile(workspaceId, userId, fileId, 'moveFiles');
     if (destinationFolderId) await this.allowedFolder(workspaceId, userId, destinationFolderId, 'uploadFiles');
     else {
@@ -658,6 +667,7 @@ export class WorkspaceStorageService {
   }
 
   async deleteFile(workspaceId: string, userId: string, fileId: string) {
+    await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     const file = await this.authorizedFile(workspaceId, userId, fileId, 'deleteFiles');
     const claimed = await this.prisma.storedFile.updateMany({
       where: { id: file.id, workspaceId, status: StoredFileStatus.READY },

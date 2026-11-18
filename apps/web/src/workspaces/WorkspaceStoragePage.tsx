@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, LockKeyhole, Pencil, Send, Share2, ShieldCheck, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Eye, FileText, Folder, FolderPlus, LockKeyhole, MoreHorizontal, Pencil, Send, Share2, ShieldCheck, Trash2, Users, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiRequest, downloadFile } from "../lib/api";
 import { ActionModal, type ActionModalRequest } from "../components/ActionModal";
 import { FileViewerModal } from "../components/FileViewerModal";
@@ -48,6 +48,13 @@ export function WorkspaceStoragePage() {
   const [sendingFile, setSendingFile] = useState<WorkspaceFile | null>(null);
   const [actionModal, setActionModal] = useState<ActionModalRequest | null>(null);
   const isAdministrator = workspace?.role === "OWNER" || workspace?.role === "ADMIN";
+  const workspaceDetailQuery = useQuery({
+    queryKey: ["workspace-detail", workspaceId],
+    queryFn: () => apiRequest<{ subscription: { state: "ACTIVE" | "GRACE" | "RESTRICTED" | "FREE"; restricted: boolean; graceDaysRemaining: number; currentPeriodEnd: string | null } }>(`/workspaces/${workspaceId}`),
+    enabled: Boolean(workspaceId),
+  });
+  const workspaceLifecycle = workspaceDetailQuery.data?.subscription;
+  const workspaceRestricted = workspaceLifecycle?.restricted === true;
 
   const accessibleFoldersQuery = useQuery({
     queryKey: ["workspace-accessible-folders", workspaceId],
@@ -227,6 +234,17 @@ export function WorkspaceStoragePage() {
 
   return (
     <div className="workspace-admin-page">
+      {workspaceLifecycle && workspaceLifecycle.state !== "ACTIVE" && workspaceLifecycle.state !== "FREE" && (
+        <div className={workspaceRestricted ? "workspace-subscription-banner workspace-subscription-restricted" : "workspace-subscription-banner"}>
+          <div>
+            <strong>{workspaceRestricted ? "Workspace temporarily restricted" : "Subscription expires soon"}</strong>
+            <p>{workspaceRestricted
+              ? "Existing files remain viewable and downloadable, but workspace editing and collaboration are temporarily unavailable."
+              : `The subscription expired; the grace period has ${workspaceLifecycle.graceDaysRemaining} day${workspaceLifecycle.graceDaysRemaining === 1 ? "" : "s"} remaining.`}</p>
+          </div>
+          {isAdministrator && <Link className="button button-green button-small" to="/billing/checkout"><span>Renew workspace</span></Link>}
+        </div>
+      )}
       <div className="page-heading files-heading">
         <div>
           <span className="eyebrow">{workspace.name.toUpperCase()} · SHARED FILES</span>
@@ -235,12 +253,12 @@ export function WorkspaceStoragePage() {
           {workspaces.length > 1 && <label className="workspace-select-label"><span>Workspace</span><span className="workspace-select-wrap"><select value={workspace.id} onChange={(event) => selectWorkspace(event.target.value)} aria-label="Select business workspace">{workspaces.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><ChevronDown size={14} aria-hidden="true" /></span></label>}
         </div>
         <div className="files-heading-actions">
-          {canCreateFolder && (
+          {canCreateFolder && !workspaceRestricted && (
             <button className="button button-green" type="button" onClick={openCreateFolder}>
               <FolderPlus size={15} /> Create a folder
             </button>
           )}
-          {canUpload && (
+          {canUpload && !workspaceRestricted && (
             <>
               <CreateDocumentButton<WorkspaceFile>
                 disabled={busy || !uploadPolicyReady}
@@ -314,8 +332,19 @@ export function WorkspaceStoragePage() {
               <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Type</span>Folder</span>
               <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(folder.createdAt))}</span>
               <span className="file-row-actions">
-                {(isAdministrator || accessibleFoldersQuery.data?.find((item) => item.id === folder.id)?.permissions?.includes("renameFolders")) && <button aria-label={`Rename ${folder.name}`} title="Rename folder" onClick={() => void renameFolder(folder)}><Pencil size={15} /></button>}
-                {(isAdministrator || accessibleFoldersQuery.data?.find((item) => item.id === folder.id)?.permissions?.includes("manageContents")) && <button aria-label={`Delete ${folder.name}`} title="Delete folder" onClick={() => void deleteFolder(folder)}><Trash2 size={15} /></button>}
+                <details className="file-action-menu">
+                  <summary aria-label={`More actions for ${folder.name}`} title="More actions"><MoreHorizontal size={18} /></summary>
+                  <div className="file-action-popover">
+                    <button className="file-action-item" onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      void renameFolder(folder);
+                    }}><Pencil size={15} />Rename folder</button>
+                    <button className="file-action-item file-action-danger" onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      void deleteFolder(folder);
+                    }}><Trash2 size={15} />Delete folder</button>
+                  </div>
+                </details>
               </span>
             </div>
           ))}
@@ -327,24 +356,29 @@ export function WorkspaceStoragePage() {
               <span className="file-secondary file-list-detail"><span className="file-list-mobile-label">Size</span>{formatBytes(Number(file.sizeBytes))}</span>
               <span className="file-secondary file-list-date"><span className="file-list-mobile-label">Added</span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(file.createdAt))}</span>
               <div className="file-row-actions">
-                <FolderZipTools
-                  variant="file"
-                  scopeBase={`/workspaces/${workspace.id}`}
-                  file={file}
-                  folderId={folderId}
-                  folderName={currentFolder?.name ?? `${workspace.name} files`}
-                  canDownload={isAdministrator || currentPermissions.includes("downloadFiles")}
-                  canExtract={canUpload && uploadPolicyReady}
-                  canCreateFolders={canCreateFolder}
-                  maxUploadBytes={uploadLimitBytes}
-                  onComplete={refreshLibrary}
-                />
-                {(isAdministrator || currentPermissions.includes("viewFiles")) && <button aria-label={`View ${file.name}`} title="View file" onClick={() => setViewingFile(file)}><Eye size={15} /></button>}
-                {(isAdministrator || currentPermissions.includes("downloadFiles")) && <button aria-label={`Download ${file.name}`} title="Download file" onClick={() => void download(file)}><Download size={15} /></button>}
-                {(isAdministrator || currentPermissions.includes("shareFiles")) && <button aria-label={`Share ${file.name} externally`} title="Create public share link" onClick={() => setSharingFile(file)}><Share2 size={15} /></button>}
-                {(isAdministrator || currentPermissions.includes("shareFiles")) && <button aria-label={`Send ${file.name}`} title="Send privately or by email" onClick={() => setSendingFile(file)}><Send size={15} /></button>}
-                {(isAdministrator || currentPermissions.includes("renameFiles")) && <button aria-label={`Rename ${file.name}`} title="Rename file" onClick={() => void renameFile(file)}><Pencil size={15} /></button>}
-                {(isAdministrator || currentPermissions.includes("deleteFiles")) && <button aria-label={`Delete ${file.name}`} title="Delete file" onClick={() => void deleteFile(file)}><Trash2 size={15} /></button>}
+                <details className="file-action-menu">
+                  <summary aria-label={`More actions for ${file.name}`} title="More actions"><MoreHorizontal size={18} /></summary>
+                  <div className="file-action-popover">
+                    {(isAdministrator || currentPermissions.includes("viewFiles")) && <button className="file-action-item" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setViewingFile(file); }}><Eye size={15} />Preview and print</button>}
+                    {(isAdministrator || currentPermissions.includes("downloadFiles")) && <button className="file-action-item" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void download(file); }}><Download size={15} />Download file</button>}
+                    {(isAdministrator || currentPermissions.includes("shareFiles")) && <button className="file-action-item" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setSharingFile(file); }}><Share2 size={15} />Create share link</button>}
+                    {(isAdministrator || currentPermissions.includes("shareFiles")) && <button className="file-action-item" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setSendingFile(file); }}><Send size={15} />Send to teammate</button>}
+                    {(isAdministrator || currentPermissions.includes("renameFiles")) && <button className="file-action-item" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void renameFile(file); }}><Pencil size={15} />Rename file</button>}
+                    <FolderZipTools
+                      variant="file"
+                      scopeBase={`/workspaces/${workspace.id}`}
+                      file={file}
+                      folderId={folderId}
+                      folderName={currentFolder?.name ?? `${workspace.name} files`}
+                      canDownload={isAdministrator || currentPermissions.includes("downloadFiles")}
+                      canExtract={canUpload && uploadPolicyReady}
+                      canCreateFolders={canCreateFolder}
+                      maxUploadBytes={uploadLimitBytes}
+                      onComplete={refreshLibrary}
+                    />
+                    {(isAdministrator || currentPermissions.includes("deleteFiles")) && <button className="file-action-item file-action-danger" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void deleteFile(file); }}><Trash2 size={15} />Delete file</button>}
+                  </div>
+                </details>
               </div>
             </div>
           ))}
