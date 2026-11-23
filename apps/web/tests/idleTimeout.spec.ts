@@ -22,6 +22,10 @@ describe("createIdleTimeout", () => {
     };
   });
 
+  it("allows a full workday before expiring an idle browser session", () => {
+    expect(IDLE_TIMEOUT_MS).toBe(8 * 60 * 60_000);
+  });
+
   function advanceTo(time: number) {
     currentTime = time;
     for (const timer of scheduled) {

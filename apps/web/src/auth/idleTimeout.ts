@@ -1,4 +1,4 @@
-export const SESSION_IDLE_TIMEOUT_MS = 10 * 60_000;
+export const SESSION_IDLE_TIMEOUT_MS = 8 * 60 * 60_000;
 
 export interface TimeoutScheduler {
   setTimeout(callback: () => void, delayMs: number): ReturnType<typeof setTimeout>;

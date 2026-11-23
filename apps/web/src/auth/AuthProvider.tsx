@@ -139,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return undefined;
     }, SESSION_IDLE_TIMEOUT_MS);
     let lastStoredAt = 0;
+    let lastPointerMoveAt = 0;
 
     const recordActivity = (activityAt = Date.now()) => {
       if (idleTimeout.check()) return;
@@ -153,6 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const handleActivity = () => recordActivity();
+    const handlePointerMove = () => {
+      const activityAt = Date.now();
+      if (activityAt - lastPointerMoveAt < 30_000) return;
+      lastPointerMoveAt = activityAt;
+      recordActivity(activityAt);
+    };
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== storageKey || !event.newValue) return;
       const activityAt = Number(event.newValue);
@@ -170,12 +177,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       "scroll",
     ];
     activityEvents.forEach((eventName) => window.addEventListener(eventName, handleActivity, { passive: true }));
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("storage", handleStorage);
     recordActivity();
 
     return () => {
       idleTimeout.cancel();
       activityEvents.forEach((eventName) => window.removeEventListener(eventName, handleActivity));
+      window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("storage", handleStorage);
     };
   }, [expireSession, loading, user?.id]);

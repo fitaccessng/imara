@@ -531,18 +531,24 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   async function resendVerification() {
     setVerificationMessage("");
     setVerificationError(false);
+    const email = getValues("email").trim();
+    if (!email) {
+      setVerificationMessage("Enter your email address before requesting another verification email.");
+      setVerificationError(true);
+      return;
+    }
     setResendingVerification(true);
 
     try {
       await apiRequest("/auth/resend-verification", {
         method: "POST",
         body: JSON.stringify({
-          email: getValues("email"),
+          email,
         }),
       });
 
       setVerificationMessage(
-        "If that account needs verification, an email will be sent.",
+        "Check your inbox, including spam. If this account needs verification, a new email will arrive shortly.",
       );
     } catch (error) {
       setVerificationMessage(
@@ -763,30 +769,41 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         )}
 
         {verificationNeeded && (
-          <button
-            type="button"
-            onClick={() => void resendVerification()}
-            disabled={resendingVerification}
-            className="text-sm font-semibold text-[#20AD43] hover:text-[#168B36] disabled:opacity-50"
-          >
-            {resendingVerification
-              ? "Sending verification email..."
-              : "Resend verification email"}
-          </button>
-        )}
-
-        {verificationMessage && (
-          <FormAlert success={!verificationError}>
-            {verificationMessage}
-          </FormAlert>
-        )}
-        {verificationMessage && !verificationError && (
-          <Link
-            to={`/verify-email?email=${encodeURIComponent(getValues("email"))}`}
-            className={secondaryLinkClass}
-          >
-            Enter verification code
-          </Link>
+          <section className="space-y-3 rounded-xl border border-[#CDEBD5] bg-[#F4FBF5] p-4" aria-label="Email verification">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#168D34]">
+                <ShieldCheck size={18} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-[#102B46]">Verify your email to continue</h2>
+                <p className="mt-1 text-xs leading-5 text-[#526675]">
+                  We’ll send a fresh verification email to <strong>{getValues("email").trim()}</strong>. You can also enter the code from your email.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => void resendVerification()}
+                disabled={resendingVerification}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-[#20AD43] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#168D34] focus:outline-none focus:ring-4 focus:ring-[#20AD43]/20 disabled:cursor-wait disabled:opacity-60"
+              >
+                {resendingVerification ? "Sending email…" : "Resend verification email"}
+              </button>
+              <Link
+                to={`/verify-email?email=${encodeURIComponent(getValues("email").trim())}`}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#CDEBD5] bg-white px-4 py-2.5 text-sm font-semibold text-[#168D34] transition hover:bg-[#EAF8EE]"
+              >
+                Enter verification code
+                <ArrowRight size={15} />
+              </Link>
+            </div>
+            {verificationMessage && (
+              <FormAlert success={!verificationError}>
+                {verificationMessage}
+              </FormAlert>
+            )}
+          </section>
         )}
 
         {/* SUBMIT */}
@@ -1156,16 +1173,22 @@ export function VerifyEmailPage() {
   } | null>(null);
   const token = params.get("token");
   const email = params.get("email") ?? "";
+  const [verificationEmail, setVerificationEmail] = useState(email);
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
     token ? "loading" : "idle",
   );
   const [message, setMessage] = useState("");
   const [resendMessage, setResendMessage] = useState("");
+  const [resendError, setResendError] = useState(false);
   const [resending, setResending] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
   const [invitationReturnTo, setInvitationReturnTo] = useState("");
   const [postVerificationReturnTo, setPostVerificationReturnTo] = useState("");
+
+  useEffect(() => {
+    setVerificationEmail(email);
+  }, [email]);
 
   useEffect(() => {
     const storedInvitationReturnTo =
@@ -1242,7 +1265,7 @@ export function VerifyEmailPage() {
     try {
       const result = await apiRequest<{ user: User; workspaceId: string | null }>("/auth/verify-email-code", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim(), code }),
+        body: JSON.stringify({ email: verificationEmail.trim(), code }),
       });
       setUser(result.user);
       setStatus("success");
@@ -1256,15 +1279,23 @@ export function VerifyEmailPage() {
 
   async function resendCode() {
     setResendMessage("");
+    setResendError(false);
+    const normalizedEmail = verificationEmail.trim();
+    if (!normalizedEmail) {
+      setResendMessage("Enter your email address first.");
+      setResendError(true);
+      return;
+    }
     setResending(true);
     try {
       await apiRequest("/auth/resend-verification", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: normalizedEmail }),
       });
-      setResendMessage("If that address needs verification, a new code will be sent.");
+      setResendMessage("If this address needs verification, a new code will be sent. Check your inbox and spam folder.");
     } catch (error) {
       setResendMessage(error instanceof Error ? error.message : "We couldn't resend the verification code.");
+      setResendError(true);
     } finally {
       setResending(false);
     }
@@ -1315,6 +1346,45 @@ export function VerifyEmailPage() {
             description={message}
           />
 
+          <div className="mt-6 space-y-4 rounded-xl border border-[#E5EAF0] bg-[#F7F9FC] p-4">
+            <p className="text-sm font-semibold text-[#102B46]">Request a fresh verification email</p>
+            <Field label="Email address">
+              <input
+                className={inputClass}
+                type="email"
+                autoComplete="email"
+                value={verificationEmail}
+                onChange={(event) => {
+                  setVerificationEmail(event.target.value);
+                  setResendMessage("");
+                  setResendError(false);
+                }}
+                placeholder="you@example.com"
+                required
+              />
+            </Field>
+            <button
+              type="button"
+              onClick={() => void resendCode()}
+              disabled={resending || !verificationEmail.trim()}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-[#CDEBD5] bg-white px-4 py-2.5 text-sm font-semibold text-[#168D34] transition hover:bg-[#EAF8EE] disabled:cursor-wait disabled:opacity-60"
+            >
+              {resending ? "Sending email…" : "Resend verification email"}
+            </button>
+            {resendMessage && (
+              <FormAlert success={!resendError}>{resendMessage}</FormAlert>
+            )}
+            {resendMessage && !resendError && (
+              <Link
+                to={`/verify-email?email=${encodeURIComponent(verificationEmail.trim())}`}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-[#168D34] hover:text-[#102B46]"
+              >
+                Enter the new code
+                <ArrowRight size={15} />
+              </Link>
+            )}
+          </div>
+
           <Link className={primaryButtonClass} to="/login">
             Continue to log in
             <ArrowRight size={17} />
@@ -1335,27 +1405,49 @@ export function VerifyEmailPage() {
         <>
           <FormHeading
             title="Verify your email."
-            description="Enter the six-digit verification code sent to your email address. If it doesn't arrive, you can resend it."
+            description="Enter the six-digit code sent to your email address. If you opened this page directly, enter your email first."
           />
           <form className="mt-6 space-y-5" onSubmit={(event) => void submitCode(event)}>
+            <Field label="Email address">
+              <input
+                className={inputClass}
+                type="email"
+                autoComplete="email"
+                autoFocus={!verificationEmail}
+                value={verificationEmail}
+                onChange={(event) => {
+                  setVerificationEmail(event.target.value);
+                  setMessage("");
+                  setResendMessage("");
+                  setResendError(false);
+                  setStatus("idle");
+                }}
+                placeholder="you@example.com"
+                required
+              />
+            </Field>
             <Field label="Verification code">
               <input
                 className={`${inputClass} text-center text-xl font-semibold tracking-[0.35em]`}
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                autoFocus
+                autoFocus={Boolean(verificationEmail)}
                 pattern="[0-9]{6}"
                 maxLength={6}
                 value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                onChange={(event) => {
+                  setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                  setMessage("");
+                  setStatus("idle");
+                }}
                 placeholder="000000"
                 aria-label="Six-digit verification code"
                 required
               />
             </Field>
             {message && <FormAlert>{message}</FormAlert>}
-            <button className={primaryButtonClass} type="submit" disabled={verifyingCode || !email.trim() || code.length !== 6}>
+            <button className={primaryButtonClass} type="submit" disabled={verifyingCode || !verificationEmail.trim() || code.length !== 6}>
               {verifyingCode ? "Verifying..." : "Verify email"}
               {!verifyingCode && <ArrowRight size={17} />}
             </button>
@@ -1364,12 +1456,16 @@ export function VerifyEmailPage() {
             <button
               type="button"
               onClick={() => void resendCode()}
-              disabled={resending || !email.trim()}
+              disabled={resending || !verificationEmail.trim()}
               className={secondaryLinkClass}
             >
-              {resending ? "Sending a new code..." : "Resend code"}
+              {resending ? "Sending a new code..." : "Resend verification email"}
             </button>
-            {resendMessage && <p className="mt-3 text-xs text-[#718096]" role="status">{resendMessage}</p>}
+            {resendMessage && (
+              <div className="mt-3">
+                <FormAlert success={!resendError}>{resendMessage}</FormAlert>
+              </div>
+            )}
           </div>
         </>
       )}
