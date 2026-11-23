@@ -76,6 +76,24 @@ export class MailerService implements OnModuleDestroy {
     }
   }
 
+  private isRecipientAccepted(result: { accepted?: unknown }, to: string): boolean {
+    const acceptedRecipients: unknown[] = Array.isArray(result.accepted) ? result.accepted : [];
+    return acceptedRecipients.some((recipient) => {
+      const address = typeof recipient === 'string'
+        ? recipient
+        : recipient && typeof recipient === 'object' && 'address' in recipient
+          ? String((recipient as { address: unknown }).address)
+          : '';
+      return address.toLowerCase() === to.toLowerCase();
+    });
+  }
+
+  private requireRecipientAcceptance(result: { accepted?: unknown }, to: string): void {
+    if (!this.isRecipientAccepted(result, to)) {
+      throw new ServiceUnavailableException('SMTP did not accept the email recipient.');
+    }
+  }
+
   onModuleDestroy(): void {
     this.smtpTransporter?.close();
   }
@@ -98,26 +116,13 @@ export class MailerService implements OnModuleDestroy {
       subject,
       text,
     });
-    if (requireRecipientAcceptance) {
-      const acceptedRecipients: unknown[] = Array.isArray(result.accepted) ? result.accepted : [];
-      const accepted = acceptedRecipients.some((recipient) => {
-        const address = typeof recipient === 'string'
-          ? recipient
-          : recipient && typeof recipient === 'object' && 'address' in recipient
-            ? String((recipient as { address: unknown }).address)
-            : '';
-        return address.toLowerCase() === to.toLowerCase();
-      });
-      if (!accepted) {
-        throw new ServiceUnavailableException('SMTP did not accept the calendar reminder recipient.');
-      }
-    }
+    if (requireRecipientAcceptance) this.requireRecipientAcceptance(result, to);
   }
 
   async sendVerification(to: string, token: string): Promise<void> {
     const url = new URL('/verify-email', process.env.FRONTEND_URL ?? 'http://localhost:5173');
     url.searchParams.set('token', token);
-    await this.deliver(to, 'Verify your IMARA email', `Verify your email using this link: ${url.toString()}`, url);
+    await this.deliver(to, 'Verify your IMARA email', `Verify your email using this link: ${url.toString()}`, url, false, true);
   }
 
   async sendVerificationCode(to: string, code: string): Promise<void> {
@@ -127,18 +132,19 @@ export class MailerService implements OnModuleDestroy {
       this.logger.warn(`[local email] ${subject} for ${to}: ${code}`);
       return;
     }
-    await this.sendSmtpMail({
+    const result = await this.sendSmtpMail({
       from: process.env.SMTP_FROM,
       to,
       subject,
       text,
     });
+    this.requireRecipientAcceptance(result, to);
   }
 
   async sendPasswordReset(to: string, token: string): Promise<void> {
     const url = new URL('/reset-password', process.env.FRONTEND_URL ?? 'http://localhost:5173');
     url.searchParams.set('token', token);
-    await this.deliver(to, 'Reset your IMARA password', `Reset your password using this link: ${url.toString()}`, url);
+    await this.deliver(to, 'Reset your IMARA password', `Reset your password using this link: ${url.toString()}`, url, false, true);
   }
 
   async sendPasswordResetCode(to: string, code: string): Promise<void> {
@@ -148,12 +154,13 @@ export class MailerService implements OnModuleDestroy {
       this.logger.warn(`[local email] ${subject} for ${to}: ${code}`);
       return;
     }
-    await this.sendSmtpMail({
+    const result = await this.sendSmtpMail({
       from: process.env.SMTP_FROM,
       to,
       subject,
       text,
     });
+    this.requireRecipientAcceptance(result, to);
   }
 
   async sendWorkspaceInvitation(to: string, token: string, workspaceName: string): Promise<void> {
@@ -203,18 +210,8 @@ export class MailerService implements OnModuleDestroy {
         ? `<div style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;max-height:0;max-width:0;overflow:hidden;mso-hide:all;">${escapeEmailText(preheader)}</div>${html}`
         : html,
     });
-    const normalizedTo = to.toLowerCase();
-    const acceptedRecipients: unknown[] = Array.isArray(result.accepted) ? result.accepted : [];
-    const accepted = acceptedRecipients.some((recipient) => {
-      const address = typeof recipient === 'string'
-        ? recipient
-        : recipient && typeof recipient === 'object' && 'address' in recipient
-          ? String((recipient as { address: unknown }).address)
-          : '';
-      return address.toLowerCase() === normalizedTo;
-    });
     return {
-      accepted,
+      accepted: this.isRecipientAccepted(result, to),
       ...(typeof result.responseCode === 'number' ? { responseCode: result.responseCode } : {}),
     };
   }

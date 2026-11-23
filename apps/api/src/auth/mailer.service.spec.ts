@@ -57,18 +57,39 @@ describe('MailerService local console delivery', () => {
     process.env.SMTP_USER = 'smtp-user';
     process.env.SMTP_PASSWORD = 'smtp-password';
     process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
-    const sendMail = jest.fn().mockResolvedValue(undefined);
+    const sendMail = jest.fn().mockResolvedValue({
+      accepted: ['courageomilo@kensirius.com'],
+      rejected: [],
+    });
     jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
 
-    await mailer.sendVerificationCode('person@example.com', '123456');
+    await mailer.sendVerificationCode('courageomilo@kensirius.com', '123456');
 
     expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
       from: 'IMARA <noreply@example.com>',
-      to: 'person@example.com',
+      to: 'courageomilo@kensirius.com',
       subject: 'Your IMARA verification code',
       text: expect.stringContaining('123456'),
     }));
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('surfaces SMTP rejection of a verification recipient', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.EMAIL_DELIVERY = 'smtp';
+    process.env.SMTP_HOST = 'smtp-relay.brevo.com';
+    process.env.SMTP_PORT = '587';
+    process.env.SMTP_USER = 'smtp-user';
+    process.env.SMTP_PASSWORD = 'smtp-password';
+    process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
+    const sendMail = jest.fn().mockResolvedValue({
+      accepted: [],
+      rejected: ['courageomilo@kensirius.com'],
+    });
+    jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
+
+    await expect(mailer.sendVerificationCode('courageomilo@kensirius.com', '123456'))
+      .rejects.toThrow('SMTP did not accept the email recipient.');
   });
 
   it('logs SMTP delivery failures and rethrows them', async () => {
@@ -133,7 +154,7 @@ describe('MailerService local console delivery', () => {
       'Bring the report',
       'event-id',
       'workspace-id',
-    )).rejects.toThrow('SMTP did not accept the calendar reminder recipient.');
+    )).rejects.toThrow('SMTP did not accept the email recipient.');
 
     expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'person@example.com',
@@ -180,7 +201,7 @@ describe('MailerService local console delivery', () => {
     process.env.SMTP_USER = 'smtp-user';
     process.env.SMTP_PASSWORD = 'smtp-password';
     process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
-    const sendMail = jest.fn().mockResolvedValue(undefined);
+    const sendMail = jest.fn().mockResolvedValue({ accepted: ['person@example.com'], rejected: [] });
     jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
 
     await mailer.sendPasswordResetCode('person@example.com', '654321');
@@ -200,7 +221,7 @@ describe('MailerService local console delivery', () => {
     process.env.SMTP_USER = 'smtp-user';
     process.env.SMTP_PASSWORD = 'smtp-password';
     process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
-    const sendMail = jest.fn().mockResolvedValue(undefined);
+    const sendMail = jest.fn().mockResolvedValue({ accepted: ['person@example.com'], rejected: [] });
     jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
 
     await mailer.sendVerificationCode('person@example.com', '123456');
@@ -232,7 +253,7 @@ describe('MailerService local console delivery', () => {
     process.env.SMTP_USER = 'smtp-user';
     process.env.SMTP_PASSWORD = 'smtp-password';
     process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
-    const sendMail = jest.fn().mockResolvedValue(undefined);
+    const sendMail = jest.fn().mockResolvedValue({ accepted: ['person@example.com'], rejected: [] });
     jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
 
     await mailer.sendWorkspaceInvitation('person@example.com', 'invite-token', 'Research Team');
@@ -304,7 +325,7 @@ describe('MailerService local console delivery', () => {
     process.env.SMTP_USER = 'smtp-user';
     process.env.SMTP_PASSWORD = 'smtp-password';
     process.env.SMTP_FROM = 'IMARA <noreply@example.com>';
-    const sendMail = jest.fn().mockResolvedValue(undefined);
+    const sendMail = jest.fn().mockResolvedValue({ accepted: ['person@example.com'], rejected: [] });
     jest.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as never);
 
     expect(mailer.isConfigured()).toBe(true);

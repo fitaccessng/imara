@@ -26,6 +26,9 @@ npm run dev:api
 In another terminal, run the web app with `npm run dev`. The example API database URL
 matches the root Compose service. SMTP values in `apps/api/.env` are required for
 registration, verification and password-recovery email.
+Registration accepts syntactically valid addresses on custom domains; there is no
+domain allowlist. The SMTP relay must accept the recipient, and its acceptance
+does not guarantee inbox placement or delivery by the recipient's mail host.
 The example config contains the Brevo relay, SMTP login, and verified sender address.
 Set the SMTP key only as `SMTP_PASSWORD` in the ignored `apps/api/.env` or your deployment
 secret manager; rotate any SMTP key that has been shared in chat or source control.
