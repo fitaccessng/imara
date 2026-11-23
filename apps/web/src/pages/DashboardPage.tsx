@@ -15,11 +15,13 @@ import {
   Folder,
   FolderPlus,
   LockKeyhole,
+  ListTodo,
   MailPlus,
   MessageCircle,
   NotebookPen,
   ShieldCheck,
   Upload,
+  Video,
   WandSparkles,
   Clock3,
 } from "lucide-react";
@@ -94,6 +96,10 @@ function SectionHeading({
 }
 
 const businessTools = [
+  { title: "Shared notes", path: "/workspace/notes", icon: NotebookPen },
+  { title: "Shared tasks", path: "/workspace/tasks", icon: ListTodo },
+  { title: "Meetings", path: "/workspace/meetings", icon: Video },
+  { title: "Forms", path: "/workspace/forms", icon: ClipboardCheck },
   { title: "Shared files", path: "/workspace", icon: FileText },
   { title: "Team calendar", path: "/workspace/calendar", icon: CalendarDays },
   { title: "Private files", path: "/workspace/file-deliveries", icon: LockKeyhole },
@@ -136,6 +142,22 @@ const quickTools = [
     iconBg: "bg-[#EAF7ED]",
     iconColor: "text-[#20AD43]",
     to: "/notes",
+  },
+  {
+    title: "Tasks",
+    description: "Track work and deadlines",
+    icon: ListTodo,
+    iconBg: "bg-[#EEF3FF]",
+    iconColor: "text-[#5278D9]",
+    to: "/tasks",
+  },
+  {
+    title: "Meetings",
+    description: "Capture decisions and actions",
+    icon: Video,
+    iconBg: "bg-[#FFF1E8]",
+    iconColor: "text-[#E78A4B]",
+    to: "/meetings",
   },
   {
     title: "File requests",
@@ -197,7 +219,7 @@ function DashboardQuickTools({ online }: { online: boolean }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2 lg:grid-cols-4 xl:grid-cols-4">
         {quickTools.map((tool) => {
           const Icon = tool.icon;
 
