@@ -344,4 +344,27 @@ describe('DocumentsService', () => {
     expect(prisma.personalDocument.updateMany.mock.calls[0][0].data.tokenHash).not.toBe(result.token);
     expect(prisma.personalDocument.updateMany.mock.calls[0][0].data.published).toBe(true);
   });
+
+  it('validates typed email and numeric form answers', async () => {
+    prisma.personalDocument.findFirst.mockResolvedValue({
+      id: 'form-id',
+      type: PersonalDocumentType.FORM,
+      content: { questions: [
+        { id: 'email', type: 'EMAIL', required: true },
+        { id: 'age', type: 'NUMBER', required: true },
+      ] },
+    });
+    prisma.personalDocumentResponse.create.mockResolvedValue({ id: 'response-id', submittedAt: new Date() });
+    await service.submitForm('a'.repeat(43), {
+      name: 'Respondent', email: 'r@example.com',
+      answers: { email: '  OTHER@example.com ', age: 0 },
+    });
+    expect(prisma.personalDocumentResponse.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ answers: { email: 'other@example.com', age: 0 } }),
+    }));
+
+    await expect(service.submitForm('a'.repeat(43), {
+      name: 'Respondent', email: 'r@example.com', answers: { email: 'bad', age: '5' },
+    })).rejects.toBeInstanceOf(BadRequestException);
+  });
 });

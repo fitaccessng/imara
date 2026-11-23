@@ -15,7 +15,9 @@ import {
 } from '@nestjs/common';
 import { AuthenticatedRequest } from '../auth/auth.types';
 import { SessionGuard } from '../auth/session.guard';
-import { CreateNoteDto, ListNotesQueryDto, UpdateNoteDto } from './notes.dto';
+import {
+  CreateNoteDto, CreatePersonalTaskDto, ListNotesQueryDto, UpdateNoteDto, UpdatePersonalTaskDto,
+} from './notes.dto';
 import { NotesService } from './notes.service';
 
 @Controller('notes')
@@ -58,5 +60,43 @@ export class NotesController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {
     return this.notes.delete(req.auth.userId, id);
+  }
+
+}
+
+@Controller('tasks')
+@UseGuards(SessionGuard)
+export class PersonalTasksController {
+  constructor(private readonly notes: NotesService) {}
+
+  @Get()
+  list(@Req() req: AuthenticatedRequest) {
+    return this.notes.listTasks(req.auth.userId);
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  create(@Req() req: AuthenticatedRequest, @Body() dto: CreatePersonalTaskDto) {
+    return this.notes.createTask(req.auth.userId, dto);
+  }
+
+  @Get(':id')
+  get(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.notes.getTask(req.auth.userId, id);
+  }
+
+  @Patch(':id')
+  update(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdatePersonalTaskDto,
+  ) {
+    return this.notes.updateTask(req.auth.userId, id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  delete(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.notes.deleteTask(req.auth.userId, id);
   }
 }

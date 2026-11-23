@@ -56,6 +56,10 @@ const AdminPortal = lazy(() => import("./pages/admin/AdminPortal").then((pages) 
 const SharedFilePreviewPage = lazy(() => import("./pages/sharing/SharedFilePreviewPage").then((pages) => ({ default: pages.default })));
 const OfflineAccessPage = lazy(() => import("./offline/OfflineAccessPage").then((pages) => ({ default: pages.default })));
 const NotesPage = lazy(() => import("./notes/NotesPage").then((pages) => ({ default: pages.NotesPage })));
+const TasksPage = lazy(() => import("./productivity/TasksPage").then((pages) => ({ default: pages.TasksPage })));
+const MeetingsPage = lazy(() => import("./productivity/MeetingsPage").then((pages) => ({ default: pages.MeetingsPage })));
+const FormsPage = lazy(() => import("./productivity/FormsPages").then((pages) => ({ default: pages.FormsPage })));
+const PublicFormPage = lazy(() => import("./productivity/FormsPages").then((pages) => ({ default: pages.PublicFormPage })));
 
 const EventsPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.EventsPage })));
 const CreateEventPage = lazy(() => import("./events/EventPages").then((pages) => ({ default: pages.CreateEventPage })));
@@ -111,6 +115,8 @@ function ProtectedRoutes() {
         <Route path="/files" element={<FilesPage />} />
         <Route path="/documents" element={<DocumentStudioPage />} />
         <Route path="/notes" element={<NotesPage />} />
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/meetings" element={<MeetingsPage />} />
         <Route path="/document-tools" element={<DocumentToolsPage />} />
         <Route path="/file-requests" element={<FileRequestsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
@@ -142,6 +148,10 @@ function ProtectedRoutes() {
         <Route path="/workspace/signatures" element={<SignaturesPage />} />
         <Route path="/workspace/reminders" element={<RemindersPage />} />
         <Route path="/workspace/calendar" element={<CalendarPage shared />} />
+        <Route path="/workspace/notes" element={<NotesPage shared />} />
+        <Route path="/workspace/tasks" element={<TasksPage shared />} />
+        <Route path="/workspace/meetings" element={<MeetingsPage shared />} />
+        <Route path="/workspace/forms" element={<FormsPage />} />
         <Route path="/workspace/file-deliveries" element={<WorkspaceFileDeliveriesPage />} />
         <Route path="/workspace/chat" element={<WorkspaceChatPage />} />
         <Route path="/workspace" element={<WorkspaceStoragePage />} />
@@ -202,6 +212,7 @@ export function App() {
         <Route path="/share/:token" element={<SharedFilePreviewPage />} />
         <Route path="/respond/:token" element={<PublicDocumentPage />} />
         <Route path="/request/:token" element={<PublicFileRequestPage />} />
+        <Route path="/form/:token" element={<PublicFormPage />} />
         <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>
       </Suspense>

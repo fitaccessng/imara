@@ -71,9 +71,23 @@ storage quota.
 Personal notes are private to the authenticated user:
 
 - `GET /api/v1/notes?search=...` lists notes and optionally searches titles and bodies.
-- `POST /api/v1/notes` creates a note with `{title, body}`.
+- `POST /api/v1/notes` creates a note with `{title, body, fileIds?}`.
 - `GET /api/v1/notes/:id`, `PATCH /api/v1/notes/:id`, and `DELETE /api/v1/notes/:id`
   read, update, and delete an owned note.
+- `fileIds` selects up to 20 existing ready, nondeleted personal files (not
+  workspace, event, or file-request uploads). Omit it on update to retain
+  attachments; provide an array, including `[]`, to replace or clear them.
+  Returned `attachments` include safe file metadata (`id`, `originalName`,
+  `mimeType`, decimal-string `sizeBytes`); object keys are never returned.
+- Personal tasks use `GET/POST /api/v1/tasks` and
+  `PATCH/DELETE /api/v1/tasks/:id`. Create accepts `{title,description?,status?,
+  progress?,dueAt?,fileIds?}`; update accepts any of those fields. Status is
+  `TODO`, `IN_PROGRESS`, `BLOCKED`, or `DONE`; progress is an integer from 0
+  through 100. `dueAt` is an ISO date-time or `null` to clear it. As with notes,
+  `fileIds` replaces attachments only when supplied, and attachments must be
+  ready, nondeleted personal files owned by the caller. Lists order by due date,
+  then most recently updated. Task responses include the same safe attachment
+  metadata.
 - `GET /api/v1/insights/weekly` reports personal files created in the rolling
   seven-day window, unrevoked file-request links, and ready personal files
   expiring today through 30 days from today.
@@ -251,6 +265,14 @@ Existing create/update routes are unchanged:
 
 The event response includes `reminderMinutesBefore`, `taggedUserIds: string[]`,
 and `taggedUsers: [{ id, name, email }]` (only active workspace tags are returned).
+Both personal and workspace event create/update payloads also accept optional
+`linkedFileId` and `linkedTaskId`; sending `null` clears a link, while omission
+retains it on update. Linked documents must be ready, nondeleted files in the
+same personal or workspace scope. Linked tasks must belong to the same owner or
+workspace. Responses include `linkedFile` safe metadata, `linkedTaskId`, and a
+safe `linkedTask` summary (id, title, status, progress, dueAt); absent links are
+returned as `null`. Existing reminder settings and notification behavior are
+unchanged.
 Immediate event notifications and scheduled reminders are persisted as separate
 delivery revisions and polled by the API worker. Edits to start time, reminder
 time or workspace tags cancel unsent reminder work and schedule a fresh revision;
@@ -463,3 +485,107 @@ The frontend receives 401 for missing/invalid sessions, 403 for unverified login
 disallowed origins, 409 for duplicate registration or non-empty folder deletion, 400 for
 invalid DTOs, 413 for a file that exceeds its upload limit or remaining quota, 429 for
 rate limits, and 503 when email or object storage is unconfigured/unavailable.
+
+## Workspace notes and tasks
+
+The workspace productivity migration adds shared workspace notes and tasks. Existing
+`/api/v1/notes` and `/api/v1/tasks` routes provide personal productivity. Workspace
+routes require the
+normal authenticated session and an active workspace membership; writes also honor
+the workspace subscription's read-only restriction. File IDs must identify ready,
+non-deleted files in that same workspace. Attachment responses contain safe file
+metadata only (`sizeBytes` is a decimal string); object keys are never returned.
+
+| Method | Route | Request / response |
+|---|---|---|
+| GET | `/api/v1/workspaces/:workspaceId/notes` | List workspace notes, newest updated first |
+| POST | `/api/v1/workspaces/:workspaceId/notes` | `{title,body,fileIds?}` → 201 note |
+| PATCH | `/api/v1/workspaces/:workspaceId/notes/:noteId` | `{title?,body?,fileIds?}`; specifying `fileIds` replaces all attachments |
+| DELETE | `/api/v1/workspaces/:workspaceId/notes/:noteId` | Delete note → 204 |
+| GET | `/api/v1/workspaces/:workspaceId/tasks` | List workspace tasks, due date order |
+| POST | `/api/v1/workspaces/:workspaceId/tasks` | `{title,description?,assigneeUserId?,dueAt?,status?,progress?,fileIds?}` → 201 task |
+| PATCH | `/api/v1/workspaces/:workspaceId/tasks/:taskId` | Any task fields above; nullable `assigneeUserId`, `dueAt`, and `description` clear those fields; `fileIds` replaces attachments |
+| DELETE | `/api/v1/workspaces/:workspaceId/tasks/:taskId` | Delete task → 204 |
+
+Task status values are `TODO`, `IN_PROGRESS`, `BLOCKED`, and `DONE`; progress is an
+integer from 0 to 100 and is checked both at the API boundary and in service logic.
+An assignee must be an active member of the same workspace.
+Attachment selection accepts at most 20 UUIDs and is scoped to the same workspace.
+This API stores manually authored text only; voice-to-text stays on-device and no
+cloud audio processing or AI transcription/extraction is provided.
+
+The personal public-document form flow is at
+`POST /api/v1/documents` with `type: "FORM"`; share with
+`POST /api/v1/documents/:id/share`, read the public form at
+`GET /api/v1/public-documents/:token`, submit at
+`POST /api/v1/public-documents/:token/responses`, and view owned responses at
+`GET /api/v1/documents/:id/responses`. The raw share token is returned only at
+share creation and only its hash is stored. Public reads/submissions are
+rate-limited. Existing personal form fields support short answer, paragraph,
+multiple choice, checkbox, email, and numeric answers.
+
+## Meeting records
+
+Personal meetings use `GET/POST /api/v1/meetings`, `GET/PATCH/DELETE
+/api/v1/meetings/:id`. Workspace meetings use the corresponding routes under
+`/api/v1/workspaces/:workspaceId/meetings`. Create accepts
+`{title,startedAt?,endedAt?,transcript,summary?,decisions?,recordingFileId?,actionItems?,calendarEventId?}`.
+`calendarEventId` links the meeting to one unlinked calendar event in the same
+personal or workspace scope. On update, omit it to keep the current link or
+send `null` to unlink; linking another event moves the meeting link. Meeting
+responses add `calendarEventId` and safe event metadata in `calendarEvent`.
+Calendar event responses add `linkedMeetingId` and safe meeting metadata in
+`linkedMeeting`; existing event fields are unchanged. Deleting a meeting removes
+the event's meeting reference, and deleting an event does not delete its meeting.
+Action items contain `{title,description?,dueAt?,assigneeUserId?}`. Supplying
+`actionItems` on update replaces the list unless any current item is already
+linked to a task; linked task items cannot be removed by replacement. To create
+a task, POST to `/:id/action-items/:actionItemId/task` under the same meeting
+route. This creates a regular personal or workspace task and links it to the
+action item; repeated requests reuse the existing task.
+
+Personal records are owner-scoped. Workspace records require active membership,
+and workspace writes require a writable subscription. An optional recording
+must already be a ready, nondeleted file in the same scope; file object keys
+are not exposed. Transcript and decisions are user-entered only: there is no
+audio upload, cloud transcription, or AI processing in this API.
+
+## Workspace public forms
+
+Workspace forms require an authenticated active member for management. Writes
+also honor the workspace subscription's read-only restriction. Only the form
+creator or a workspace owner/admin may manage the form or read its responses.
+
+| Method | Route | Request / response |
+|---|---|---|
+| GET | `/api/v1/workspaces/:workspaceId/forms` | List safe form metadata and response counts |
+| POST | `/api/v1/workspaces/:workspaceId/forms` | `{title,description?,schema,published?}` → 201 draft/form |
+| GET/PATCH/DELETE | `/api/v1/workspaces/:workspaceId/forms/:formId` | Read/update/delete an owned or administrable form |
+| POST | `/api/v1/workspaces/:workspaceId/forms/:formId/share` | Publish/rotate link; returns the raw token once |
+| DELETE | `/api/v1/workspaces/:workspaceId/forms/:formId/share` | Revoke the public token |
+| GET | `/api/v1/workspaces/:workspaceId/forms/:formId/responses` | Read submissions (manager only) |
+| GET | `/api/v1/public-forms/:token` | Public form schema, no owner or workspace data |
+| POST | `/api/v1/public-forms/:token/questions/:questionId/uploads` | Multipart `file` for a `FILE_UPLOAD` field → staged safe file metadata |
+| POST | `/api/v1/public-forms/:token/responses` | `{name,email,answers}` → receipt `{id,submittedAt}` only |
+
+`schema` has a `questions` array with unique IDs, prompt, required flag, and one
+of `SHORT_ANSWER`, `PARAGRAPH`, `MULTIPLE_CHOICE`, `CHECKBOXES`, `EMAIL`, or
+`NUMBER`, or `FILE_UPLOAD`. Choice questions require unique choices before
+publication. Submission answers are checked against the published schema,
+including required values, choice membership, email format, numeric bounds,
+file-question ownership, size limits, and unknown keys.
+Tokens are cryptographically random; only SHA-256 hashes are persisted. Public
+read and submission endpoints are rate-limited, responses use `Cache-Control:
+no-store`, and public endpoints never return form-owner metadata or response
+records.
+
+For a `FILE_UPLOAD` question, upload one file with multipart field `file` at
+`POST /api/v1/public-forms/:token/questions/:questionId/uploads` before
+submission. The 5 MiB limit, per-IP rate limit, PDF/PNG/JPEG signature and
+extension checks apply; the upload goes through the existing workspace storage
+quota reservation/finalization workflow. The response exposes only safe file
+metadata and an opaque file ID. Submission accepts that staged ID only for the
+same form and question, then consumes it into that response. Arbitrary file IDs
+or files from another workspace/form are rejected. Unsubmitted uploads remain
+ordinary quota-counted workspace files and can be managed/deleted through the
+normal authenticated workspace storage routes.

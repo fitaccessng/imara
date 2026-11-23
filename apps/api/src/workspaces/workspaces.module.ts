@@ -15,13 +15,19 @@ import { CalendarService } from './calendar.service';
 import { CalendarReminderWorker } from './calendar-reminder.worker';
 import { FileDeliveryService } from './file-delivery.service';
 import { PersonalNotificationsModule } from '../notifications/personal-notifications.module';
+import { ProductivityController } from './productivity.controller';
+import { ProductivityService } from './productivity.service';
+import { MeetingsService } from '../meetings/meetings.service';
+import { PersonalMeetingsController, WorkspaceMeetingsController } from '../meetings/meetings.controller';
+import { WorkspaceFormsService } from '../forms/workspace-forms.service';
+import { PublicWorkspaceFormsController, WorkspaceFormsController } from '../forms/workspace-forms.controller';
 
 @Module({
   imports: [PrismaModule, PlanCatalogueModule, forwardRef(() => PersonalNotificationsModule)],
-  controllers: [WorkspacesController, WorkspaceStorageController, WorkspaceChatController, CalendarController],
+  controllers: [WorkspacesController, WorkspaceStorageController, WorkspaceChatController, CalendarController, ProductivityController, PersonalMeetingsController, WorkspaceMeetingsController, WorkspaceFormsController, PublicWorkspaceFormsController],
   providers: [
     WorkspacesService, WorkspaceStorageService, WorkspaceChatService, CalendarService, CalendarReminderWorker, FileDeliveryService,
-    ObjectStorageService, MailerService, SessionGuard,
+    ObjectStorageService, MailerService, SessionGuard, ProductivityService, MeetingsService, WorkspaceFormsService,
   ],
   exports: [WorkspacesService, WorkspaceStorageService, WorkspaceChatService, ObjectStorageService],
 })

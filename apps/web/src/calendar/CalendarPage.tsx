@@ -7,6 +7,7 @@ import { apiRequest } from "../lib/api";
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
 import { WorkspaceSetupPrompt } from "../workspaces/WorkspaceSetupPrompt";
 import type { WorkspaceMember } from "../workspaces/types";
+import type { ProductivityFile, Task } from "../productivity/types";
 import "./calendar.css";
 
 interface CalendarEvent {
@@ -20,6 +21,11 @@ interface CalendarEvent {
   creator?: { id: string; name: string };
   reminderMinutesBefore?: number | null;
   taggedUsers?: { id: string; name: string; email?: string }[];
+  linkedFileId?: string | null;
+  linkedTaskId?: string | null;
+  linkedFile?: ProductivityFile | null;
+  linkedTask?: Pick<Task, "id" | "title" | "status" | "progress" | "dueAt"> | null;
+  linkedMeeting?: { id: string; title: string } | null;
 }
 
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -55,6 +61,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
   const [allDay, setAllDay] = useState(false);
   const [reminderMinutesBefore, setReminderMinutesBefore] = useState<number | null>(15);
   const [taggedUserIds, setTaggedUserIds] = useState<string[]>([]);
+  const [linkedFileId, setLinkedFileId] = useState("");
+  const [linkedTaskId, setLinkedTaskId] = useState("");
   const [error, setError] = useState("");
   const eventsPath = shared
     ? `/workspaces/${workspaceId}/calendar/events`
@@ -68,6 +76,16 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     queryKey: ["workspace-calendar-members", workspaceId],
     queryFn: () => apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`),
     enabled: shared && Boolean(workspaceId) && formOpen,
+  });
+  const filesQuery = useQuery({
+    queryKey: ["productivity-files", shared ? workspaceId : "personal"],
+    queryFn: () => apiRequest<{ files: ProductivityFile[] }>(shared ? `/workspaces/${workspaceId}/storage` : "/files"),
+    enabled: formOpen && (!shared || Boolean(workspaceId)),
+  });
+  const tasksQuery = useQuery({
+    queryKey: ["productivity-tasks", shared ? workspaceId : "personal"],
+    queryFn: () => apiRequest<Task[]>(shared ? `/workspaces/${workspaceId}/tasks` : "/tasks"),
+    enabled: formOpen && (!shared || Boolean(workspaceId)),
   });
   const activeMembers = (membersQuery.data ?? []).filter((member) => member.status === "ACTIVE");
   const canEditAll = shared && (workspace?.role === "OWNER" || workspace?.role === "ADMIN");
@@ -109,6 +127,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
         endsAt: new Date(endsAt).toISOString(),
         allDay,
         reminderMinutesBefore,
+        linkedFileId: linkedFileId || null,
+        linkedTaskId: linkedTaskId || null,
         ...(shared ? { taggedUserIds } : {}),
       }),
     }),
@@ -132,6 +152,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     setAllDay(false);
     setReminderMinutesBefore(15);
     setTaggedUserIds([]);
+    setLinkedFileId("");
+    setLinkedTaskId("");
     setError("");
   }
 
@@ -145,6 +167,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     setAllDay(false);
     setReminderMinutesBefore(15);
     setTaggedUserIds([]);
+    setLinkedFileId("");
+    setLinkedTaskId("");
     setError("");
     setFormOpen(true);
   }
@@ -158,6 +182,8 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
     setAllDay(event.allDay);
     setReminderMinutesBefore(event.reminderMinutesBefore ?? null);
     setTaggedUserIds(event.taggedUsers?.map((member) => member.id) ?? []);
+    setLinkedFileId(event.linkedFileId ?? "");
+    setLinkedTaskId(event.linkedTaskId ?? "");
     setError("");
     setFormOpen(true);
   }
@@ -260,6 +286,9 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
                     {event.reminderMinutesBefore !== undefined && <small><Clock3 size={12} /> {event.reminderMinutesBefore === null ? "No reminder" : event.reminderMinutesBefore === 0 ? "Reminder at start" : `Reminder ${event.reminderMinutesBefore < 60 ? `${event.reminderMinutesBefore} min` : event.reminderMinutesBefore === 1440 ? "1 day" : `${event.reminderMinutesBefore / 60} hr`} before`}</small>}
                     {event.taggedUsers && event.taggedUsers.length > 0 && <small><Users size={12} /> {event.taggedUsers.map((member) => member.name).join(", ")}</small>}
                     {shared && event.creator && <small>Added by {event.creator.name}</small>}
+                    {event.linkedFile && <small>Document: {event.linkedFile.originalName ?? event.linkedFile.name}</small>}
+                    {event.linkedTask && <small>Task: {event.linkedTask.title}</small>}
+                    {event.linkedMeeting && <small>Meeting: {event.linkedMeeting.title}</small>}
                     {canManage && <div className="calendar-event-actions">
                       <button type="button" onClick={() => openEdit(event)}><Pencil size={13} /> Edit</button>
                       <button type="button" disabled={deleteEvent.isPending} onClick={() => { if (window.confirm(`Delete “${event.title}”?`)) deleteEvent.mutate(event.id); }}><Trash2 size={13} /> Delete</button>
@@ -278,6 +307,19 @@ export function CalendarPage({ shared = false }: { shared?: boolean }) {
           <form onSubmit={submit}>
             <label>What’s happening?<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} required placeholder="e.g. Team planning session" /></label>
             <label>Details <span className="calendar-optional">OPTIONAL</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={2000} rows={3} placeholder="Add context or a short note" /></label>
+            <label>Connect a document <span className="calendar-optional">OPTIONAL</span>
+              <select value={linkedFileId} onChange={(event) => setLinkedFileId(event.target.value)}>
+                <option value="">No document</option>
+                {(filesQuery.data?.files ?? []).map((file) => <option key={file.id} value={file.id}>{file.originalName ?? file.name ?? "Document"}</option>)}
+              </select>
+            </label>
+            <label>Connect a task <span className="calendar-optional">OPTIONAL</span>
+              <select value={linkedTaskId} onChange={(event) => setLinkedTaskId(event.target.value)}>
+                <option value="">No task</option>
+                {(tasksQuery.data ?? []).map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+              </select>
+            </label>
+            {(filesQuery.isError || tasksQuery.isError) && <p className="calendar-form-error" role="alert">Linked files or tasks couldn’t load. {filesQuery.error?.message ?? tasksQuery.error?.message}</p>}
             <label className="calendar-all-day"><input type="checkbox" checked={allDay} onChange={(event) => setAllDay(event.target.checked)} /><span>All day</span></label>
             <div className="calendar-time-fields">
               <label>Starts<input type={allDay ? "date" : "datetime-local"} value={allDay ? startsAt.slice(0, 10) : startsAt} onChange={(event) => setStartsAt(allDay ? `${event.target.value}T00:00` : event.target.value)} required /></label>

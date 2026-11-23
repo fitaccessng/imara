@@ -20,6 +20,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { getPlanFileSizeException, getPlanMaxUploadBytes } from '../subscriptions/plan-entitlements';
 import { getMaxUploadBytes } from './storage.service';
+
+const MAX_PUBLIC_FORM_UPLOAD_BYTES = 5 * 1024 * 1024;
 import type { Request, Response } from 'express';
 
 function temporaryDirectory(): string {
@@ -55,7 +57,12 @@ export function TempUploadInterceptor() {
       const request = context.switchToHttp().getRequest<RequestWithUpload>();
       const response = context.switchToHttp().getResponse<Response>();
       const plan = await this.requestPlan(request);
-      const fileLimit = plan ? getPlanMaxUploadBytes(plan) : getMaxUploadBytes();
+      const planLimit = plan ? getPlanMaxUploadBytes(plan) : getMaxUploadBytes();
+      const isPublicFormQuestionUpload = typeof request.params?.questionId === 'string'
+        && typeof request.params?.token === 'string';
+      const fileLimit = isPublicFormQuestionUpload
+        ? Math.min(planLimit, MAX_PUBLIC_FORM_UPLOAD_BYTES)
+        : planLimit;
       const parseMultipart = multer({
         storage: this.storage,
         limits: { fileSize: fileLimit, files: 1, fields: 20, parts: 22, fieldSize: 64 * 1024 },
@@ -112,6 +119,19 @@ export function TempUploadInterceptor() {
         userId = fileRequest.creatorUserId;
       }
       const captureToken = request.params?.token;
+      const formToken = request.params?.token;
+      if (!userId && typeof formToken === 'string' && typeof request.params?.questionId === 'string') {
+        const form = await this.prisma.workspaceForm.findFirst({
+          where: {
+            tokenHash: hashToken(formToken),
+            publishedAt: { not: null },
+            revokedAt: null,
+          },
+          select: { workspace: { select: { ownerUserId: true } } },
+        });
+        if (!form) throw new NotFoundException('Form not found');
+        userId = form.workspace.ownerUserId;
+      }
       if (!userId && typeof captureToken === 'string') {
         const event = await this.prisma.event.findFirst({
           where: {

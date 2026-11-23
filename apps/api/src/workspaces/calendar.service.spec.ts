@@ -34,6 +34,9 @@ describe('CalendarService', () => {
   const recipientUpdateMany = jest.fn();
   const tagDeleteMany = jest.fn();
   const tagCreateMany = jest.fn();
+  const fileFindFirst = jest.fn();
+  const personalTaskFindFirst = jest.fn();
+  const workspaceTaskFindFirst = jest.fn();
   const transaction = {
     calendarEvent: { create: eventCreate, update },
     calendarReminderDispatch: { create: dispatchCreate, findMany: dispatchFindMany, updateMany: dispatchUpdateMany },
@@ -43,6 +46,9 @@ describe('CalendarService', () => {
   const service = new CalendarService({
     calendarEvent: { findFirst, findMany, create, update, delete: deleteEvent, deleteMany },
     workspaceMember: { findMany: activeMembers },
+    storedFile: { findFirst: fileFindFirst },
+    personalTask: { findFirst: personalTaskFindFirst },
+    workspaceTask: { findFirst: workspaceTaskFindFirst },
     $transaction: jest.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction)),
   } as never, { authorizeWorkspace } as never, { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never);
 
@@ -79,8 +85,44 @@ describe('CalendarService', () => {
     authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF, status: WorkspaceMemberStatus.ACTIVE });
     findMany.mockResolvedValue([event]);
     await expect(service.listWorkspace('workspace-1', 'staff-1'))
-      .resolves.toEqual([{ ...event, taggedUserIds: [], taggedUsers: [] }]);
+      .resolves.toEqual([{
+        ...event, linkedFile: null, linkedTask: null, linkedTaskId: null,
+        linkedMeeting: null, linkedMeetingId: null, taggedUserIds: [], taggedUsers: [],
+      }]);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { workspaceId: 'workspace-1' } }));
+  });
+
+  it('renders safe linked meeting metadata on calendar events', async () => {
+    const linkedWorkspaceMeeting = {
+      id: 'meeting-1', title: 'Planning', startedAt: new Date('2026-11-10T10:00:00Z'), endedAt: null,
+    };
+    findMany.mockResolvedValue([{ ...event, linkedPersonalMeeting: null, linkedWorkspaceMeeting }]);
+    await expect(service.listWorkspace('workspace-1', 'staff-1')).resolves.toEqual([expect.objectContaining({
+      linkedMeetingId: 'meeting-1',
+      linkedMeeting: linkedWorkspaceMeeting,
+    })]);
+  });
+
+  it('only links ready files and tasks from the event’s owner or workspace', async () => {
+    fileFindFirst.mockResolvedValue(null);
+    await expect(service.createPersonal('user-1', {
+      title: 'Review', startsAt: '2026-11-10T10:00:00Z', endsAt: '2026-11-10T11:00:00Z',
+      allDay: false, linkedFileId: 'foreign-file',
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(fileFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'foreign-file', userId: 'user-1', workspaceId: null, status: 'READY', deletedAt: null,
+      }),
+    }));
+
+    personalTaskFindFirst.mockResolvedValue(null);
+    await expect(service.createPersonal('user-1', {
+      title: 'Review', startsAt: '2026-11-10T10:00:00Z', endsAt: '2026-11-10T11:00:00Z',
+      allDay: false, linkedTaskId: 'task-from-another-user',
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(personalTaskFindFirst).toHaveBeenCalledWith({
+      where: { id: 'task-from-another-user', userId: 'user-1' }, select: { id: true },
+    });
   });
 
   it('lets administrators edit any event but limits staff to their own', async () => {

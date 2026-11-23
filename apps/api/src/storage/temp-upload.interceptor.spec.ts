@@ -80,4 +80,25 @@ describe('temporary upload plan resolution', () => {
     await expect(interceptor.requestPlan({ params: { fileRequestToken: 'invalid' } }))
       .rejects.toThrow('File request not found');
   });
+
+  it('resolves public form uploads against the workspace owner plan', async () => {
+    const token = 'f'.repeat(43);
+    const workspaceFormFindFirst = jest.fn().mockResolvedValue({
+      workspace: { ownerUserId: 'workspace-owner-id' },
+    });
+    const subscriptionFindUnique = jest.fn().mockResolvedValue({ plan: Plan.PRO });
+    const currentPlan = jest.fn().mockResolvedValue(Plan.PRO);
+    const interceptor = new interceptorType({
+      workspaceForm: { findFirst: workspaceFormFindFirst },
+      subscription: { findUnique: subscriptionFindUnique },
+    } as never, { currentPlan } as never);
+
+    await expect(interceptor.requestPlan({ params: { token, questionId: 'attachment' } }))
+      .resolves.toBe(Plan.PRO);
+    expect(workspaceFormFindFirst).toHaveBeenCalledWith({
+      where: { tokenHash: hashToken(token), publishedAt: { not: null }, revokedAt: null },
+      select: { workspace: { select: { ownerUserId: true } } },
+    });
+    expect(subscriptionFindUnique).toHaveBeenCalledWith({ where: { userId: 'workspace-owner-id' } });
+  });
 });

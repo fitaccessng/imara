@@ -84,7 +84,7 @@ export class DocumentsService {
         if (requireComplete && !prompt.trim()) this.badRequest(`questions[${index}].prompt is required before publishing`);
         if (ids.has(question.id as string)) this.badRequest('Question IDs must be unique');
         ids.add(question.id as string);
-        if (!['SHORT_ANSWER', 'PARAGRAPH', 'MULTIPLE_CHOICE', 'CHECKBOXES'].includes(String(question.type))) {
+        if (!['SHORT_ANSWER', 'PARAGRAPH', 'MULTIPLE_CHOICE', 'CHECKBOXES', 'EMAIL', 'NUMBER'].includes(String(question.type))) {
           this.badRequest(`questions[${index}].type is invalid`);
         }
         if (typeof question.required !== 'boolean') this.badRequest(`questions[${index}].required must be boolean`);
@@ -420,10 +420,17 @@ export class DocumentsService {
       const question = byId.get(key);
       if (!question) this.badRequest(`Answer references an unknown question`);
       const answer = dto.answers[key];
-      if (question.type === 'SHORT_ANSWER' || question.type === 'PARAGRAPH') {
-        const max = question.type === 'SHORT_ANSWER' ? 2000 : 10_000;
+      if (question.type === 'SHORT_ANSWER' || question.type === 'PARAGRAPH' || question.type === 'EMAIL') {
+      const max = question.type === 'PARAGRAPH' ? 10_000 : question.type === 'EMAIL' ? 320 : 2000;
         if (typeof answer !== 'string' || answer.length > max) this.badRequest('Text answer is invalid or too long');
-        answers[key] = answer;
+      const value = answer.trim();
+      if (question.type === 'EMAIL' && value && !EMAIL_PATTERN.test(value)) this.badRequest('Email answer is invalid');
+      answers[key] = question.type === 'EMAIL' ? value.toLowerCase() : value;
+      } else if (question.type === 'NUMBER') {
+      if (typeof answer !== 'number' || !Number.isFinite(answer) || Math.abs(answer) > 1_000_000_000_000) {
+        this.badRequest('Numeric answer is invalid');
+      }
+      answers[key] = answer;
       } else if (question.type === 'MULTIPLE_CHOICE') {
         if (typeof answer !== 'string' || !(question.choices as string[]).includes(answer)) {
           this.badRequest('Multiple-choice answer is invalid');

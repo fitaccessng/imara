@@ -2,6 +2,79 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model WorkspaceNote {
+  id          String                    @id @default(uuid()) @db.Uuid
+  workspaceId String                    @db.Uuid
+  authorId    String                    @db.Uuid
+  title       String                    @db.VarChar(120)
+  body        String                    @db.VarChar(50000)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  workspace   Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author      User                      @relation("WorkspaceNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  attachments WorkspaceNoteAttachment[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, updatedAt])
+  @@index([authorId, createdAt])
+}
+
+model WorkspaceNoteAttachment {
+  workspaceId String        @db.Uuid
+  noteId      String        @db.Uuid
+  fileId      String        @db.Uuid
+  createdAt   DateTime      @default(now())
+  note        WorkspaceNote @relation(fields: [workspaceId, noteId], references: [workspaceId, id], onDelete: Cascade)
+  file        StoredFile    @relation(fields: [workspaceId, fileId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([noteId, fileId])
+  @@index([workspaceId, fileId])
+}
+
+enum WorkspaceTaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+}
+
+model WorkspaceTask {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  workspaceId        String                    @db.Uuid
+  creatorId          String                    @db.Uuid
+  assigneeUserId     String?                   @db.Uuid
+  title              String                    @db.VarChar(200)
+  description        String?                   @db.VarChar(10000)
+  status             WorkspaceTaskStatus       @default(TODO)
+  progress           Int                       @default(0)
+  dueAt              DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  workspace          Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator            User                      @relation("WorkspaceTaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  assignee           WorkspaceMember?          @relation("WorkspaceTaskAssignee", fields: [workspaceId, assigneeUserId], references: [workspaceId, userId], onDelete: Restrict)
+  attachments        WorkspaceTaskAttachment[]
+  calendarEvents     CalendarEvent[]           @relation("CalendarWorkspaceTask")
+  meetingActionItems MeetingActionItem[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, status, dueAt])
+  @@index([workspaceId, assigneeUserId, status])
+  @@index([creatorId, createdAt])
+}
+
+model WorkspaceTaskAttachment {
+  workspaceId String        @db.Uuid
+  taskId      String        @db.Uuid
+  fileId      String        @db.Uuid
+  createdAt   DateTime      @default(now())
+  task        WorkspaceTask @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  file        StoredFile    @relation(fields: [workspaceId, fileId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([taskId, fileId])
+  @@index([workspaceId, fileId])
+}
+
 datasource db {
   provider = "postgresql"
 }
@@ -236,74 +309,82 @@ enum PersonalDocumentType {
 }
 
 model User {
-  id              String                @id @default(uuid()) @db.Uuid
-  email           String                @unique @db.VarChar(320)
-  passwordHash    String                @db.VarChar(255)
-  name            String                @db.VarChar(120)
-  role            UserRole              @default(USER)
-  accountStatus   UserAccountStatus     @default(ACTIVE)
-  emailVerifiedAt DateTime?
-  referralCode    String                @unique @db.VarChar(32)
-  referredByUserId String?              @db.Uuid
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  sessions        Session[]
-  verificationTokens VerificationToken[]
-  resetTokens     PasswordResetToken[]
-  subscription    Subscription?
-  folders         Folder[]
-  files           StoredFile[]
-  fileRequests    FileRequest[]
-  ownedWorkspaces Workspace[]           @relation("WorkspaceOwner")
-  memberships     WorkspaceMember[]
-  sentInvitations WorkspaceInvitation[] @relation("InvitationInviter")
-  auditEvents     AuditLog[]             @relation("AuditActor")
-  platformAdminProfile PlatformAdminProfile?
-  platformAdminAuditEvents PlatformAdminAuditLog[] @relation("PlatformAdminAuditActor")
-  createdPlatformAnnouncements PlatformAnnouncement[] @relation("PlatformAnnouncementCreator")
+  id                             String                         @id @default(uuid()) @db.Uuid
+  email                          String                         @unique @db.VarChar(320)
+  passwordHash                   String                         @db.VarChar(255)
+  name                           String                         @db.VarChar(120)
+  role                           UserRole                       @default(USER)
+  accountStatus                  UserAccountStatus              @default(ACTIVE)
+  emailVerifiedAt                DateTime?
+  referralCode                   String                         @unique @db.VarChar(32)
+  referredByUserId               String?                        @db.Uuid
+  createdAt                      DateTime                       @default(now())
+  updatedAt                      DateTime                       @updatedAt
+  sessions                       Session[]
+  verificationTokens             VerificationToken[]
+  resetTokens                    PasswordResetToken[]
+  subscription                   Subscription?
+  folders                        Folder[]
+  files                          StoredFile[]
+  fileRequests                   FileRequest[]
+  ownedWorkspaces                Workspace[]                    @relation("WorkspaceOwner")
+  memberships                    WorkspaceMember[]
+  sentInvitations                WorkspaceInvitation[]          @relation("InvitationInviter")
+  auditEvents                    AuditLog[]                     @relation("AuditActor")
+  platformAdminProfile           PlatformAdminProfile?
+  platformAdminAuditEvents       PlatformAdminAuditLog[]        @relation("PlatformAdminAuditActor")
+  createdPlatformAnnouncements   PlatformAnnouncement[]         @relation("PlatformAnnouncementCreator")
   platformAnnouncementDeliveries PlatformAnnouncementDelivery[]
-  createdAdminEmailCampaigns AdminEmailCampaign[] @relation("AdminEmailCampaignCreator")
-  adminEmailCampaignDeliveries AdminEmailCampaignDelivery[]
-  supportTickets SupportTicket[] @relation("SupportTicketCustomer")
-  assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
-  supportMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
-  notifications   Notification[]
-  events          Event[]
-  createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreator")
-  calendarEventTags CalendarEventTag[]
-  calendarReminderRecipients CalendarReminderRecipient[]
-  sentFileDeliveries FileDelivery[] @relation("FileDeliverySender")
-  receivedFileDeliveries FileDelivery[] @relation("FileDeliveryRecipient")
-  galleryGrants   EventGalleryGrant[]
-  requestedApprovals ApprovalRequest[] @relation("ApprovalRequester")
-  approvalActivities ApprovalActivity[] @relation("ApprovalActivityActor")
-  signatureRequests SignatureRequest[] @relation("SignatureRequestCreator")
-  createdReminders Reminder[] @relation("ReminderCreator")
-  assignedReminders Reminder[] @relation("ReminderAssignee")
-  paymentAttempts PaymentAttempt[]
-  referrer        User?                 @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
-  referredUsers   User[]                @relation("UserReferrals")
-  referralRewards ReferralReward[]      @relation("ReferralRewardInviter")
-  personalNotes  PersonalNote[]
-  personalDocuments PersonalDocument[]
+  createdAdminEmailCampaigns     AdminEmailCampaign[]           @relation("AdminEmailCampaignCreator")
+  adminEmailCampaignDeliveries   AdminEmailCampaignDelivery[]
+  supportTickets                 SupportTicket[]                @relation("SupportTicketCustomer")
+  assignedSupportTickets         SupportTicket[]                @relation("SupportTicketAssignee")
+  supportMessages                SupportTicketMessage[]         @relation("SupportTicketMessageAuthor")
+  notifications                  Notification[]
+  events                         Event[]
+  createdCalendarEvents          CalendarEvent[]                @relation("CalendarEventCreator")
+  calendarEventTags              CalendarEventTag[]
+  calendarReminderRecipients     CalendarReminderRecipient[]
+  sentFileDeliveries             FileDelivery[]                 @relation("FileDeliverySender")
+  receivedFileDeliveries         FileDelivery[]                 @relation("FileDeliveryRecipient")
+  galleryGrants                  EventGalleryGrant[]
+  requestedApprovals             ApprovalRequest[]              @relation("ApprovalRequester")
+  approvalActivities             ApprovalActivity[]             @relation("ApprovalActivityActor")
+  signatureRequests              SignatureRequest[]             @relation("SignatureRequestCreator")
+  createdReminders               Reminder[]                     @relation("ReminderCreator")
+  assignedReminders              Reminder[]                     @relation("ReminderAssignee")
+  paymentAttempts                PaymentAttempt[]
+  referrer                       User?                          @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referredUsers                  User[]                         @relation("UserReferrals")
+  referralRewards                ReferralReward[]               @relation("ReferralRewardInviter")
+  personalNotes                  PersonalNote[]
+  personalTasks                  PersonalTask[]
+  personalDocuments              PersonalDocument[]
+  authoredWorkspaceNotes         WorkspaceNote[]                @relation("WorkspaceNoteAuthor")
+  createdWorkspaceTasks          WorkspaceTask[]                @relation("WorkspaceTaskCreator")
+  assignedPersonalTasks          PersonalTask[]                 @relation("PersonalTaskAssignee")
+  createdPersonalTasks           PersonalTask[]                 @relation("PersonalTaskCreator")
+  personalMeetings               PersonalMeeting[]
+  createdWorkspaceMeetings       WorkspaceMeeting[]             @relation("WorkspaceMeetingCreator")
+  ownedWorkspaceForms            WorkspaceForm[]                @relation("WorkspaceFormOwner")
 
   @@index([referredByUserId, emailVerifiedAt])
 }
 
 model PersonalDocument {
-  id          String               @id @default(uuid()) @db.Uuid
-  ownerId     String               @db.Uuid
+  id          String                     @id @default(uuid()) @db.Uuid
+  ownerId     String                     @db.Uuid
   type        PersonalDocumentType
-  title       String               @db.VarChar(160)
-  description String?              @db.VarChar(1000)
+  title       String                     @db.VarChar(160)
+  description String?                    @db.VarChar(1000)
   content     Json
-  published   Boolean              @default(false)
+  published   Boolean                    @default(false)
   publishedAt DateTime?
-  tokenHash   String?              @unique @db.Char(64)
+  tokenHash   String?                    @unique @db.Char(64)
   revokedAt   DateTime?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  owner       User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  owner       User                       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   responses   PersonalDocumentResponse[]
 
   @@index([ownerId, updatedAt])
@@ -328,14 +409,96 @@ model PersonalDocumentResponse {
 }
 
 model PersonalNote {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  title     String   @db.VarChar(120)
-  body      String   @db.VarChar(20000)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String                   @id @default(uuid()) @db.Uuid
+  userId      String                   @db.Uuid
+  title       String                   @db.VarChar(120)
+  body        String                   @db.VarChar(20000)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  user        User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments PersonalNoteAttachment[]
 
+  @@unique([userId, id])
+  @@index([userId, updatedAt])
+}
+
+model PersonalNoteAttachment {
+  userId    String       @db.Uuid
+  noteId    String       @db.Uuid
+  fileId    String       @db.Uuid
+  createdAt DateTime     @default(now())
+  note      PersonalNote @relation(fields: [userId, noteId], references: [userId, id], onDelete: Cascade)
+  file      StoredFile   @relation(fields: [userId, fileId], references: [userId, id], onDelete: Cascade)
+
+  @@id([noteId, fileId])
+  @@index([userId, noteId])
+  @@index([userId, fileId])
+}
+
+enum PersonalTaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+}
+
+model PersonalTask {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  userId             String                   @db.Uuid
+  creatorId          String                   @db.Uuid
+  assigneeUserId     String?                  @db.Uuid
+  title              String                   @db.VarChar(200)
+  description        String?                  @db.VarChar(10000)
+  status             PersonalTaskStatus       @default(TODO)
+  progress           Int                      @default(0)
+  dueAt              DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creator            User                     @relation("PersonalTaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  assignee           User?                    @relation("PersonalTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  attachments        PersonalTaskAttachment[]
+  calendarEvents     CalendarEvent[]          @relation("CalendarPersonalTask")
+  meetingActionItems MeetingActionItem[]
+
+  @@unique([userId, id])
+  @@index([userId, status, dueAt])
+  @@index([userId, updatedAt])
+  @@index([creatorId, createdAt])
+}
+
+model PersonalTaskAttachment {
+  userId    String       @db.Uuid
+  taskId    String       @db.Uuid
+  fileId    String       @db.Uuid
+  createdAt DateTime     @default(now())
+  task      PersonalTask @relation(fields: [userId, taskId], references: [userId, id], onDelete: Cascade)
+  file      StoredFile   @relation(fields: [userId, fileId], references: [userId, id], onDelete: Cascade)
+
+  @@id([taskId, fileId])
+  @@index([userId, taskId])
+  @@index([userId, fileId])
+}
+
+model PersonalMeeting {
+  id              String              @id @default(uuid()) @db.Uuid
+  userId          String              @db.Uuid
+  title           String              @db.VarChar(200)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  transcript      String              @db.VarChar(100000)
+  summary         String?             @db.VarChar(20000)
+  decisions       Json                @default("[]")
+  recordingFileId String?             @db.Uuid
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordingFile   StoredFile?         @relation(fields: [recordingFileId], references: [id], onDelete: SetNull)
+  actionItems     MeetingActionItem[]
+  calendarEvent   CalendarEvent?       @relation("CalendarPersonalMeeting")
+
+  @@unique([userId, id])
+  @@index([userId, startedAt])
   @@index([userId, updatedAt])
 }
 
@@ -352,77 +515,77 @@ model PlatformAdminProfile {
 }
 
 model Session {
-  id        String   @id @default(uuid()) @db.Uuid
-  tokenHash String   @unique @db.Char(64)
-  userId    String   @db.Uuid
-  createdAt DateTime @default(now())
-  lastSeenAt DateTime @default(now())
-  userAgent String?  @db.VarChar(512)
-  expiresAt DateTime
-  revokedAt DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid()) @db.Uuid
+  tokenHash  String    @unique @db.Char(64)
+  userId     String    @db.Uuid
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  userAgent  String?   @db.VarChar(512)
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt, expiresAt])
 }
 
 model VerificationToken {
-  id            String   @id @default(uuid()) @db.Uuid
-  tokenHash     String   @unique @db.Char(64)
-  userId        String   @db.Uuid
-  expiresAt     DateTime
-  failedAttempts Int     @default(0)
-  createdAt     DateTime @default(now())
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid()) @db.Uuid
+  tokenHash      String   @unique @db.Char(64)
+  userId         String   @db.Uuid
+  expiresAt      DateTime
+  failedAttempts Int      @default(0)
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
 model PasswordResetToken {
-  id            String   @id @default(uuid()) @db.Uuid
-  tokenHash     String   @unique @db.Char(64)
-  userId        String   @db.Uuid
-  expiresAt     DateTime
-  failedAttempts Int     @default(0)
-  createdAt     DateTime @default(now())
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid()) @db.Uuid
+  tokenHash      String   @unique @db.Char(64)
+  userId         String   @db.Uuid
+  expiresAt      DateTime
+  failedAttempts Int      @default(0)
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
 model Subscription {
-  id                String   @id @default(uuid()) @db.Uuid
-  userId            String   @unique @db.Uuid
-  plan              Plan     @default(FREE)
-  storageLimitBytes BigInt   @default(5368709120)
-  storageUsedBytes  BigInt   @default(0)
-  storageReservedBytes BigInt @default(0)
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @unique @db.Uuid
+  plan                 Plan      @default(FREE)
+  storageLimitBytes    BigInt    @default(5368709120)
+  storageUsedBytes     BigInt    @default(0)
+  storageReservedBytes BigInt    @default(0)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ReferralReward {
-  id                     String   @id @default(uuid()) @db.Uuid
-  inviterUserId          String   @db.Uuid
-  verifiedReferralCount  Int
-  storageBytes           BigInt
-  createdAt              DateTime @default(now())
-  inviter                User     @relation("ReferralRewardInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
+  id                    String   @id @default(uuid()) @db.Uuid
+  inviterUserId         String   @db.Uuid
+  verifiedReferralCount Int
+  storageBytes          BigInt
+  createdAt             DateTime @default(now())
+  inviter               User     @relation("ReferralRewardInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
 
   @@unique([inviterUserId, verifiedReferralCount])
   @@index([inviterUserId, createdAt])
 }
 
 model ReferralProgramConfig {
-  id                String   @id @default("default") @db.VarChar(32)
-  active            Boolean  @default(false)
-  title             String   @default("Share IMARA. Grow your space.") @db.VarChar(100)
-  message           String   @default("Invite friends to join IMARA. For every five verified referrals, you’ll receive an extra 1 GB of storage.") @db.VarChar(500)
-  linkTemplate      String   @default("https://www.useimara.space/register?ref={code}") @db.VarChar(500)
-  copyInstructions  String   @default("Copy your referral link and share it with friends.") @db.VarChar(2000)
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default("default") @db.VarChar(32)
+  active           Boolean  @default(false)
+  title            String   @default("Share IMARA. Grow your space.") @db.VarChar(100)
+  message          String   @default("Invite friends to join IMARA. For every five verified referrals, you’ll receive an extra 1 GB of storage.") @db.VarChar(500)
+  linkTemplate     String   @default("https://www.useimara.space/register?ref={code}") @db.VarChar(500)
+  copyInstructions String   @default("Copy your referral link and share it with friends.") @db.VarChar(2000)
+  updatedAt        DateTime @updatedAt
 }
 
 model PaymentAttempt {
@@ -443,78 +606,88 @@ model PaymentAttempt {
 }
 
 model PlanCatalogue {
-  plan                       Plan     @id
-  staffLimit                 Int
-  activeEventLimit           Int
-  storageLimitBytes          BigInt
-  canEditDocuments           Boolean
-  canScanDocuments           Boolean
-  advancedTeamManagement     Boolean
-  monthlyPriceMinor          BigInt
-  currency                   String   @default("NGN") @db.Char(3)
-  updatedAt                  DateTime @updatedAt
+  plan                   Plan     @id
+  staffLimit             Int
+  activeEventLimit       Int
+  storageLimitBytes      BigInt
+  canEditDocuments       Boolean
+  canScanDocuments       Boolean
+  advancedTeamManagement Boolean
+  monthlyPriceMinor      BigInt
+  currency               String   @default("NGN") @db.Char(3)
+  updatedAt              DateTime @updatedAt
 }
 
 model Folder {
-  id              String       @id @default(uuid()) @db.Uuid
-  userId          String       @db.Uuid
-  parentFolderId  String?      @db.Uuid
-  name            String       @db.VarChar(120)
-  isFavorite      Boolean      @default(false)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent          Folder?      @relation("FolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
-  children        Folder[]     @relation("FolderTree")
-  files           StoredFile[]
-  events          Event[]
-  workspaceId     String?      @db.Uuid
-  workspace       Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  permissions     FolderPermission[]
-  fileRequests    FileRequest[]
+  id             String             @id @default(uuid()) @db.Uuid
+  userId         String             @db.Uuid
+  parentFolderId String?            @db.Uuid
+  name           String             @db.VarChar(120)
+  isFavorite     Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent         Folder?            @relation("FolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
+  children       Folder[]           @relation("FolderTree")
+  files          StoredFile[]
+  events         Event[]
+  workspaceId    String?            @db.Uuid
+  workspace      Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  permissions    FolderPermission[]
+  fileRequests   FileRequest[]
 
+  @@unique([workspaceId, id])
   @@index([userId, parentFolderId])
   @@index([userId, parentFolderId, name])
   @@index([userId, workspaceId, isFavorite])
   @@index([workspaceId, parentFolderId])
-  @@unique([workspaceId, id])
 }
 
 model StoredFile {
-  id             String          @id @default(uuid()) @db.Uuid
-  userId         String          @db.Uuid
-  fileRequestId  String?         @db.Uuid
-  folderId       String?         @db.Uuid
-  objectKey      String          @unique @db.VarChar(512)
-  originalName   String          @db.VarChar(255)
-  mimeType       String          @db.VarChar(255)
-  ocrText        String?         @db.Text
-  sizeBytes      BigInt
-  status         StoredFileStatus @default(UPLOADING)
-  uploadSource   StoredFileUploadSource @default(STANDARD)
-  quotaReserved  Boolean          @default(true)
-  isFavorite     Boolean          @default(false)
-  contentHash    String?          @db.Char(64)
-  category       FileCategory     @default(OTHER)
-  tags           String[]         @default([])
-  deletedAt      DateTime?
-  expiryDate     DateTime?        @db.Date
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder         Folder?         @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  fileRequest    FileRequest?    @relation("FileRequestUploads", fields: [fileRequestId], references: [id], onDelete: SetNull)
-  workspaceId    String?          @db.Uuid
-  workspace      Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  eventId         String?           @db.Uuid
-  event           Event?            @relation(fields: [eventId], references: [id], onDelete: Restrict)
-  approvalAttachments ApprovalAttachment[]
-  signatureSourceRequests SignatureRequest[] @relation("SignatureSourceFile")
-  signatureFinalRequest SignatureRequest? @relation("SignatureFinalFile")
-  chatMessages WorkspaceChatMessage[]
-  deliveries    FileDelivery[]
-  publicShares PublicFileShare[]
+  id                         String                    @id @default(uuid()) @db.Uuid
+  userId                     String                    @db.Uuid
+  fileRequestId              String?                   @db.Uuid
+  folderId                   String?                   @db.Uuid
+  objectKey                  String                    @unique @db.VarChar(512)
+  originalName               String                    @db.VarChar(255)
+  mimeType                   String                    @db.VarChar(255)
+  ocrText                    String?                   @db.Text
+  sizeBytes                  BigInt
+  status                     StoredFileStatus          @default(UPLOADING)
+  uploadSource               StoredFileUploadSource    @default(STANDARD)
+  quotaReserved              Boolean                   @default(true)
+  isFavorite                 Boolean                   @default(false)
+  contentHash                String?                   @db.Char(64)
+  category                   FileCategory              @default(OTHER)
+  tags                       String[]                  @default([])
+  deletedAt                  DateTime?
+  expiryDate                 DateTime?                 @db.Date
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  user                       User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder                     Folder?                   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  fileRequest                FileRequest?              @relation("FileRequestUploads", fields: [fileRequestId], references: [id], onDelete: SetNull)
+  workspaceId                String?                   @db.Uuid
+  workspace                  Workspace?                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventId                    String?                   @db.Uuid
+  event                      Event?                    @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  approvalAttachments        ApprovalAttachment[]
+  signatureSourceRequests    SignatureRequest[]        @relation("SignatureSourceFile")
+  signatureFinalRequest      SignatureRequest?         @relation("SignatureFinalFile")
+  chatMessages               WorkspaceChatMessage[]
+  deliveries                 FileDelivery[]
+  publicShares               PublicFileShare[]
+  workspaceNoteAttachments   WorkspaceNoteAttachment[]
+  workspaceTaskAttachments   WorkspaceTaskAttachment[]
+  personalNoteAttachments    PersonalNoteAttachment[]
+  personalTaskAttachments    PersonalTaskAttachment[]
+  linkedCalendarEvents       CalendarEvent[]           @relation("CalendarEventFile")
+  personalMeetingRecordings  PersonalMeeting[]
+  workspaceMeetingRecordings WorkspaceMeeting[]
+  workspaceFormUploads       WorkspaceFormUpload[]
 
+  @@unique([workspaceId, id])
+  @@unique([userId, id])
   @@index([userId, folderId, status, createdAt])
   @@index([userId, workspaceId, isFavorite, deletedAt, createdAt])
   @@index([userId, workspaceId, deletedAt, createdAt])
@@ -523,59 +696,58 @@ model StoredFile {
   @@index([eventId, status, createdAt])
   @@index([fileRequestId])
   @@index([userId, workspaceId, eventId, fileRequestId, status, deletedAt, expiryDate])
-  @@unique([workspaceId, id])
 }
 
 model PublicFileShare {
-  id        String      @id @default(uuid()) @db.Uuid
-  fileId    String      @db.Uuid
-  tokenHash String      @unique @db.Char(64)
-  createdAt DateTime    @default(now())
+  id        String     @id @default(uuid()) @db.Uuid
+  fileId    String     @db.Uuid
+  tokenHash String     @unique @db.Char(64)
+  createdAt DateTime   @default(now())
   revokedAt DateTime?
-  file      StoredFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  file      StoredFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@index([fileId, createdAt])
 }
 
 model FileRequest {
-  id              String    @id @default(uuid()) @db.Uuid
-  creatorUserId   String    @db.Uuid
-  folderId        String?   @db.Uuid
-  tokenHash       String    @unique @db.Char(64)
-  title           String    @default("File request") @db.VarChar(120)
-  message         String?   @db.VarChar(2000)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  revokedAt       DateTime?
-  creator         User      @relation(fields: [creatorUserId], references: [id], onDelete: Cascade)
-  folder          Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  uploads         StoredFile[] @relation("FileRequestUploads")
+  id            String       @id @default(uuid()) @db.Uuid
+  creatorUserId String       @db.Uuid
+  folderId      String?      @db.Uuid
+  tokenHash     String       @unique @db.Char(64)
+  title         String       @default("File request") @db.VarChar(120)
+  message       String?      @db.VarChar(2000)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  revokedAt     DateTime?
+  creator       User         @relation(fields: [creatorUserId], references: [id], onDelete: Cascade)
+  folder        Folder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploads       StoredFile[] @relation("FileRequestUploads")
 
   @@index([creatorUserId, createdAt])
   @@index([folderId])
 }
 
 model Event {
-  id                 String              @id @default(uuid()) @db.Uuid
-  ownerUserId        String              @db.Uuid
-  folderId           String              @db.Uuid
-  name               String              @db.VarChar(160)
-  date               DateTime
-  description        String?             @db.VarChar(4000)
-  captureTokenHash   String              @unique @db.Char(64)
-  galleryTokenHash   String              @unique @db.Char(64)
-  gallerySetting     EventGallerySetting @default(PRIVATE)
-  galleryPasscodeHash String?            @db.VarChar(255)
-  storageCapBytes    BigInt
-  storageUsedBytes   BigInt              @default(0)
-  storageReservedBytes BigInt            @default(0)
-  status             EventStatus         @default(ACTIVE)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  owner              User                @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  folder             Folder              @relation(fields: [folderId], references: [id], onDelete: Restrict)
-  files              StoredFile[]
-  galleryGrants      EventGalleryGrant[]
+  id                   String              @id @default(uuid()) @db.Uuid
+  ownerUserId          String              @db.Uuid
+  folderId             String              @db.Uuid
+  name                 String              @db.VarChar(160)
+  date                 DateTime
+  description          String?             @db.VarChar(4000)
+  captureTokenHash     String              @unique @db.Char(64)
+  galleryTokenHash     String              @unique @db.Char(64)
+  gallerySetting       EventGallerySetting @default(PRIVATE)
+  galleryPasscodeHash  String?             @db.VarChar(255)
+  storageCapBytes      BigInt
+  storageUsedBytes     BigInt              @default(0)
+  storageReservedBytes BigInt              @default(0)
+  status               EventStatus         @default(ACTIVE)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  owner                User                @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  folder               Folder              @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  files                StoredFile[]
+  galleryGrants        EventGalleryGrant[]
 
   @@index([ownerUserId, date])
   @@index([gallerySetting, status])
@@ -596,77 +768,176 @@ model EventGalleryGrant {
 }
 
 model Workspace {
-  id          String                @id @default(uuid()) @db.Uuid
-  name        String                @db.VarChar(160)
-  ownerUserId String                @db.Uuid
-  storageLimitBytes    BigInt        @default(5368709120)
-  storageUsedBytes     BigInt        @default(0)
-  storageReservedBytes BigInt        @default(0)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
-  owner       User                  @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  members     WorkspaceMember[]
-  invitations WorkspaceInvitation[]
-  folders     Folder[]
-  files       StoredFile[]
-  auditLogs   AuditLog[]
-  notifications Notification[]
-  reminders Reminder[]
-  approvalTemplates ApprovalTemplate[]
-  approvalRequests ApprovalRequest[]
-  signatureRequests SignatureRequest[]
-  chatConversations WorkspaceChatConversation[]
-  chatMessages WorkspaceChatMessage[]
-  calendarEvents CalendarEvent[]
-  fileDeliveries FileDelivery[]
+  id                   String                      @id @default(uuid()) @db.Uuid
+  name                 String                      @db.VarChar(160)
+  ownerUserId          String                      @db.Uuid
+  storageLimitBytes    BigInt                      @default(5368709120)
+  storageUsedBytes     BigInt                      @default(0)
+  storageReservedBytes BigInt                      @default(0)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  owner                User                        @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members              WorkspaceMember[]
+  invitations          WorkspaceInvitation[]
+  folders              Folder[]
+  files                StoredFile[]
+  auditLogs            AuditLog[]
+  notifications        Notification[]
+  reminders            Reminder[]
+  approvalTemplates    ApprovalTemplate[]
+  approvalRequests     ApprovalRequest[]
+  signatureRequests    SignatureRequest[]
+  chatConversations    WorkspaceChatConversation[]
+  chatMessages         WorkspaceChatMessage[]
+  calendarEvents       CalendarEvent[]
+  fileDeliveries       FileDelivery[]
+  notes                WorkspaceNote[]
+  tasks                WorkspaceTask[]
+  meetings             WorkspaceMeeting[]
+  forms                WorkspaceForm[]
 
   @@index([ownerUserId])
 }
 
-model SignatureRequest {
-  id                 String                 @id @default(uuid()) @db.Uuid
-  workspaceId        String                 @db.Uuid
-  createdById        String                 @db.Uuid
-  sourceFileId       String                 @db.Uuid
-  sourceName         String                 @db.VarChar(255)
-  sourceSnapshotKey  String                 @db.VarChar(512)
-  sourceSha256       String                 @db.Char(64)
-  mode               ApprovalReviewMode
-  status             SignatureRequestStatus @default(PENDING)
+model WorkspaceMeeting {
+  id              String              @id @default(uuid()) @db.Uuid
+  workspaceId     String              @db.Uuid
+  createdById     String              @db.Uuid
+  title           String              @db.VarChar(200)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  transcript      String              @db.VarChar(100000)
+  summary         String?             @db.VarChar(20000)
+  decisions       Json                @default("[]")
+  recordingFileId String?             @db.Uuid
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator         User                @relation("WorkspaceMeetingCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  recordingFile   StoredFile?         @relation(fields: [recordingFileId], references: [id], onDelete: SetNull)
+  actionItems     MeetingActionItem[]
+  calendarEvent   CalendarEvent?       @relation("CalendarWorkspaceMeeting")
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, startedAt])
+  @@index([workspaceId, updatedAt])
+}
+
+model MeetingActionItem {
+  id                 String            @id @default(uuid()) @db.Uuid
+  personalMeetingId  String?           @db.Uuid
+  workspaceMeetingId String?           @db.Uuid
+  title              String            @db.VarChar(200)
+  description        String?           @db.VarChar(10000)
+  assigneeUserId     String?           @db.Uuid
   dueAt              DateTime?
-  finalFileId        String?                @unique @db.Uuid
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  completedAt        DateTime?
-  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  creator            User                   @relation("SignatureRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  sourceFile         StoredFile             @relation("SignatureSourceFile", fields: [workspaceId, sourceFileId], references: [workspaceId, id], onDelete: Restrict)
-  finalFile          StoredFile?            @relation("SignatureFinalFile", fields: [finalFileId], references: [id], onDelete: SetNull)
-  signers            SignatureSigner[]
+  personalTaskId     String?           @db.Uuid
+  workspaceTaskId    String?           @db.Uuid
+  createdAt          DateTime          @default(now())
+  personalMeeting    PersonalMeeting?  @relation(fields: [personalMeetingId], references: [id], onDelete: Cascade)
+  workspaceMeeting   WorkspaceMeeting? @relation(fields: [workspaceMeetingId], references: [id], onDelete: Cascade)
+  personalTask       PersonalTask?     @relation(fields: [personalTaskId], references: [id], onDelete: SetNull)
+  workspaceTask      WorkspaceTask?    @relation(fields: [workspaceTaskId], references: [id], onDelete: SetNull)
+
+  @@index([personalMeetingId, createdAt])
+  @@index([workspaceMeetingId, createdAt])
+}
+
+model WorkspaceForm {
+  id          String                  @id @default(uuid()) @db.Uuid
+  workspaceId String                  @db.Uuid
+  ownerUserId String                  @db.Uuid
+  title       String                  @db.VarChar(160)
+  description String?                 @db.VarChar(1000)
+  schema      Json
+  publishedAt DateTime?
+  tokenHash   String?                 @unique @db.Char(64)
+  revokedAt   DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  workspace   Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User                    @relation("WorkspaceFormOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  responses   WorkspaceFormResponse[]
+  uploads     WorkspaceFormUpload[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, updatedAt])
+}
+
+model WorkspaceFormResponse {
+  id              String                @id @default(uuid()) @db.Uuid
+  workspaceId     String                @db.Uuid
+  formId          String                @db.Uuid
+  respondentName  String                @db.VarChar(120)
+  respondentEmail String                @db.VarChar(320)
+  answers         Json
+  submittedAt     DateTime              @default(now())
+  form            WorkspaceForm         @relation(fields: [workspaceId, formId], references: [workspaceId, id], onDelete: Cascade)
+  uploads         WorkspaceFormUpload[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, formId, submittedAt])
+}
+
+model WorkspaceFormUpload {
+  id          String                 @id @default(uuid()) @db.Uuid
+  workspaceId String                 @db.Uuid
+  formId      String                 @db.Uuid
+  questionId  String                 @db.VarChar(80)
+  fileId      String                 @unique @db.Uuid
+  responseId  String?                @db.Uuid
+  uploadedAt  DateTime               @default(now())
+  form        WorkspaceForm          @relation(fields: [workspaceId, formId], references: [workspaceId, id], onDelete: Cascade)
+  file        StoredFile             @relation(fields: [workspaceId, fileId], references: [workspaceId, id], onDelete: Cascade)
+  response    WorkspaceFormResponse? @relation(fields: [workspaceId, responseId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@index([workspaceId, formId, questionId, responseId])
+}
+
+model SignatureRequest {
+  id                String                 @id @default(uuid()) @db.Uuid
+  workspaceId       String                 @db.Uuid
+  createdById       String                 @db.Uuid
+  sourceFileId      String                 @db.Uuid
+  sourceName        String                 @db.VarChar(255)
+  sourceSnapshotKey String                 @db.VarChar(512)
+  sourceSha256      String                 @db.Char(64)
+  mode              ApprovalReviewMode
+  status            SignatureRequestStatus @default(PENDING)
+  dueAt             DateTime?
+  finalFileId       String?                @unique @db.Uuid
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  completedAt       DateTime?
+  workspace         Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator           User                   @relation("SignatureRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sourceFile        StoredFile             @relation("SignatureSourceFile", fields: [workspaceId, sourceFileId], references: [workspaceId, id], onDelete: Restrict)
+  finalFile         StoredFile?            @relation("SignatureFinalFile", fields: [finalFileId], references: [id], onDelete: SetNull)
+  signers           SignatureSigner[]
 
   @@index([workspaceId, status, createdAt])
   @@index([createdById, createdAt])
 }
 
 model SignatureSigner {
-  id              String                @id @default(uuid()) @db.Uuid
-  requestId       String                @db.Uuid
-  memberId        String                @db.Uuid
-  userId          String                @db.Uuid
-  displayName     String                @db.VarChar(120)
-  email           String                @db.VarChar(320)
-  order           Int
-  status          SignatureSignerStatus @default(PENDING)
-  method          SignatureMethod?
-  signedName      String?               @db.VarChar(120)
-  signaturePng    String?               @db.Text
-  signedAt        DateTime?
-  consentText     String?               @db.VarChar(500)
-  consentedAt     DateTime?
-  consentedEmail  String?               @db.VarChar(320)
-  consentIp       String?               @db.VarChar(64)
-  declineReason   String?               @db.VarChar(1000)
-  request         SignatureRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id               String                @id @default(uuid()) @db.Uuid
+  requestId        String                @db.Uuid
+  memberId         String                @db.Uuid
+  userId           String                @db.Uuid
+  displayName      String                @db.VarChar(120)
+  email            String                @db.VarChar(320)
+  order            Int
+  status           SignatureSignerStatus @default(PENDING)
+  method           SignatureMethod?
+  signedName       String?               @db.VarChar(120)
+  signaturePng     String?               @db.Text
+  signedAt         DateTime?
+  consentText      String?               @db.VarChar(500)
+  consentedAt      DateTime?
+  consentedEmail   String?               @db.VarChar(320)
+  consentIp        String?               @db.VarChar(64)
+  declineReason    String?               @db.VarChar(1000)
+  request          SignatureRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
   deadlineReminder Reminder?
 
   @@unique([requestId, memberId])
@@ -675,19 +946,20 @@ model SignatureSigner {
 }
 
 model WorkspaceMember {
-  id          String               @id @default(uuid()) @db.Uuid
-  workspaceId String               @db.Uuid
-  userId      String               @db.Uuid
-  displayName String?              @db.VarChar(120)
-  role        WorkspaceRole        @default(STAFF)
-  status      WorkspaceMemberStatus @default(ACTIVE)
-  joinedAt    DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  permissions FolderPermission[]
+  id                String                     @id @default(uuid()) @db.Uuid
+  workspaceId       String                     @db.Uuid
+  userId            String                     @db.Uuid
+  displayName       String?                    @db.VarChar(120)
+  role              WorkspaceRole              @default(STAFF)
+  status            WorkspaceMemberStatus      @default(ACTIVE)
+  joinedAt          DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  workspace         Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user              User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissions       FolderPermission[]
   templateApprovals ApprovalTemplateApprover[]
-  requestApprovals ApprovalRequestApprover[]
+  requestApprovals  ApprovalRequestApprover[]
+  assignedTasks     WorkspaceTask[]            @relation("WorkspaceTaskAssignee")
 
   @@unique([workspaceId, userId])
   @@unique([workspaceId, id])
@@ -695,16 +967,16 @@ model WorkspaceMember {
 }
 
 model WorkspaceChatConversation {
-  id              String                       @id @default(uuid()) @db.Uuid
-  workspaceId     String                       @db.Uuid
-  type            WorkspaceChatConversationType
-  channelKey      String                       @db.VarChar(100)
-  memberAId       String?                      @db.Uuid
-  memberBId       String?                      @db.Uuid
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
-  workspace       Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  messages        WorkspaceChatMessage[]
+  id          String                        @id @default(uuid()) @db.Uuid
+  workspaceId String                        @db.Uuid
+  type        WorkspaceChatConversationType
+  channelKey  String                        @db.VarChar(100)
+  memberAId   String?                       @db.Uuid
+  memberBId   String?                       @db.Uuid
+  createdAt   DateTime                      @default(now())
+  updatedAt   DateTime                      @updatedAt
+  workspace   Workspace                     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages    WorkspaceChatMessage[]
 
   @@unique([workspaceId, channelKey])
   @@unique([workspaceId, id])
@@ -714,17 +986,17 @@ model WorkspaceChatConversation {
 }
 
 model WorkspaceChatMessage {
-  id              String                    @id @default(uuid()) @db.Uuid
-  workspaceId     String                    @db.Uuid
-  conversationId  String                    @db.Uuid
-  senderMemberId  String                    @db.Uuid
-  senderName      String                    @db.VarChar(120)
-  content         String                    @db.VarChar(4000)
-  fileId          String?                   @db.Uuid
-  createdAt       DateTime                  @default(now())
-  workspace       Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  conversation    WorkspaceChatConversation @relation(fields: [workspaceId, conversationId], references: [workspaceId, id], onDelete: Cascade)
-  file            StoredFile?               @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  id             String                    @id @default(uuid()) @db.Uuid
+  workspaceId    String                    @db.Uuid
+  conversationId String                    @db.Uuid
+  senderMemberId String                    @db.Uuid
+  senderName     String                    @db.VarChar(120)
+  content        String                    @db.VarChar(4000)
+  fileId         String?                   @db.Uuid
+  createdAt      DateTime                  @default(now())
+  workspace      Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   WorkspaceChatConversation @relation(fields: [workspaceId, conversationId], references: [workspaceId, id], onDelete: Cascade)
+  file           StoredFile?               @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, conversationId, createdAt, id])
   @@index([senderMemberId, createdAt])
@@ -732,29 +1004,41 @@ model WorkspaceChatMessage {
 }
 
 model CalendarEvent {
-  id                    String    @id @default(uuid()) @db.Uuid
-  createdById           String    @db.Uuid
-  workspaceId           String?   @db.Uuid
-  title                 String    @db.VarChar(200)
-  description           String?   @db.VarChar(4000)
+  id                    String                     @id @default(uuid()) @db.Uuid
+  createdById           String                     @db.Uuid
+  workspaceId           String?                    @db.Uuid
+  title                 String                     @db.VarChar(200)
+  description           String?                    @db.VarChar(4000)
   startsAt              DateTime
   endsAt                DateTime
-  allDay                Boolean   @default(false)
+  allDay                Boolean                    @default(false)
   reminderMinutesBefore Int?
   reminderAt            DateTime?
-  reminderRevision      Int       @default(0)
-  reminderStatus        CalendarReminderStatus @default(PENDING)
-  notificationRevision  Int       @default(0)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  creator               User      @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  workspace             Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reminderRevision      Int                        @default(0)
+  reminderStatus        CalendarReminderStatus     @default(PENDING)
+  notificationRevision  Int                        @default(0)
+  linkedFileId          String?                    @db.Uuid
+  personalTaskId        String?                    @db.Uuid
+  workspaceTaskId       String?                    @db.Uuid
+  personalMeetingId     String?                    @db.Uuid
+  workspaceMeetingId    String?                    @db.Uuid
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  creator               User                       @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  workspace             Workspace?                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   taggedUsers           CalendarEventTag[]
   reminderDispatches    CalendarReminderDispatch[]
+  linkedFile            StoredFile?                @relation("CalendarEventFile", fields: [linkedFileId], references: [id], onDelete: SetNull)
+  personalTask          PersonalTask?              @relation("CalendarPersonalTask", fields: [personalTaskId], references: [id], onDelete: SetNull)
+  workspaceTask         WorkspaceTask?             @relation("CalendarWorkspaceTask", fields: [workspaceTaskId], references: [id], onDelete: SetNull)
+  linkedPersonalMeeting PersonalMeeting?            @relation("CalendarPersonalMeeting", fields: [createdById, personalMeetingId], references: [userId, id], onDelete: NoAction)
+  linkedWorkspaceMeeting WorkspaceMeeting?          @relation("CalendarWorkspaceMeeting", fields: [workspaceId, workspaceMeetingId], references: [workspaceId, id], onDelete: NoAction)
 
   @@index([createdById, workspaceId, startsAt])
   @@index([workspaceId, startsAt, endsAt])
   @@index([reminderStatus, reminderAt])
+  @@unique([createdById, personalMeetingId])
+  @@unique([workspaceId, workspaceMeetingId])
 }
 
 model CalendarEventTag {
@@ -768,18 +1052,18 @@ model CalendarEventTag {
 }
 
 model CalendarReminderDispatch {
-  id           String                 @id @default(uuid()) @db.Uuid
-  eventId      String                 @db.Uuid
+  id           String                       @id @default(uuid()) @db.Uuid
+  eventId      String                       @db.Uuid
   revision     Int
   kind         CalendarReminderDispatchKind @default(REMINDER)
   scheduledFor DateTime
-  status       CalendarReminderStatus @default(PENDING)
-  attempts     Int                    @default(0)
-  lastError    String?                @db.VarChar(255)
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
+  status       CalendarReminderStatus       @default(PENDING)
+  attempts     Int                          @default(0)
+  lastError    String?                      @db.VarChar(255)
+  createdAt    DateTime                     @default(now())
+  updatedAt    DateTime                     @updatedAt
   sentAt       DateTime?
-  event        CalendarEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event        CalendarEvent                @relation(fields: [eventId], references: [id], onDelete: Cascade)
   recipients   CalendarReminderRecipient[]
 
   @@unique([eventId, revision, kind])
@@ -806,17 +1090,17 @@ model CalendarReminderRecipient {
 }
 
 model FileDelivery {
-  id          String      @id @default(uuid()) @db.Uuid
-  workspaceId String      @db.Uuid
-  fileId      String      @db.Uuid
-  senderId    String      @db.Uuid
-  recipientId String      @db.Uuid
-  message     String?     @db.VarChar(2000)
-  createdAt   DateTime    @default(now())
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  fileId      String     @db.Uuid
+  senderId    String     @db.Uuid
+  recipientId String     @db.Uuid
+  message     String?    @db.VarChar(2000)
+  createdAt   DateTime   @default(now())
   workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  file        StoredFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  sender      User        @relation("FileDeliverySender", fields: [senderId], references: [id], onDelete: Cascade)
-  recipient   User        @relation("FileDeliveryRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  file        StoredFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  sender      User       @relation("FileDeliverySender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User       @relation("FileDeliveryRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, senderId, createdAt])
   @@index([workspaceId, recipientId, createdAt])
@@ -824,41 +1108,41 @@ model FileDelivery {
 }
 
 model WorkspaceInvitation {
-  id            String          @id @default(uuid()) @db.Uuid
-  workspaceId   String          @db.Uuid
-  email         String          @db.VarChar(320)
-  name          String?         @db.VarChar(120)
-  role          WorkspaceRole   @default(STAFF)
+  id                 String           @id @default(uuid()) @db.Uuid
+  workspaceId        String           @db.Uuid
+  email              String           @db.VarChar(320)
+  name               String?          @db.VarChar(120)
+  role               WorkspaceRole    @default(STAFF)
   initialPermissions Json?
-  status        InvitationStatus @default(PENDING)
-  tokenHash     String          @unique @db.Char(64)
-  invitedById   String          @db.Uuid
-  expiresAt     DateTime
-  acceptedAt    DateTime?
-  revokedAt     DateTime?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  invitedBy     User            @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+  status             InvitationStatus @default(PENDING)
+  tokenHash          String           @unique @db.Char(64)
+  invitedById        String           @db.Uuid
+  expiresAt          DateTime
+  acceptedAt         DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy          User             @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: Restrict)
 
   @@unique([workspaceId, email])
   @@index([workspaceId, status, expiresAt])
 }
 
 model FolderPermission {
-  id          String                @id @default(uuid()) @db.Uuid
-  workspaceId String                @db.Uuid
-  folderId    String                @db.Uuid
-  memberId    String                @db.Uuid
-  effect      FolderPermissionEffect @default(GRANT)
-  permissionKeys String[]            @default([])
-  inherit     Boolean               @default(false)
-  createdById String                @db.Uuid
-  updatedById String                @db.Uuid
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
-  folder      Folder                @relation(fields: [workspaceId, folderId], references: [workspaceId, id], onDelete: Cascade)
-  member      WorkspaceMember       @relation(fields: [workspaceId, memberId], references: [workspaceId, id], onDelete: Cascade)
+  id             String                 @id @default(uuid()) @db.Uuid
+  workspaceId    String                 @db.Uuid
+  folderId       String                 @db.Uuid
+  memberId       String                 @db.Uuid
+  effect         FolderPermissionEffect @default(GRANT)
+  permissionKeys String[]               @default([])
+  inherit        Boolean                @default(false)
+  createdById    String                 @db.Uuid
+  updatedById    String                 @db.Uuid
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  folder         Folder                 @relation(fields: [workspaceId, folderId], references: [workspaceId, id], onDelete: Cascade)
+  member         WorkspaceMember        @relation(fields: [workspaceId, memberId], references: [workspaceId, id], onDelete: Cascade)
 
   @@unique([workspaceId, folderId, memberId, effect])
   @@index([workspaceId, memberId])
@@ -902,36 +1186,36 @@ model PlatformAdminAuditLog {
 }
 
 model PlatformAnnouncement {
-  id              String                       @id @default(uuid()) @db.Uuid
-  title           String                       @db.VarChar(120)
-  body            String                       @db.VarChar(5000)
-  audience        PlatformAnnouncementAudience
-  target          PlatformAnnouncementTarget   @default(AUDIENCE)
+  id                  String                         @id @default(uuid()) @db.Uuid
+  title               String                         @db.VarChar(120)
+  body                String                         @db.VarChar(5000)
+  audience            PlatformAnnouncementAudience
+  target              PlatformAnnouncementTarget     @default(AUDIENCE)
   signupWindowMinutes Int?
-  emailEnabled    Boolean                      @default(false)
-  createdAt       DateTime                     @default(now())
-  archivedAt      DateTime?
-  createdByUserId String                       @db.Uuid
-  creator         User                         @relation("PlatformAnnouncementCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  deliveries      PlatformAnnouncementDelivery[]
+  emailEnabled        Boolean                        @default(false)
+  createdAt           DateTime                       @default(now())
+  archivedAt          DateTime?
+  createdByUserId     String                         @db.Uuid
+  creator             User                           @relation("PlatformAnnouncementCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  deliveries          PlatformAnnouncementDelivery[]
 
   @@index([createdAt])
   @@index([archivedAt, createdAt])
 }
 
 model PlatformAnnouncementDelivery {
-  id             String                            @id @default(uuid()) @db.Uuid
-  announcementId String                            @db.Uuid
-  userId         String                            @db.Uuid
+  id             String                          @id @default(uuid()) @db.Uuid
+  announcementId String                          @db.Uuid
+  userId         String                          @db.Uuid
   inAppReadAt    DateTime?
-  emailStatus    PlatformAnnouncementEmailStatus   @default(NOT_REQUESTED)
-  emailAttempts  Int                               @default(0)
+  emailStatus    PlatformAnnouncementEmailStatus @default(NOT_REQUESTED)
+  emailAttempts  Int                             @default(0)
   emailSentAt    DateTime?
-  emailLastError String?                           @db.VarChar(255)
-  createdAt      DateTime                          @default(now())
-  updatedAt      DateTime                          @updatedAt
-  announcement   PlatformAnnouncement              @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-  user           User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailLastError String?                         @db.VarChar(255)
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+  announcement   PlatformAnnouncement            @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user           User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([announcementId, userId])
   @@index([userId, inAppReadAt, createdAt])
@@ -952,17 +1236,17 @@ model AdminEmailCampaign {
 }
 
 model AdminEmailCampaignDelivery {
-  id         String                  @id @default(uuid()) @db.Uuid
-  campaignId String                  @db.Uuid
-  userId     String                  @db.Uuid
-  status     AdminEmailDeliveryStatus @default(PENDING)
-  attempts   Int                     @default(0)
-  smtpAcceptedAt DateTime?             @map("sentAt")
-  lastError  String?                 @db.VarChar(255)
-  createdAt  DateTime                @default(now())
-  updatedAt  DateTime                @updatedAt
-  campaign   AdminEmailCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String                   @id @default(uuid()) @db.Uuid
+  campaignId     String                   @db.Uuid
+  userId         String                   @db.Uuid
+  status         AdminEmailDeliveryStatus @default(PENDING)
+  attempts       Int                      @default(0)
+  smtpAcceptedAt DateTime?                @map("sentAt")
+  lastError      String?                  @db.VarChar(255)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  campaign       AdminEmailCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, userId])
   @@index([status, updatedAt])
@@ -970,17 +1254,17 @@ model AdminEmailCampaignDelivery {
 }
 
 model SupportTicket {
-  id              String                @id @default(uuid()) @db.Uuid
-  userId          String                @db.Uuid
-  assignedAdminId String?               @db.Uuid
-  subject         String                @db.VarChar(160)
+  id              String                 @id @default(uuid()) @db.Uuid
+  userId          String                 @db.Uuid
+  assignedAdminId String?                @db.Uuid
+  subject         String                 @db.VarChar(160)
   category        SupportTicketCategory
-  priority        SupportTicketPriority @default(NORMAL)
-  status          SupportTicketStatus   @default(OPEN)
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  customer        User                  @relation("SupportTicketCustomer", fields: [userId], references: [id], onDelete: Cascade)
-  assignedAdmin  User?                 @relation("SupportTicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  priority        SupportTicketPriority  @default(NORMAL)
+  status          SupportTicketStatus    @default(OPEN)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  customer        User                   @relation("SupportTicketCustomer", fields: [userId], references: [id], onDelete: Cascade)
+  assignedAdmin   User?                  @relation("SupportTicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
   messages        SupportTicketMessage[]
 
   @@index([userId, createdAt])
@@ -1003,46 +1287,46 @@ model SupportTicketMessage {
 }
 
 model Notification {
-  id          String    @id @default(uuid()) @db.Uuid
-  workspaceId String?   @db.Uuid
-  userId      String    @db.Uuid
-  type        String    @db.VarChar(100)
-  message     String    @db.VarChar(500)
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String?    @db.Uuid
+  userId      String     @db.Uuid
+  type        String     @db.VarChar(100)
+  message     String     @db.VarChar(500)
   metadata    Json?
-  sourceKey   String?   @unique @db.VarChar(200)
+  sourceKey   String?    @unique @db.VarChar(200)
   readAt      DateTime?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime   @default(now())
   workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
   @@index([workspaceId, createdAt])
 }
 
 model Reminder {
-  id              String   @id @default(uuid()) @db.Uuid
-  workspaceId     String   @db.Uuid
-  createdById     String   @db.Uuid
-  assignedToId    String   @db.Uuid
-  title           String   @db.VarChar(200)
-  description     String?  @db.VarChar(2000)
-  dueAt           DateTime
-  nextDueAt       DateTime?
-  recurrence      ReminderRecurrence @default(ONCE)
-  emailEnabled    Boolean  @default(false)
-  approvalRequestId String? @unique @db.Uuid
-  signatureSignerId String? @unique @db.Uuid
-  completedAt     DateTime?
-  lastCompletedAt DateTime?
-  cancelledAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  creator         User     @relation("ReminderCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  assignee        User     @relation("ReminderAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
-  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-  signatureSigner SignatureSigner? @relation(fields: [signatureSignerId], references: [id], onDelete: Cascade)
-  deliveries      ReminderDelivery[]
+  id                String             @id @default(uuid()) @db.Uuid
+  workspaceId       String             @db.Uuid
+  createdById       String             @db.Uuid
+  assignedToId      String             @db.Uuid
+  title             String             @db.VarChar(200)
+  description       String?            @db.VarChar(2000)
+  dueAt             DateTime
+  nextDueAt         DateTime?
+  recurrence        ReminderRecurrence @default(ONCE)
+  emailEnabled      Boolean            @default(false)
+  approvalRequestId String?            @unique @db.Uuid
+  signatureSignerId String?            @unique @db.Uuid
+  completedAt       DateTime?
+  lastCompletedAt   DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator           User               @relation("ReminderCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignee          User               @relation("ReminderAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
+  approvalRequest   ApprovalRequest?   @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  signatureSigner   SignatureSigner?   @relation(fields: [signatureSignerId], references: [id], onDelete: Cascade)
+  deliveries        ReminderDelivery[]
 
   @@index([workspaceId, dueAt, completedAt])
   @@index([assignedToId, nextDueAt, completedAt])
@@ -1050,32 +1334,32 @@ model Reminder {
 }
 
 model ReminderDelivery {
-  id              String   @id @default(uuid()) @db.Uuid
-  reminderId      String   @db.Uuid
-  scheduledFor    DateTime
-  status          ReminderDeliveryStatus @default(PENDING)
-  emailStatus     PlatformAnnouncementEmailStatus @default(NOT_REQUESTED)
-  attempts        Int      @default(0)
-  lastError       String?  @db.VarChar(255)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  sentAt          DateTime?
-  reminder        Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  id           String                          @id @default(uuid()) @db.Uuid
+  reminderId   String                          @db.Uuid
+  scheduledFor DateTime
+  status       ReminderDeliveryStatus          @default(PENDING)
+  emailStatus  PlatformAnnouncementEmailStatus @default(NOT_REQUESTED)
+  attempts     Int                             @default(0)
+  lastError    String?                         @db.VarChar(255)
+  createdAt    DateTime                        @default(now())
+  updatedAt    DateTime                        @updatedAt
+  sentAt       DateTime?
+  reminder     Reminder                        @relation(fields: [reminderId], references: [id], onDelete: Cascade)
 
   @@unique([reminderId, scheduledFor])
   @@index([status, updatedAt])
 }
 
 model ApprovalTemplate {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @db.Uuid
-  name        String   @db.VarChar(160)
-  description String?  @db.VarChar(2000)
-  createdById String   @db.Uuid
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id          String                 @id @default(uuid()) @db.Uuid
+  workspaceId String                 @db.Uuid
+  name        String                 @db.VarChar(160)
+  description String?                @db.VarChar(2000)
+  createdById String                 @db.Uuid
+  isActive    Boolean                @default(true)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   steps       ApprovalTemplateStep[]
   requests    ApprovalRequest[]
 
@@ -1083,11 +1367,11 @@ model ApprovalTemplate {
 }
 
 model ApprovalTemplateStep {
-  id         String            @id @default(uuid()) @db.Uuid
-  templateId String            @db.Uuid
+  id         String                     @id @default(uuid()) @db.Uuid
+  templateId String                     @db.Uuid
   stepOrder  Int
   mode       ApprovalReviewMode
-  template   ApprovalTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template   ApprovalTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
   approvers  ApprovalTemplateApprover[]
 
   @@unique([templateId, stepOrder])
@@ -1105,23 +1389,23 @@ model ApprovalTemplateApprover {
 }
 
 model ApprovalRequest {
-  id              String                @id @default(uuid()) @db.Uuid
-  workspaceId     String                @db.Uuid
-  requesterId     String?               @db.Uuid
-  templateId      String?               @db.Uuid
-  title           String                @db.VarChar(200)
-  description     String?               @db.VarChar(5000)
-  status          ApprovalRequestStatus @default(IN_PROGRESS)
-  currentStepOrder Int                  @default(0)
-  dueAt           DateTime?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  workspace       Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  requester       User?                 @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: SetNull)
-  template        ApprovalTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  steps           ApprovalRequestStep[]
-  activities      ApprovalActivity[]
-  attachments     ApprovalAttachment[]
+  id               String                @id @default(uuid()) @db.Uuid
+  workspaceId      String                @db.Uuid
+  requesterId      String?               @db.Uuid
+  templateId       String?               @db.Uuid
+  title            String                @db.VarChar(200)
+  description      String?               @db.VarChar(5000)
+  status           ApprovalRequestStatus @default(IN_PROGRESS)
+  currentStepOrder Int                   @default(0)
+  dueAt            DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requester        User?                 @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: SetNull)
+  template         ApprovalTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  steps            ApprovalRequestStep[]
+  activities       ApprovalActivity[]
+  attachments      ApprovalAttachment[]
   deadlineReminder Reminder?
 
   @@index([workspaceId, status, createdAt])
@@ -1130,25 +1414,25 @@ model ApprovalRequest {
 }
 
 model ApprovalRequestStep {
-  id        String                @id @default(uuid()) @db.Uuid
-  requestId String                @db.Uuid
-  stepOrder Int
-  mode      ApprovalReviewMode
-  isComplete Boolean             @default(false)
-  request   ApprovalRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  approvers ApprovalRequestApprover[]
+  id         String                    @id @default(uuid()) @db.Uuid
+  requestId  String                    @db.Uuid
+  stepOrder  Int
+  mode       ApprovalReviewMode
+  isComplete Boolean                   @default(false)
+  request    ApprovalRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approvers  ApprovalRequestApprover[]
 
   @@unique([requestId, stepOrder])
 }
 
 model ApprovalRequestApprover {
-  id          String          @id @default(uuid()) @db.Uuid
-  stepId      String          @db.Uuid
-  memberId    String          @db.Uuid
-  decision    ApprovalDecision @default(PENDING)
-  decidedAt   DateTime?
-  step        ApprovalRequestStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  member      WorkspaceMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  id        String              @id @default(uuid()) @db.Uuid
+  stepId    String              @db.Uuid
+  memberId  String              @db.Uuid
+  decision  ApprovalDecision    @default(PENDING)
+  decidedAt DateTime?
+  step      ApprovalRequestStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  member    WorkspaceMember     @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([stepId, memberId])
   @@index([memberId, decision])

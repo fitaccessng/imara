@@ -3,6 +3,7 @@ import {
   CalendarReminderChannelStatus,
   CalendarReminderDispatchKind,
   CalendarReminderStatus,
+  StoredFileStatus,
   WorkspaceMemberStatus,
   WorkspaceRole,
 } from '@prisma/client';
@@ -13,6 +14,11 @@ import { WorkspaceSubscriptionService } from '../subscriptions/workspace-subscri
 
 function taggedUsersInclude(workspaceId?: string) {
   return {
+    linkedFile: { select: { id: true, originalName: true, mimeType: true, sizeBytes: true } },
+    personalTask: { select: { id: true, title: true, status: true, progress: true, dueAt: true } },
+    workspaceTask: { select: { id: true, title: true, status: true, progress: true, dueAt: true } },
+    linkedPersonalMeeting: { select: { id: true, title: true, startedAt: true, endedAt: true } },
+    linkedWorkspaceMeeting: { select: { id: true, title: true, startedAt: true, endedAt: true } },
     taggedUsers: {
       ...(workspaceId ? {
         where: {
@@ -55,12 +61,59 @@ export class CalendarService {
 
   private presentEvent<T extends {
     taggedUsers?: Array<{ user: { id: string; name: string; email: string } }>;
+    linkedFile?: { sizeBytes: bigint } | null;
+    personalTask?: { id: string } | null;
+    workspaceTask?: { id: string } | null;
+    linkedPersonalMeeting?: { id: string } | null;
+    linkedWorkspaceMeeting?: { id: string } | null;
   }>(event: T) {
     const taggedUsers = (event.taggedUsers ?? []).map(({ user }) => user);
+    const linkedTask = event.personalTask ?? event.workspaceTask ?? null;
+    const linkedMeeting = event.linkedPersonalMeeting ?? event.linkedWorkspaceMeeting ?? null;
     return {
       ...event,
+      linkedTaskId: linkedTask?.id ?? null,
+      linkedTask,
+      linkedMeetingId: linkedMeeting?.id ?? null,
+      linkedMeeting,
+      linkedFile: event.linkedFile
+        ? { ...event.linkedFile, sizeBytes: event.linkedFile.sizeBytes.toString() }
+        : null,
       taggedUserIds: taggedUsers.map(({ id }) => id),
       taggedUsers,
+    };
+  }
+
+  private async validateLinkedItems(
+    userId: string,
+    workspaceId: string | null,
+    linkedFileId?: string | null,
+    linkedTaskId?: string | null,
+  ) {
+    if (linkedFileId) {
+      const file = await this.prisma.storedFile.findFirst({
+        where: {
+          id: linkedFileId,
+          ...(workspaceId ? { workspaceId } : { userId, workspaceId: null }),
+          status: StoredFileStatus.READY,
+          deletedAt: null,
+          eventId: null,
+          fileRequestId: null,
+        },
+        select: { id: true },
+      });
+      if (!file) throw new BadRequestException('Linked document must be a ready document in this calendar scope');
+    }
+    if (linkedTaskId) {
+      const task = workspaceId
+        ? await this.prisma.workspaceTask.findFirst({ where: { id: linkedTaskId, workspaceId }, select: { id: true } })
+        : await this.prisma.personalTask.findFirst({ where: { id: linkedTaskId, userId }, select: { id: true } });
+      if (!task) throw new BadRequestException('Linked task must belong to this calendar scope');
+    }
+    return {
+      linkedFileId: linkedFileId ?? null,
+      personalTaskId: workspaceId ? null : linkedTaskId ?? null,
+      workspaceTaskId: workspaceId ? linkedTaskId ?? null : null,
     };
   }
 
@@ -148,12 +201,14 @@ export class CalendarService {
     if (dto.taggedUserIds?.length) {
       throw new BadRequestException('Personal events cannot tag other users');
     }
+    const links = await this.validateLinkedItems(userId, null, dto.linkedFileId, dto.linkedTaskId);
     const event = await this.prisma.calendarEvent.create({
       data: {
         createdById: userId, title: dto.title.trim(), description: dto.description?.trim() || null,
         startsAt: start, endsAt: end, allDay: dto.allDay,
         reminderMinutesBefore: dto.reminderMinutesBefore ?? null,
         reminderAt: this.getReminderAt(start, dto.reminderMinutesBefore),
+        ...links,
       },
       include: taggedUsersInclude(),
     });
@@ -167,6 +222,12 @@ export class CalendarService {
     const { start, end } = this.dates(dto.startsAt ?? event.startsAt, dto.endsAt ?? event.endsAt);
     if (dto.taggedUserIds?.length) throw new BadRequestException('Personal events cannot tag other users');
     const scheduleChanged = dto.startsAt !== undefined || dto.reminderMinutesBefore !== undefined;
+    const links = dto.linkedFileId === undefined && dto.linkedTaskId === undefined ? undefined
+      : await this.validateLinkedItems(
+        userId, null,
+        dto.linkedFileId === undefined ? event.linkedFileId : dto.linkedFileId,
+        dto.linkedTaskId === undefined ? event.personalTaskId : dto.linkedTaskId,
+      );
     const minutesBefore = dto.reminderMinutesBefore === undefined
       ? event.reminderMinutesBefore
       : dto.reminderMinutesBefore;
@@ -176,6 +237,7 @@ export class CalendarService {
       ...(dto.startsAt !== undefined ? { startsAt: start } : {}),
       ...(dto.endsAt !== undefined ? { endsAt: end } : {}),
       ...(dto.allDay !== undefined ? { allDay: dto.allDay } : {}),
+      ...(links ?? {}),
       ...(scheduleChanged ? {
         reminderMinutesBefore: minutesBefore,
         reminderAt: this.getReminderAt(start, minutesBefore),
@@ -226,6 +288,7 @@ export class CalendarService {
     await this.activeMember(workspaceId, userId);
     const { start, end } = this.dates(dto.startsAt, dto.endsAt);
     const taggedUserIds = await this.validateTaggedUsers(workspaceId, dto.taggedUserIds);
+    const links = await this.validateLinkedItems(userId, workspaceId, dto.linkedFileId, dto.linkedTaskId);
     const recipientIds = taggedUserIds.filter((taggedUserId) => taggedUserId !== userId);
     const event = await this.prisma.$transaction(async (tx) => {
       const created = await tx.calendarEvent.create({
@@ -234,6 +297,7 @@ export class CalendarService {
           startsAt: start, endsAt: end, allDay: dto.allDay,
           reminderMinutesBefore: dto.reminderMinutesBefore ?? null,
           reminderAt: this.getReminderAt(start, dto.reminderMinutesBefore),
+          ...links,
           notificationRevision: recipientIds.length ? 1 : 0,
           ...(taggedUserIds.length ? { taggedUsers: { createMany: { data: taggedUserIds.map((taggedUserId) => ({ userId: taggedUserId })) } } } : {}),
         },
@@ -271,6 +335,16 @@ export class CalendarService {
     const taggedUserIds = dto.taggedUserIds === undefined
       ? undefined
       : await this.validateTaggedUsers(workspaceId, dto.taggedUserIds);
+    const links = dto.linkedFileId === undefined && dto.linkedTaskId === undefined ? undefined
+      : await this.validateLinkedItems(
+        userId, workspaceId,
+        dto.linkedFileId === undefined ? event.linkedFileId : dto.linkedFileId,
+        dto.linkedTaskId === undefined ? event.workspaceTaskId : dto.linkedTaskId,
+      );
+    const linksChanged = links !== undefined &&
+      (links.linkedFileId !== event.linkedFileId ||
+        links.workspaceTaskId !== event.workspaceTaskId ||
+        links.personalTaskId !== event.personalTaskId);
     const currentTaggedUserIds = event.taggedUsers.map((tag: { userId: string }) => tag.userId);
     const finalTaggedUserIds = taggedUserIds ?? currentTaggedUserIds;
     const currentTagSet = new Set(currentTaggedUserIds);
@@ -295,7 +369,7 @@ export class CalendarService {
       : finalTaggedUserIds.filter((taggedUserId) => !currentTagSet.has(taggedUserId) && taggedUserId !== event.createdById);
     const shouldNotify = detailsChanged || tagsChanged;
     const incrementNotificationRevision = shouldNotify && notificationRecipients.length > 0;
-    if (!detailsChanged && !tagsChanged && !scheduleChanged) {
+    if (!detailsChanged && !tagsChanged && !scheduleChanged && !linksChanged) {
       const unchanged = await this.prisma.calendarEvent.findFirst({
         where: { id: event.id, workspaceId },
         include: taggedUsersInclude(workspaceId),
@@ -310,6 +384,7 @@ export class CalendarService {
       ...(startsChanged ? { startsAt: start } : {}),
       ...(endsChanged ? { endsAt: end } : {}),
       ...(allDayChanged ? { allDay: dto.allDay } : {}),
+      ...(linksChanged ? links : {}),
       ...(scheduleChanged ? {
         reminderMinutesBefore: minutesBefore,
         reminderAt: this.getReminderAt(start, minutesBefore),

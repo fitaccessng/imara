@@ -15,6 +15,14 @@ abstract class CalendarReminderFields {
   @ArrayMaxSize(100)
   @IsUUID(undefined, { each: true })
   taggedUserIds?: string[];
+
+  @IsOptional()
+  @IsUUID()
+  linkedFileId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  linkedTaskId?: string | null;
 }
 
 export class CreateCalendarEventDto extends CalendarReminderFields {
