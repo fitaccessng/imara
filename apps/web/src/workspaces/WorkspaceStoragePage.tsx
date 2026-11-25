@@ -14,6 +14,7 @@ import { SendWorkspaceFileDialog } from "../components/SendWorkspaceFileDialog";
 import type { WorkspaceFile, WorkspaceFolder, WorkspaceMember } from "./types";
 import { useWorkspaceScope } from "./useWorkspaceScope";
 import { WorkspaceSetupPrompt } from "./WorkspaceSetupPrompt";
+import { useFileActionMenus } from "../components/useFileActionMenus";
 
 interface WorkspaceFolderContents {
   workspaceId: string;
@@ -32,6 +33,7 @@ function formatBytes(bytes: number) {
 }
 
 export function WorkspaceStoragePage() {
+  useFileActionMenus();
   const [searchParams, setSearchParams] = useSearchParams();
   const { workspacesQuery, workspaces, workspace, selectWorkspace } = useWorkspaceScope();
   const workspaceId = workspace?.id;

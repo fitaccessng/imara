@@ -5,7 +5,7 @@ import { PageShell } from "../pages/PageShell";
 import { apiRequest } from "../lib/api";
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
 import { fileLabel, type ProductivityAttachment, type ProductivityFile } from "../productivity/types";
-import { startOnDeviceDictation } from "../productivity/localDictation";
+import { appendDictationText, startOnDeviceDictation } from "../productivity/localDictation";
 
 interface Note {
   id: string;
@@ -46,6 +46,7 @@ export function NotesPage({ shared = false }: { shared?: boolean }) {
   const [feedback, setFeedback] = useState("");
   const [dictating, setDictating] = useState(false);
   const [dictationError, setDictationError] = useState("");
+  const [dictationPreview, setDictationPreview] = useState("");
   const dictationStop = useRef<(() => void) | null>(null);
   const scopeId = shared ? workspace?.id : null;
   const notesPath = shared ? `/workspaces/${scopeId}/notes` : "/notes";
@@ -116,6 +117,7 @@ export function NotesPage({ shared = false }: { shared?: boolean }) {
     dictationStop.current?.();
     dictationStop.current = null;
     setDictating(false);
+    setDictationPreview("");
     setFeedback("");
     const fileIds = note.attachments.map(({ fileId }) => fileId);
     setDraft({
@@ -134,6 +136,7 @@ export function NotesPage({ shared = false }: { shared?: boolean }) {
     dictationStop.current?.();
     dictationStop.current = null;
     setDictating(false);
+    setDictationPreview("");
     setFeedback("");
     setDraft({ id: null, title: "", body: "", fileIds: [], originalTitle: "", originalBody: "", originalFileIds: [] });
   }
@@ -142,15 +145,19 @@ export function NotesPage({ shared = false }: { shared?: boolean }) {
     if (dictating) {
       dictationStop.current?.();
       dictationStop.current = null;
+      setDictationPreview("");
       setDictating(false);
       return;
     }
     setDictationError("");
+    setDictationPreview("");
     try {
       dictationStop.current = startOnDeviceDictation(
-        (text) => setDraft((current) => current ? { ...current, body: `${current.body}${current.body ? " " : ""}${text}` } : current),
-        () => { dictationStop.current = null; setDictating(false); },
+        (text) => setDraft((current) => current ? { ...current, body: appendDictationText(current.body, text) } : current),
+        setDictationPreview,
+        () => { dictationStop.current = null; setDictating(false); setDictationPreview(""); },
         (message) => setDictationError(message),
+        [draft?.title ?? "", ...(draft?.body.match(/[A-Z][\w'-]{2,}/g) ?? [])],
       );
       setDictating(true);
     } catch (cause) {
@@ -248,7 +255,9 @@ export function NotesPage({ shared = false }: { shared?: boolean }) {
                 <button type="button" onClick={toggleDictation} className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold ${dictating ? "border-red-200 bg-red-50 text-red-700" : "border-[#E5EAF0] text-[#4A5568]"}`}>
                   {dictating ? <Square size={13} /> : <Mic size={14} />}{dictating ? "Stop dictation" : "Dictate on this device"}
                 </button>
-                <span className="text-[11px] text-[#718096]">Audio is processed locally by your browser; an on-device speech model is required.</span>
+                <span className="text-[11px] text-[#718096]" role="status" aria-live="polite">
+                  {dictating ? `Listening${dictationPreview ? `: ${dictationPreview}` : "…"}` : "On-device transcription; live preview appears while you speak."}
+                </span>
               </div>
               {dictationError && <p role="alert" className="mt-2 text-xs text-[#9B2C2C]">{dictationError}</p>}
               <fieldset className="mt-4 space-y-2">

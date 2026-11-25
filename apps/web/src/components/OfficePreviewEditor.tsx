@@ -569,14 +569,17 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   const [replaceText, setReplaceText] = useState("");
   const [replaceFeedback, setReplaceFeedback] = useState("");
   const [pasteFeedback, setPasteFeedback] = useState("");
+  const [wordPageCount, setWordPageCount] = useState(1);
   const wordEditorRef = useRef<HTMLDivElement>(null);
+  const wordPageRef = useRef<HTMLElement>(null);
   const wordSelectionRef = useRef<Range | null>(null);
 
   const extension = extensionOf(file.name);
   const spreadsheet = ["csv", "tsv", "xls", "xlsx"].includes(extension);
   const pdf = extension === "pdf";
   const activeWorksheet = preview?.workbook?.Sheets[activeSheet];
-  const range = useMemo(() => decodeGridRange(activeWorksheet?.["!ref"]), [activeWorksheet]);
+  const worksheetReference = activeWorksheet?.["!ref"];
+  const range = useMemo(() => decodeGridRange(worksheetReference), [worksheetReference]);
   const lastRow = Math.min(range.end.row, range.start.row + PREVIEW_ROWS - 1);
   const lastColumn = Math.min(range.end.column, PREVIEW_COLUMNS - 1);
   const columns = Array.from({ length: Math.max(lastColumn - range.start.column + 1, 1) }, (_, index) => range.start.column + index);
@@ -616,7 +619,36 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
     restoreWordSelection();
     document.execCommand(command, false, value);
     rememberWordSelection();
+    markWordEdited();
+  }
+
+  function updateWordPageCount() {
+    const editor = wordEditorRef.current;
+    const page = wordPageRef.current;
+    if (!editor || !page) return;
+    const contentWidth = editor.clientWidth;
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+    const contentHeight = contentWidth * (246.2 / 159.2);
+    const pageStyles = window.getComputedStyle(page);
+    const pagePadding = Number.parseFloat(pageStyles.paddingTop) + Number.parseFloat(pageStyles.paddingBottom);
+    const sheetHeight = contentHeight + pagePadding;
+    const contentBottom = rects.length
+      ? Math.max(...rects.map((rect) => rect.bottom)) - editor.getBoundingClientRect().top
+      : 0;
+    const count = Math.max(1, Math.ceil(contentBottom / Math.max(contentHeight, 1)));
+    const pageGap = 18;
+    page.style.setProperty("--word-sheet-height", `${sheetHeight}px`);
+    page.style.setProperty("--word-sheet-step", `${sheetHeight + pageGap}px`);
+    page.style.minHeight = `${count * sheetHeight + (count - 1) * pageGap}px`;
+    editor.style.minHeight = `${count * contentHeight + (count - 1) * pageGap}px`;
+    setWordPageCount((current) => current === count ? current : count);
+  }
+
+  function markWordEdited() {
     setHasEdits(true);
+    window.requestAnimationFrame(updateWordPageCount);
   }
 
   function applyWordInlineStyle(property: "fontFamily" | "fontSize" | "color" | "backgroundColor", value: string) {
@@ -633,7 +665,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
     nextRange.selectNodeContents(span);
     selection.addRange(nextRange);
     wordSelectionRef.current = nextRange.cloneRange();
-    setHasEdits(true);
+    markWordEdited();
   }
 
   function applyWordBlockFormat(styleName: string) {
@@ -664,7 +696,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
       block.style.fontWeight = styleName === "title" ? "700" : "400";
       if (styleName === "subtitle") block.style.color = "#5f6b65";
     }
-    setHasEdits(true);
+    markWordEdited();
   }
 
   function applyWordParagraphStyle(property: "lineHeight" | "marginBottom", value: string) {
@@ -674,7 +706,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
     const block = node instanceof HTMLElement ? node.closest("p,h1,h2,h3") : node?.parentElement?.closest("p,h1,h2,h3");
     if (!(block instanceof HTMLElement) || !wordEditorRef.current?.contains(block)) return;
     block.style[property] = value;
-    setHasEdits(true);
+    markWordEdited();
   }
 
   function replaceAllWordText() {
@@ -699,7 +731,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
       node = walker.nextNode();
     }
     setReplaceFeedback(replaced ? `Replaced ${replaced} match${replaced === 1 ? "" : "es"}.` : "No matches found.");
-    if (replaced) setHasEdits(true);
+    if (replaced) markWordEdited();
   }
 
   useEffect(() => {
@@ -774,8 +806,22 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   useEffect(() => {
     if (editing && preview?.paragraphs && wordEditorRef.current) {
       wordEditorRef.current.focus();
+      window.requestAnimationFrame(updateWordPageCount);
     }
   }, [editing, preview?.paragraphs]);
+
+  useEffect(() => {
+    const editor = wordEditorRef.current;
+    if (!editing || !editor) return;
+    const observer = new ResizeObserver(() => window.requestAnimationFrame(updateWordPageCount));
+    observer.observe(editor);
+    window.addEventListener("resize", updateWordPageCount);
+    window.requestAnimationFrame(updateWordPageCount);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateWordPageCount);
+    };
+  }, [editing, preview?.paragraphHtml]);
 
   useEffect(() => {
     if (!canEdit) setEditing(false);
@@ -1384,7 +1430,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
         </div>}
         {editing
           ? <div className="word-editor-scroll">
-            <article className="word-editor-page">
+            <article className="word-editor-page" ref={wordPageRef} data-page-count={wordPageCount}>
               <div
                 ref={wordEditorRef}
                 className="word-editor-canvas"
@@ -1393,7 +1439,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
                 role="textbox"
                 aria-label={`Write content in ${file.name}`}
                 aria-multiline="true"
-                onInput={() => { rememberWordSelection(); setHasEdits(true); }}
+                onInput={() => { rememberWordSelection(); markWordEdited(); }}
                 onKeyUp={rememberWordSelection}
                 onMouseUp={rememberWordSelection}
                 onPaste={(event) => {
@@ -1411,7 +1457,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
                     document.execCommand("insertText", false, clipboardText);
                   }
                   setPasteFeedback("");
-                  setHasEdits(true);
+                  markWordEdited();
                   rememberWordSelection();
                 }}
                 onDrop={(event) => {

@@ -10,6 +10,7 @@ import { FolderZipTools } from "../components/FolderZipTools";
 import { BatchUploadControls } from "../components/BatchUploadControls";
 import { CreateDocumentButton } from "../components/CreateDocumentButton";
 import { FileShareDialog } from "../components/FileShareDialog";
+import { useFileActionMenus } from "../components/useFileActionMenus";
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
@@ -32,6 +33,7 @@ interface FolderContents {
 }
 
 export function FilesPage() {
+  useFileActionMenus();
   const [searchParams, setSearchParams] = useSearchParams();
   const folderId = searchParams.get("folder") || undefined;
   const createFolderOpen = searchParams.get("createFolder") === "1";
@@ -422,7 +424,7 @@ export function FilesPage() {
                     <button className="file-action-item file-action-danger" onClick={(event) => {
                       closeActionMenu(event);
                       setActionModal({
-                        title: "Delete file",
+                        title: "Move to Recycle Bin",
                         description: `“${file.name}” will be moved to the Recycle Bin. You can restore it or permanently delete it later.`,
                         confirmLabel: "Move to Recycle Bin",
                         danger: true,
