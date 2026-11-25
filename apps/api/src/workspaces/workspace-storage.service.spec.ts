@@ -382,6 +382,106 @@ describe('workspace storage authorization', () => {
     });
   });
 
+  it('allows only the uploader to save initial workspace document content once', async () => {
+    const file = {
+      id: 'file-a',
+      userId: 'staff-a',
+      folderId: 'folder-a',
+      objectKey: 'old-key',
+      originalName: 'Plan.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      sizeBytes: 4n,
+      initialContentDraft: true,
+    };
+    const fileFindFirst = jest.fn()
+      .mockResolvedValueOnce(file)
+      .mockResolvedValueOnce({ ...file, initialContentDraft: false });
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const auditCreate = jest.fn().mockResolvedValue({ id: 'audit-id' });
+    const transactionClient = {
+      workspace: {
+        findUnique: jest.fn().mockResolvedValue({ storageUsedBytes: 4n, storageReservedBytes: 0n }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      subscription: { findUnique: jest.fn().mockResolvedValue({ plan: 'FREE' }) },
+      storedFile: { updateMany },
+      auditLog: { create: auditCreate },
+    };
+    const plans = {
+      currentPlan: jest.fn().mockResolvedValue('FREE'),
+      getEntitlements: jest.fn().mockResolvedValue({ storageLimitBytes: 1024n }),
+      requireFeature: jest.fn().mockRejectedValue(new Error('Document editing is not included')),
+    };
+    const authorizeWorkspace = jest.fn().mockResolvedValue({
+      role: WorkspaceRole.STAFF,
+      workspace: { ownerUserId: 'owner-a' },
+    });
+    const authorizeFolder = jest.fn().mockResolvedValue({});
+    const storage = new WorkspaceStorageService(
+      {
+        storedFile: { findFirst: fileFindFirst },
+        subscription: { findUnique: jest.fn().mockResolvedValue({ plan: 'FREE' }) },
+        $transaction: jest.fn(async (callback: (tx: typeof transactionClient) => unknown) => callback(transactionClient)),
+      } as unknown as PrismaService,
+      {
+        assertConfigured: jest.fn().mockResolvedValue(undefined),
+        put: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ObjectStorageService,
+      { authorizeWorkspace, authorizeFolder } as unknown as WorkspacesService,
+      plans as never,
+      { requireWriteAccess: jest.fn().mockResolvedValue(undefined) } as never,
+    );
+
+    await storage.replaceContent(
+      'workspace-a',
+      'staff-a',
+      'file-a',
+      {
+        buffer: Buffer.from('initial'),
+        size: 7,
+        originalname: 'Plan.xlsx',
+        mimetype: file.mimeType,
+      },
+    );
+
+    expect(authorizeFolder).toHaveBeenCalledWith('workspace-a', 'staff-a', 'folder-a', 'uploadFiles');
+    expect(plans.requireFeature).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ initialContentDraft: true }),
+      data: expect.objectContaining({ initialContentDraft: false }),
+    }));
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'FILE_INITIAL_CONTENT_SAVED' }),
+    }));
+
+    fileFindFirst.mockReset().mockResolvedValueOnce(file);
+    await expect(storage.replaceContent(
+      'workspace-a',
+      'staff-b',
+      'file-a',
+      {
+        buffer: Buffer.from('not the uploader'),
+        size: 16,
+        originalname: 'Plan.xlsx',
+        mimetype: file.mimeType,
+      },
+    )).rejects.toThrow('Document editing is not included');
+
+    fileFindFirst.mockResolvedValueOnce({ ...file, initialContentDraft: false });
+    await expect(storage.replaceContent(
+      'workspace-a',
+      'staff-a',
+      'file-a',
+      {
+        buffer: Buffer.from('later edit'),
+        size: 10,
+        originalname: 'Plan.xlsx',
+        mimetype: file.mimeType,
+      },
+    )).rejects.toThrow('Document editing is not included');
+  });
+
   it('shows an assigned subfolder at the top level when its parent is inaccessible', async () => {
     authorizeWorkspace.mockResolvedValue({ role: WorkspaceRole.STAFF });
     folderFindMany.mockResolvedValue([

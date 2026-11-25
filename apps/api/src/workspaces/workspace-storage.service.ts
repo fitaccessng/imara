@@ -6,7 +6,12 @@ import {
 import { FolderPermissionEffect, Prisma, StoredFileStatus, WorkspaceMemberStatus, WorkspaceRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ObjectStorageService } from '../storage/object-storage.service';
-import { assertSameFileExtension, isUploadInput, UploadInput } from '../storage/storage.service';
+import {
+  assertInitialDocumentExtension,
+  assertSameFileExtension,
+  isUploadInput,
+  UploadInput,
+} from '../storage/storage.service';
 import { WorkspacesService } from './workspaces.service';
 import { PlanCatalogueService } from '../subscriptions/plan-catalogue.service';
 import { assertPlanFileSize, getPlanLimitMessage } from '../subscriptions/plan-entitlements';
@@ -52,7 +57,16 @@ export class WorkspaceStorageService {
         ? this.prisma.storedFile.findMany({
           where: { workspaceId, folderId: folderId ?? null, status: StoredFileStatus.READY },
           orderBy: { createdAt: 'desc' },
-          select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true },
+          select: {
+            id: true,
+            userId: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+            folderId: true,
+            createdAt: true,
+            initialContentDraft: true,
+          },
         })
         : Promise.resolve([]),
     ]);
@@ -77,7 +91,12 @@ export class WorkspaceStorageService {
     }
     return {
       workspaceId, folderId: folderId ?? null, folders: visibleFolders,
-      files: files.map(({ originalName, sizeBytes, ...file }) => ({ ...file, name: originalName, sizeBytes: sizeBytes.toString() })),
+      files: files.map(({ originalName, sizeBytes, userId: uploaderId, initialContentDraft, ...file }) => ({
+        ...file,
+        ...(initialContentDraft && uploaderId === userId ? { initialContentDraft: true } : {}),
+        name: originalName,
+        sizeBytes: sizeBytes.toString(),
+      })),
     };
   }
 
@@ -337,6 +356,7 @@ export class WorkspaceStorageService {
     folderId: string | undefined,
     size: bigint,
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
+    initialContentDraft = false,
   ) {
     return this.prisma.$transaction(async (tx) => {
       if (folderId) {
@@ -371,6 +391,7 @@ export class WorkspaceStorageService {
           workspaceId, userId: uploaderId, folderId: folderId ?? null,
           objectKey: `${ownerId}/workspaces/${workspaceId}/${randomUUID()}`, originalName: 'pending',
           mimeType: 'application/octet-stream', sizeBytes: size, status: StoredFileStatus.UPLOADING,
+          initialContentDraft,
         },
       });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -419,12 +440,14 @@ export class WorkspaceStorageService {
     folderId?: string,
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
     systemGenerated = false,
+    initialContentDraft = false,
   ) {
     await this.workspaceSubscriptions.requireWriteAccess(workspaceId);
     if (!isUploadInput(file)) {
       throw new BadRequestException('The uploaded file is invalid');
     }
     if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
+    if (initialContentDraft) assertInitialDocumentExtension(file.originalname);
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
     const uploaderSubscription = await this.prisma.subscription.findUnique({ where: { userId } });
     if (!uploaderSubscription) throw new NotFoundException('Subscription not found');
@@ -443,6 +466,7 @@ export class WorkspaceStorageService {
       folderId,
       size,
       requiredFeature,
+      initialContentDraft,
     );
     const originalName = this.name(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
@@ -461,7 +485,15 @@ export class WorkspaceStorageService {
         if (!counter.count) throw new Error('Workspace storage reservation was lost');
         const stored = await tx.storedFile.findUniqueOrThrow({
           where: { id: reservation.id },
-          select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true },
+          select: {
+            id: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+            folderId: true,
+            createdAt: true,
+            initialContentDraft: true,
+          },
         });
         await tx.auditLog.create({
           data: { workspaceId, actorId: userId, action: 'FILE_UPLOADED', targetType: 'StoredFile', targetId: reservation.id,
@@ -517,7 +549,7 @@ export class WorkspaceStorageService {
       throw new BadRequestException('The uploaded file is invalid');
     }
     if (replacement.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
-    const current = await this.authorizedFile(workspaceId, userId, fileId, 'editFiles');
+    const current = await this.authorizedFile(workspaceId, userId, fileId, 'editFiles', true);
     assertSameFileExtension(current.originalName, replacement.originalname);
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
     const uploaderSubscription = await this.prisma.subscription.findUnique({ where: { userId } });
@@ -529,7 +561,8 @@ export class WorkspaceStorageService {
     });
     if (!subscription) throw new NotFoundException('Subscription not found');
     const plan = await this.plans.currentPlan(subscription);
-    await this.plans.requireFeature(plan, 'canEditDocuments');
+    const isInitialWrite = current.initialContentDraft && current.userId === userId;
+    if (!isInitialWrite) await this.plans.requireFeature(plan, 'canEditDocuments');
     await this.objects.assertConfigured();
 
     const nextKey = `${member.workspace.ownerUserId}/workspaces/${workspaceId}/${randomUUID()}`;
@@ -547,7 +580,7 @@ export class WorkspaceStorageService {
         if (!subscription) throw new NotFoundException('Subscription not found');
         const plan = await this.plans.currentPlan(subscription, tx);
         const entitlements = await this.plans.getEntitlements(plan, tx);
-        await this.plans.requireFeature(plan, 'canEditDocuments', tx);
+        if (!isInitialWrite) await this.plans.requireFeature(plan, 'canEditDocuments', tx);
         if (
           delta > 0n
           && workspace.storageUsedBytes + workspace.storageReservedBytes + delta
@@ -569,16 +602,24 @@ export class WorkspaceStorageService {
         const updated = await tx.storedFile.updateMany({
           where: {
             id: current.id, workspaceId, status: StoredFileStatus.READY,
-            objectKey: current.objectKey, sizeBytes: current.sizeBytes,
+            objectKey: current.objectKey,
+            sizeBytes: current.sizeBytes,
+            initialContentDraft: current.initialContentDraft,
           },
-          data: { objectKey: nextKey, sizeBytes: nextSize, mimeType: contentType, ocrText: null },
+          data: {
+            objectKey: nextKey,
+            sizeBytes: nextSize,
+            mimeType: contentType,
+            ocrText: null,
+            initialContentDraft: false,
+          },
         });
         if (!updated.count) throw new ConflictException('This file changed while you were editing. Reload it and try again.');
         await tx.auditLog.create({
           data: {
             workspaceId,
             actorId: userId,
-            action: 'FILE_EDITED',
+            action: isInitialWrite ? 'FILE_INITIAL_CONTENT_SAVED' : 'FILE_EDITED',
             targetType: 'StoredFile',
             targetId: fileId,
             metadata: {
@@ -610,14 +651,34 @@ export class WorkspaceStorageService {
     };
   }
 
-  private async authorizedFile(workspaceId: string, userId: string, fileId: string, permission: string) {
+  private async authorizedFile(
+    workspaceId: string,
+    userId: string,
+    fileId: string,
+    permission: string,
+    allowUploaderInitialWrite = false,
+  ) {
     const file = await this.prisma.storedFile.findFirst({
       where: { id: fileId, workspaceId, status: StoredFileStatus.READY },
-      select: { id: true, userId: true, folderId: true, objectKey: true, originalName: true, mimeType: true, sizeBytes: true },
+      select: {
+        id: true,
+        userId: true,
+        folderId: true,
+        objectKey: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        initialContentDraft: true,
+      },
     });
     if (!file) throw new NotFoundException('File not found');
     const member = await this.workspaces.authorizeWorkspace(workspaceId, userId);
-    if (file.folderId) await this.allowedFolder(workspaceId, userId, file.folderId, permission);
+    const effectivePermission = allowUploaderInitialWrite
+      && file.initialContentDraft
+      && file.userId === userId
+      ? 'uploadFiles'
+      : permission;
+    if (file.folderId) await this.allowedFolder(workspaceId, userId, file.folderId, effectivePermission);
     else if (member.role !== WorkspaceRole.OWNER && member.role !== WorkspaceRole.ADMIN) throw new NotFoundException('File not found');
     return file;
   }

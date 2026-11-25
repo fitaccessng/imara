@@ -434,7 +434,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
           setEditing(true);
           setSelectedCell("A1");
         }
-        if (result.paragraphs?.length && result.paragraphs.every((paragraph) => !paragraph.trim())) {
+        if (canEdit && result.paragraphs?.length && result.paragraphs.every((paragraph) => !paragraph.trim())) {
           setEditing(true);
         }
       })
@@ -449,6 +449,10 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
       wordEditorRef.current.focus();
     }
   }, [editing, preview?.paragraphs]);
+
+  useEffect(() => {
+    if (!canEdit) setEditing(false);
+  }, [canEdit]);
 
   function updateCell(row: number, column: number, value: string) {
     if (!preview?.workbook || !activeWorksheet) return;
@@ -976,7 +980,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
               <div
                 ref={wordEditorRef}
                 className="word-editor-canvas"
-                contentEditable
+                contentEditable={canEdit && editing}
                 suppressContentEditableWarning
                 role="textbox"
                 aria-label={`Write content in ${file.name}`}

@@ -657,6 +657,7 @@ model StoredFile {
   uploadSource               StoredFileUploadSource    @default(STANDARD)
   quotaReserved              Boolean                   @default(true)
   isFavorite                 Boolean                   @default(false)
+  initialContentDraft        Boolean                   @default(false)
   contentHash                String?                   @db.Char(64)
   category                   FileCategory              @default(OTHER)
   tags                       String[]                  @default([])

@@ -1,0 +1,2 @@
+ALTER TABLE "StoredFile"
+ADD COLUMN "initialContentDraft" BOOLEAN NOT NULL DEFAULT FALSE;

@@ -114,6 +114,18 @@ export class WorkspaceStorageController {
     return this.storage.upload(workspaceId, req.auth.userId, file, dto.folderId);
   }
 
+  @Post('files/editor-drafts')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(TempUploadInterceptor())
+  uploadEditorDraft(
+    @Req() req: AuthenticatedRequest,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @UploadedFile() file: UploadInput,
+    @Body() dto: UploadFileDto,
+  ) {
+    return this.storage.upload(workspaceId, req.auth.userId, file, dto.folderId, undefined, false, true);
+  }
+
   @Post('files/scan')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(TempUploadInterceptor())

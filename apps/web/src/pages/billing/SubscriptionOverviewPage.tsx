@@ -76,7 +76,7 @@ export function SubscriptionOverviewPage() {
           <div className="subscription-entitlements">
             <span>{subscriptionQuery.data.entitlements.staffLimit} staff seats (owner excluded)</span>
             <span>{subscriptionQuery.data.entitlements.activeEventLimit} active events</span>
-            <span>{subscriptionQuery.data.entitlements.canEditDocuments ? "Document editing included" : "View documents; editing requires Pro"}</span>
+            <span>{subscriptionQuery.data.entitlements.canEditDocuments ? "Document editing included" : "Create documents; editing saved files requires Pro"}</span>
             <span>{subscriptionQuery.data.entitlements.canScanDocuments ? "Scan-to-upload included" : "Scan-to-upload requires Pro"}</span>
           </div>
           <p>

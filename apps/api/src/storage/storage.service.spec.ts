@@ -65,6 +65,7 @@ describe('StorageService quota-safe uploads', () => {
     uploadSource: StoredFileUploadSource.STANDARD,
     quotaReserved: true,
     isFavorite: false,
+    initialContentDraft: false,
     contentHash: null,
     category: FileCategory.OTHER,
     tags: [],
@@ -351,6 +352,42 @@ describe('StorageService quota-safe uploads', () => {
     }));
   });
 
+  it('allows one initial document save without granting later edit access', async () => {
+    jest.mocked(prisma.storedFile.findFirst).mockResolvedValue({
+      ...fileRow,
+      originalName: 'draft.docx',
+      status: StoredFileStatus.READY,
+      initialContentDraft: true,
+    } as never);
+    jest.mocked(planCatalogue.requireFeature).mockRejectedValue(new Error('Document editing is not included'));
+
+    await service.replaceContent('owner-id', 'file-id', {
+      buffer: Buffer.from('first document content'),
+      size: 22,
+      originalname: 'draft.docx',
+      mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    expect(planCatalogue.requireFeature).not.toHaveBeenCalled();
+    expect(transactionClient.storedFile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ initialContentDraft: true }),
+      data: expect.objectContaining({ initialContentDraft: false }),
+    }));
+
+    jest.mocked(prisma.storedFile.findFirst).mockResolvedValue({
+      ...fileRow,
+      originalName: 'draft.docx',
+      status: StoredFileStatus.READY,
+      initialContentDraft: false,
+    } as never);
+    await expect(service.replaceContent('owner-id', 'file-id', {
+      buffer: Buffer.from('later edit'),
+      size: 10,
+      originalname: 'draft.docx',
+      mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })).rejects.toThrow('Document editing is not included');
+  });
+
   it('does not disclose files that are not owned, personal, ready, and active', async () => {
     jest.mocked(prisma.storedFile.updateMany).mockResolvedValueOnce({ count: 0 });
 
@@ -434,6 +471,23 @@ describe('StorageService quota-safe uploads', () => {
     expect(finalizedData?.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(result).toEqual(expect.objectContaining({ id: 'file-id', name: 'passport.pdf', sizeBytes: '12' }));
     expect(result).not.toHaveProperty('objectKey');
+  });
+
+  it('marks editor-created documents as eligible for one initial content save', async () => {
+    const body = Buffer.from('blank docx');
+    await service.upload('owner-id', {
+      buffer: body,
+      originalname: 'draft.docx',
+      mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      size: body.length,
+    }, undefined, undefined, undefined, undefined, true);
+
+    expect(transactionClient.storedFile.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ initialContentDraft: true }),
+    }));
+    expect(transactionClient.storedFile.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ initialContentDraft: true }),
+    }));
   });
 
   it('creates nested owner folders from a validated relative path in the storage reservation', async () => {

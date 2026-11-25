@@ -103,7 +103,7 @@ export function WorkspaceStoragePage() {
       const body = new FormData();
       body.append("file", file);
       if (folderId) body.append("folderId", folderId);
-      return apiRequest<WorkspaceFile>(`/workspaces/${workspaceId}/files`, { method: "POST", body });
+      return apiRequest<WorkspaceFile>(`/workspaces/${workspaceId}/files/editor-drafts`, { method: "POST", body });
     },
     onSuccess: async () => {
       setActionError("");
@@ -262,7 +262,7 @@ export function WorkspaceStoragePage() {
             <>
               <CreateDocumentButton<WorkspaceFile>
                 disabled={busy || !uploadPolicyReady}
-                onCreate={(file) => uploadFile.mutateAsync(file)}
+                onCreate={uploadFile.mutateAsync}
                 onCreated={setViewingFile}
               />
               <BatchUploadControls

@@ -51,6 +51,7 @@ export interface WorkspaceFile {
   sizeBytes: string;
   folderId: string | null;
   createdAt: string;
+  initialContentDraft?: boolean;
 }
 
 export interface FolderRule {

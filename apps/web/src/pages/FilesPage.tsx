@@ -59,7 +59,10 @@ export function FilesPage() {
   });
   const uploadPolicyQuery = useQuery({
     queryKey: ["subscription"],
-    queryFn: () => apiRequest<{ storage: { maxUploadBytes: string } }>("/subscription"),
+    queryFn: () => apiRequest<{
+      storage: { maxUploadBytes: string };
+      entitlements: { canEditDocuments: boolean };
+    }>("/subscription"),
   });
   const currentFolderQuery = useQuery({
     queryKey: ["storage-folder", folderId],
@@ -98,7 +101,7 @@ export function FilesPage() {
       const body = new FormData();
       body.append("file", file);
       if (folderId) body.append("folderId", folderId);
-      return apiRequest<StoredFile>("/files", { method: "POST", body });
+      return apiRequest<StoredFile>("/files/editor-drafts", { method: "POST", body });
     },
     onSuccess: async () => {
       setActionError("");
@@ -275,7 +278,7 @@ export function FilesPage() {
               </button>
               <CreateDocumentButton<StoredFile>
                 disabled={busy || !uploadPolicyReady}
-                onCreate={(file) => uploadFile.mutateAsync(file)}
+                onCreate={uploadFile.mutateAsync}
                 onCreated={setViewingFile}
               />
               <BatchUploadControls
@@ -520,7 +523,7 @@ export function FilesPage() {
         maxUploadBytes={uploadLimitBytes}
         manageExpiry
         offlineFolderId={viewingFile.folderId}
-        canEdit
+        canEdit={uploadPolicyQuery.data?.entitlements.canEditDocuments ?? false}
         canDownload
         onClose={() => setViewingFile(null)}
         onSaved={refreshLibrary}

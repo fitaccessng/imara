@@ -12,6 +12,7 @@ export interface ViewableFile {
   name: string;
   mimeType: string;
   expiresAt?: string | null;
+  initialContentDraft?: boolean;
 }
 
 interface FileViewerModalProps {
@@ -50,6 +51,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
   const [savedText, setSavedText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [initialContentDraft, setInitialContentDraft] = useState(Boolean(file.initialContentDraft));
   const [error, setError] = useState("");
   const [replacement, setReplacement] = useState<File | null>(null);
   const [replacementError, setReplacementError] = useState("");
@@ -66,7 +68,8 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
   const [savingExpiry, setSavingExpiry] = useState(false);
   const uploadController = useRef<AbortController | null>(null);
   const officeDocument = isOfficeDocument(file);
-  const editableText = canEdit && isEditableText(file);
+  const canEditContent = canEdit || initialContentDraft;
+  const editableText = canEditContent && isEditableText(file);
   const canReplace = canEdit && officeDocument;
   const objectUrl = useMemo(() => blob ? URL.createObjectURL(blob) : "", [blob]);
   const dirty = editableText && text !== savedText;
@@ -118,6 +121,10 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
     setExpiryFeedback("");
   }, [file.id]);
 
+  useEffect(() => {
+    setInitialContentDraft(Boolean(file.initialContentDraft));
+  }, [file.id, file.initialContentDraft]);
+
   async function save() {
     setSaving(true);
     setError("");
@@ -136,6 +143,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
       await apiRequest(saveUrl, { method: "PATCH", body, signal: controller.signal });
       setSavedText(text);
       setBlob(new Blob([text], { type: file.mimeType || "text/plain" }));
+      setInitialContentDraft(false);
       await onSaved();
     } catch (reason) {
       if (controller.signal.aborted) return;
@@ -156,9 +164,9 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
     setOfflineError("");
     try {
       const extension = file.name.split(".").pop()?.toLowerCase();
-      if (canEdit && ["xlsx", "xls", "csv", "tsv"].includes(extension ?? "")) await import("@e965/xlsx");
-      if (canEdit && ["docx", "pptx"].includes(extension ?? "")) await import("jszip");
-      if (canEdit && extension === "pdf") await import("pdf-lib");
+      if (canEditContent && ["xlsx", "xls", "csv", "tsv"].includes(extension ?? "")) await import("@e965/xlsx");
+      if (canEditContent && ["docx", "pptx"].includes(extension ?? "")) await import("jszip");
+      if (canEditContent && extension === "pdf") await import("pdf-lib");
       await saveOfflineFile({
         id: file.id,
         userId: user?.id ?? "",
@@ -168,7 +176,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
         blob,
         folderId: offlineFolderId,
         scope: offlineScope ?? { type: "personal" },
-        canEdit,
+        canEdit: canEditContent,
         canDownload,
       });
       setOfflineSaved(true);
@@ -273,7 +281,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
     }}>
       <section className="file-viewer-dialog" role="dialog" aria-modal="true" aria-labelledby="file-viewer-title">
         <header className="file-viewer-header">
-          <div className="file-viewer-file"><span><FileText size={17} /></span><div><h2 id="file-viewer-title">{file.name}</h2><p>{file.name.toLowerCase().endsWith(".docx") ? "Word editor" : editableText ? "Text editor" : "File preview"}</p></div></div>
+          <div className="file-viewer-file"><span><FileText size={17} /></span><div><h2 id="file-viewer-title">{file.name}</h2><p>{initialContentDraft ? "New document · save to create its first version" : file.name.toLowerCase().endsWith(".docx") ? "Word editor" : editableText ? "Text editor" : "File preview"}</p></div></div>
           <div className="file-viewer-actions">
             {editableText && <button className="button button-green" disabled={!dirty || saving || loading} onClick={() => void save()}><Save size={15} />{saving ? "Saving…" : "Save changes"}</button>}
             {saving && !replacement && <button className="button button-outline" onClick={() => uploadController.current?.abort()}>Cancel upload</button>}
@@ -317,11 +325,12 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
               file={file}
               blob={blob}
               saveUrl={saveUrl}
-              canEdit={canEdit}
+              canEdit={canEditContent}
               maxUploadBytes={maxUploadBytes}
               onDirtyChange={setOfficeDirty}
               onSaved={async (updatedBlob) => {
                 setBlob(updatedBlob);
+                setInitialContentDraft(false);
                 await onSaved();
               }}
             />

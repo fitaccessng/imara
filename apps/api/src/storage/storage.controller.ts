@@ -146,6 +146,18 @@ export class StorageController {
     return this.storage.upload(req.auth.userId, file, dto.folderId);
   }
 
+  @Post('files/editor-drafts')
+  @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseInterceptors(TempUploadInterceptor())
+  uploadEditorDraft(
+    @Req() req: AuthenticatedRequest,
+    @UploadedFile() file: UploadInput,
+    @Body() dto: UploadFileDto,
+  ) {
+    return this.storage.upload(req.auth.userId, file, dto.folderId, undefined, undefined, undefined, true);
+  }
+
   @Post('files/scan')
   @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @UseInterceptors(TempUploadInterceptor())

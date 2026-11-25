@@ -165,6 +165,7 @@ export interface StoredFile {
   folderId: string | null;
   createdAt: string;
   expiresAt?: string | null;
+  initialContentDraft?: boolean;
   isFavorite?: boolean;
   deletedAt?: string | null;
   folderName?: string | null;

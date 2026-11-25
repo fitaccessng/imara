@@ -36,6 +36,12 @@ export function isUploadInput(file: UploadInput | undefined | null): file is Upl
       || (typeof file.path === 'string' && file.path.length > 0)));
 }
 
+export function assertInitialDocumentExtension(name: string): void {
+  if (!/\.(docx|xls|xlsx|pdf)$/i.test(name)) {
+    throw new BadRequestException('Initial content drafts are only supported for DOCX, XLS, XLSX, and PDF files');
+  }
+}
+
 export async function readUploadPrefix(file: UploadInput, byteCount = 12): Promise<Buffer> {
   if (Buffer.isBuffer(file.buffer)) return file.buffer.subarray(0, byteCount);
   if (!file.path) return Buffer.alloc(0);
@@ -363,7 +369,17 @@ export class StorageService {
       this.prisma.storedFile.findMany({
         where: { userId, workspaceId: null, folderId: folderId ?? null, status: StoredFileStatus.READY, deletedAt: null },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true, isFavorite: true, expiryDate: true },
+        select: {
+          id: true,
+          originalName: true,
+          mimeType: true,
+          sizeBytes: true,
+          folderId: true,
+          createdAt: true,
+          isFavorite: true,
+          expiryDate: true,
+          initialContentDraft: true,
+        },
       }).then((rows) => rows.map(({ originalName, expiryDate, ...file }) => ({
         ...file,
         name: originalName,
@@ -625,6 +641,7 @@ export class StorageService {
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
     fileRequestId?: string,
     directoryPath: string[] = [],
+    initialContentDraft = false,
   ) {
     await this.cleanExpiredReservations(userId);
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -682,6 +699,7 @@ export class StorageService {
               sizeBytes,
               status: StoredFileStatus.UPLOADING,
               uploadSource: requiredFeature === 'canScanDocuments' ? 'SCAN' : 'STANDARD',
+              initialContentDraft,
             },
           });
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -716,6 +734,7 @@ export class StorageService {
     requiredFeature?: 'canEditDocuments' | 'canScanDocuments',
     fileRequestId?: string,
     relativePath?: string,
+    initialContentDraft = false,
   ) {
     if (!isUploadInput(file)) throw new BadRequestException('The uploaded file size is invalid');
     if (!Number.isSafeInteger(file.size)) {
@@ -724,13 +743,22 @@ export class StorageService {
 
     if (file.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
     const directoryPath = parseUploadDirectoryPath(relativePath);
+    if (initialContentDraft) assertInitialDocumentExtension(file.originalname);
     const subscription = await this.prisma.subscription.findUnique({ where: { userId } });
     if (!subscription) throw new NotFoundException('Subscription not found');
     const plan = await this.plans.currentPlan(subscription);
     assertPlanFileSize(plan, file.size);
     await this.objects.assertConfigured();
     const sizeBytes = BigInt(file.size);
-    const reserved = await this.reserve(userId, sizeBytes, folderId, requiredFeature, fileRequestId, directoryPath);
+    const reserved = await this.reserve(
+      userId,
+      sizeBytes,
+      folderId,
+      requiredFeature,
+      fileRequestId,
+      directoryPath,
+      initialContentDraft,
+    );
     const name = this.safeName(file.originalname);
     const mimeType = (file.mimetype || 'application/octet-stream').slice(0, 255);
     const category = this.categorizeFile(name, mimeType);
@@ -752,7 +780,15 @@ export class StorageService {
         if (!updated.count) throw new Error('Storage reservation was lost');
         const result = await tx.storedFile.findUniqueOrThrow({
           where: { id: reserved.id },
-          select: { id: true, originalName: true, mimeType: true, sizeBytes: true, folderId: true, createdAt: true },
+          select: {
+            id: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+            folderId: true,
+            createdAt: true,
+            initialContentDraft: true,
+          },
         });
         return { ...result, name: result.originalName, sizeBytes: result.sizeBytes.toString() };
       });
@@ -793,14 +829,14 @@ export class StorageService {
     if (replacement.size < 1) throw new PayloadTooLargeException('Empty files are not supported');
     const current = await this.prisma.storedFile.findFirst({
       where: { id: fileId, userId, workspaceId: null, status: StoredFileStatus.READY, deletedAt: null },
-      select: { id: true, objectKey: true, originalName: true, sizeBytes: true },
+      select: { id: true, objectKey: true, originalName: true, sizeBytes: true, initialContentDraft: true },
     });
     if (!current) throw new NotFoundException('File not found');
     const subscription = await this.prisma.subscription.findUnique({ where: { userId } });
     if (!subscription) throw new NotFoundException('Subscription not found');
     const plan = await this.plans.currentPlan(subscription);
     assertPlanFileSize(plan, replacement.size);
-    await this.plans.requireFeature(plan, 'canEditDocuments');
+    if (!current.initialContentDraft) await this.plans.requireFeature(plan, 'canEditDocuments');
     assertSameFileExtension(current.originalName, replacement.originalname);
     await this.objects.assertConfigured();
 
@@ -815,7 +851,7 @@ export class StorageService {
         if (!subscription) throw new NotFoundException('Subscription not found');
         const plan = await this.plans.currentPlan(subscription, tx);
         const entitlements = await this.plans.getEntitlements(plan, tx);
-        await this.plans.requireFeature(plan, 'canEditDocuments', tx);
+        if (!current.initialContentDraft) await this.plans.requireFeature(plan, 'canEditDocuments', tx);
         if (
           delta > 0n
           && subscription.storageUsedBytes + subscription.storageReservedBytes + delta
@@ -836,8 +872,14 @@ export class StorageService {
         }
         const updated = await tx.storedFile.updateMany({
           where: {
-            id: current.id, userId, workspaceId: null, status: StoredFileStatus.READY,
-            objectKey: current.objectKey, sizeBytes: current.sizeBytes, deletedAt: null,
+            id: current.id,
+            userId,
+            workspaceId: null,
+            status: StoredFileStatus.READY,
+            objectKey: current.objectKey,
+            sizeBytes: current.sizeBytes,
+            deletedAt: null,
+            initialContentDraft: current.initialContentDraft,
           },
           data: {
             objectKey: nextKey,
@@ -845,6 +887,7 @@ export class StorageService {
             mimeType: contentType,
             contentHash,
             ocrText: null,
+            initialContentDraft: false,
           },
         });
         if (!updated.count) throw new ConflictException('This file changed while you were editing. Reload it and try again.');
