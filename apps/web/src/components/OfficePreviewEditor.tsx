@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlignCenter, AlignLeft, AlignRight, Bold, Heading1, Heading2, Italic, List, ListOrdered, LoaderCircle, Pencil, Redo2, Save, Underline, Undo2, X } from "lucide-react";
+import { AlignCenter, AlignJustify, AlignLeft, AlignRight, Bold, Eraser, Highlighter, IndentDecrease, IndentIncrease, Italic, List, ListOrdered, LoaderCircle, Pencil, Redo2, Save, Search, Strikethrough, Underline, Undo2, X } from "lucide-react";
 import type * as XLSX from "@e965/xlsx";
 import type JSZip from "jszip";
 import { apiRequest } from "../lib/api";
 import { DocxPagePreview } from "../document-tools/DocxPagePreview";
 import { PlanLimitMessage } from "./PlanLimitMessage";
 import type { ViewableFile } from "./FileViewerModal";
+import { colorHex, halfPointSize } from "./wordFormatting";
 
 interface OfficePreviewEditorProps {
   file: Pick<ViewableFile, "name" | "mimeType">;
@@ -22,7 +23,9 @@ interface OfficePreviewData {
   workbook?: XLSX.WorkBook;
   archive?: JSZip;
   paragraphs?: string[];
+  paragraphHtml?: string[];
   paragraphXml?: string;
+  wordReadOnlyReason?: string;
   slides?: string[][];
   slideXmls?: { path: string; xml: string; text: string[] }[];
 }
@@ -53,6 +56,136 @@ function documentBlocks(html: string): DocumentBlock[] {
   return blocks;
 }
 
+function escapeHtmlText(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function wordHighlightColor(value: string) {
+  const colors: Record<string, string> = {
+    black: "#000000", blue: "#0000ff", cyan: "#00ffff", darkBlue: "#00008b",
+    darkCyan: "#008b8b", darkGray: "#a9a9a9", darkGreen: "#006400",
+    darkMagenta: "#8b008b", darkRed: "#8b0000", darkYellow: "#808000",
+    green: "#00ff00", lightGray: "#d3d3d3", magenta: "#ff00ff",
+    red: "#ff0000", white: "#ffffff", yellow: "#ffff00",
+  };
+  return colors[value] ?? (value && /^[0-9a-f]{6}$/i.test(value) ? `#${value}` : null);
+}
+
+function wordParagraphHtml(paragraph: Element) {
+  const paragraphProperties = Array.from(paragraph.children).find((child) => child.localName === "pPr");
+  const styleValue = paragraphProperties
+    ? Array.from(paragraphProperties.children).find((child) => child.localName === "pStyle")?.getAttributeNS(WORD_NAMESPACE, "val")
+    : null;
+  const tag = styleValue === "Heading1" ? "h1" : styleValue === "Heading2" ? "h2" : styleValue === "Heading3" ? "h3" : "p";
+  const paragraphStyle: string[] = ["font-family:Arial", "line-height:1.15", "color:#000000"];
+  if (tag === "p") {
+    paragraphStyle.push(styleValue === "Title" ? "font-size:26pt" : styleValue === "Subtitle" ? "font-size:15pt" : "font-size:11pt");
+  }
+  const justification = paragraphProperties
+    ? Array.from(paragraphProperties.children).find((child) => child.localName === "jc")?.getAttributeNS(WORD_NAMESPACE, "val")
+    : null;
+  if (justification && ["left", "center", "right", "both"].includes(justification)) {
+    paragraphStyle.push(`text-align:${justification === "both" ? "justify" : justification}`);
+  }
+  const spacing = paragraphProperties
+    ? Array.from(paragraphProperties.children).find((child) => child.localName === "spacing")
+    : null;
+  const line = Number(spacing?.getAttributeNS(WORD_NAMESPACE, "line"));
+  if (Number.isFinite(line) && line > 0) paragraphStyle.push(`line-height:${line / 240}`);
+  const after = Number(spacing?.getAttributeNS(WORD_NAMESPACE, "after"));
+  if (Number.isFinite(after) && after > 0) paragraphStyle.push(`margin-bottom:${after / 20}pt`);
+  const indent = Number(paragraphProperties
+    ? Array.from(paragraphProperties.children).find((child) => child.localName === "ind")?.getAttributeNS(WORD_NAMESPACE, "left")
+    : null);
+  if (Number.isFinite(indent) && indent > 0) paragraphStyle.push(`margin-left:${indent / 20}pt`);
+
+  const content = Array.from(paragraph.children).filter((child) => child.localName === "r").map((run) => {
+    const runProperties = Array.from(run.children).find((child) => child.localName === "rPr");
+    const runStyle: string[] = [];
+    if (runProperties) {
+      const fonts = Array.from(runProperties.children).find((child) => child.localName === "rFonts");
+      const family = fonts?.getAttributeNS(WORD_NAMESPACE, "ascii") ?? fonts?.getAttributeNS(WORD_NAMESPACE, "hAnsi");
+      if (family && ["Arial", "Aptos", "Calibri", "Georgia", "Times New Roman", "Verdana"].includes(family)) {
+        runStyle.push(`font-family:${family}`);
+      }
+      const size = Number(Array.from(runProperties.children).find((child) => child.localName === "sz")?.getAttributeNS(WORD_NAMESPACE, "val"));
+      if (Number.isFinite(size) && size > 0 && size <= 400) runStyle.push(`font-size:${size / 2}pt`);
+      const color = Array.from(runProperties.children).find((child) => child.localName === "color")?.getAttributeNS(WORD_NAMESPACE, "val");
+      if (color && /^[0-9a-f]{6}$/i.test(color)) runStyle.push(`color:#${color}`);
+      const shading = Array.from(runProperties.children).find((child) => child.localName === "shd")?.getAttributeNS(WORD_NAMESPACE, "fill");
+      if (shading && /^[0-9a-f]{6}$/i.test(shading)) runStyle.push(`background-color:#${shading}`);
+      const highlight = Array.from(runProperties.children).find((child) => child.localName === "highlight")?.getAttributeNS(WORD_NAMESPACE, "val");
+      const highlightColor = wordHighlightColor(highlight ?? "");
+      if (highlightColor) runStyle.push(`background-color:${highlightColor}`);
+    }
+    let text = Array.from(run.children).filter((child) => ["t", "tab", "br"].includes(child.localName))
+      .map((item) => item.localName === "t"
+        ? escapeHtmlText(item.textContent ?? "")
+        : item.localName === "tab" ? "&#9;" : "<br>").join("");
+    if (runStyle.length) text = `<span style="${runStyle.join(";")}">${text}</span>`;
+    const enabled = (name: string) => {
+      const property = runProperties && Array.from(runProperties.children).find((child) => child.localName === name);
+      const value = property?.getAttributeNS(WORD_NAMESPACE, "val");
+      return Boolean(property) && value !== "0" && value !== "false" && value !== "none";
+    };
+    if (enabled("b")) text = `<strong>${text}</strong>`;
+    if (enabled("i")) text = `<em>${text}</em>`;
+    if (enabled("u")) text = `<u>${text}</u>`;
+    if (enabled("strike")) text = `<s>${text}</s>`;
+    return text;
+  }).join("");
+  const blockStyle = styleValue === "Title" || styleValue === "Subtitle"
+    ? ` data-word-style="${styleValue}"` : "";
+  return `<${tag}${blockStyle} style="${paragraphStyle.join(";")}">${content || "<br>"}</${tag}>`;
+}
+
+function sanitizeWordClipboardHtml(source: string) {
+  const parsed = new DOMParser().parseFromString(source, "text/html");
+  const allowedTags = new Set(["p", "h1", "h2", "h3", "div", "span", "strong", "b", "em", "i", "u", "s", "strike", "ul", "ol", "li", "br", "font"]);
+  const rejectedTags = new Set(["script", "style", "iframe", "object", "embed", "img", "table", "a", "svg", "math", "video", "audio"]);
+  const allowedFonts = new Set(["Arial", "Aptos", "Calibri", "Georgia", "Times New Roman", "Verdana"]);
+  let unsupported = false;
+
+  function clean(node: Node): string {
+    if (node.nodeType === Node.TEXT_NODE) return escapeHtmlText(node.textContent ?? "");
+    if (!(node instanceof Element)) return "";
+    const tag = node.tagName.toLowerCase();
+    if (rejectedTags.has(tag)) {
+      unsupported = true;
+      return "";
+    }
+    const children = Array.from(node.childNodes).map(clean).join("");
+    if (!allowedTags.has(tag)) return children;
+    const style: string[] = [];
+    if (node instanceof HTMLElement) {
+      const family = node.style.fontFamily.replace(/["']/g, "").trim();
+      if (allowedFonts.has(family)) style.push(`font-family:${family}`);
+      const size = halfPointSize(node.style.fontSize);
+      if (size) style.push(`font-size:${Number(size) / 2}pt`);
+      const color = colorHex(node.style.color);
+      if (color) style.push(`color:${color}`);
+      const background = colorHex(node.style.backgroundColor);
+      if (background) style.push(`background-color:${background}`);
+      if (["left", "center", "right", "justify"].includes(node.style.textAlign)) {
+        style.push(`text-align:${node.style.textAlign}`);
+      }
+      const lineHeight = Number(node.style.lineHeight);
+      if (Number.isFinite(lineHeight) && lineHeight > 0 && lineHeight <= 3) style.push(`line-height:${lineHeight}`);
+      for (const property of ["marginBottom", "marginLeft"] as const) {
+        const measurement = node.style[property].match(/^(\d+(?:\.\d+)?)(pt|px)$/);
+        const value = Number(measurement?.[1]);
+        if (measurement && Number.isFinite(value) && value >= 0 && value <= 360) {
+          style.push(`${property === "marginBottom" ? "margin-bottom" : "margin-left"}:${value}${measurement[2]}`);
+        }
+      }
+    }
+    const styleAttribute = style.length ? ` style="${style.join(";")}"` : "";
+    return `<${tag}${styleAttribute}>${children}</${tag}>`;
+  }
+
+  return { html: Array.from(parsed.body.childNodes).map(clean).join(""), unsupported };
+}
+
 function appendWordRuns(xml: XMLDocument, paragraph: Element, element: Element, marks: Set<string> = new Set()) {
   const nextMarks = new Set(marks);
   const tag = element.tagName.toLowerCase();
@@ -63,17 +196,34 @@ function appendWordRuns(xml: XMLDocument, paragraph: Element, element: Element, 
   if (["s", "strike", "del"].includes(tag)) nextMarks.add("strike");
   if (tag === "h1") {
     nextMarks.add("bold");
-    nextMarks.add("font:Georgia");
-    nextMarks.add("size:60");
-    nextMarks.add("color:#173c28");
+    nextMarks.add("size:48");
   } else if (tag === "h2") {
     nextMarks.add("bold");
-    nextMarks.add("font:Georgia");
-    nextMarks.add("size:44");
-    nextMarks.add("color:#173c28");
+    nextMarks.add("size:36");
+  } else if (tag === "h3") {
+    nextMarks.add("bold");
+    nextMarks.add("size:28");
   }
-  if (style?.fontFamily) nextMarks.add(`font:${style.fontFamily.split(",")[0].replace(/["']/g, "").trim()}`);
-  if (style?.color) nextMarks.add(`color:${style.color}`);
+  const fontFamily = style?.fontFamily || (tag === "font" ? element.getAttribute("face") : "");
+  const fontColor = style?.color || (tag === "font" ? element.getAttribute("color") : "");
+  const fontSize = style?.fontSize;
+  if (fontFamily) nextMarks.add(`font:${fontFamily.split(",")[0].replace(/["']/g, "").trim()}`);
+  if (fontColor) {
+    const normalized = colorHex(fontColor);
+    if (normalized) nextMarks.add(`color:${normalized}`);
+  }
+  if (style?.backgroundColor) {
+    const normalized = colorHex(style.backgroundColor);
+    if (normalized) nextMarks.add(`highlight:${normalized}`);
+  }
+  if (fontSize) {
+    const size = halfPointSize(fontSize);
+    if (size) nextMarks.add(`size:${size}`);
+  } else if (tag === "font") {
+    const legacySize = element.getAttribute("size");
+    const legacyPoints = legacySize ? [8, 10, 12, 14, 18, 24, 36][Number(legacySize) - 1] : undefined;
+    if (legacyPoints) nextMarks.add(`size:${legacyPoints * 2}`);
+  }
 
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) {
@@ -95,11 +245,19 @@ function appendWordRuns(xml: XMLDocument, paragraph: Element, element: Element, 
             fonts.setAttributeNS(WORD_NAMESPACE, "w:hAnsi", mark.slice(5));
             properties.appendChild(fonts);
           } else if (mark.startsWith("color:")) {
-            const color = mark.slice(6).match(/^#?([0-9a-f]{6})$/i)?.[1];
+            const color = colorHex(mark.slice(6))?.slice(1);
             if (color) {
               const colorElement = xml.createElementNS(WORD_NAMESPACE, "w:color");
               colorElement.setAttributeNS(WORD_NAMESPACE, "w:val", color);
               properties.appendChild(colorElement);
+            }
+          } else if (mark.startsWith("highlight:")) {
+            const color = colorHex(mark.slice(10))?.slice(1);
+            if (color) {
+              const shading = xml.createElementNS(WORD_NAMESPACE, "w:shd");
+              shading.setAttributeNS(WORD_NAMESPACE, "w:val", "clear");
+              shading.setAttributeNS(WORD_NAMESPACE, "w:fill", color);
+              properties.appendChild(shading);
             }
           } else if (mark.startsWith("size:")) {
             const size = mark.slice(5);
@@ -302,7 +460,50 @@ async function loadOfficePreview(file: Pick<ViewableFile, "name" | "mimeType">, 
       .map((paragraph) => Array.from(paragraph.getElementsByTagNameNS("*", "t"))
         .map((text) => text.textContent ?? "")
         .join(""));
-    return { archive, paragraphs, paragraphXml: await documentXml.async("text") };
+    const unsupportedFeatureNames: Array<[string, string]> = [
+      ["tbl", "tables"],
+      ["drawing", "images and diagrams"],
+      ["pict", "embedded images"],
+      ["hyperlink", "hyperlinks"],
+      ["numPr", "numbered or bulleted list formatting"],
+      ["sdt", "content controls"],
+      ["footnoteReference", "footnotes"],
+      ["endnoteReference", "endnotes"],
+      ["pageBreakBefore", "manual page breaks"],
+      ["lastRenderedPageBreak", "existing pagination"],
+      ["bookmarkStart", "bookmarks"],
+      ["bookmarkEnd", "bookmarks"],
+      ["commentRangeStart", "comments"],
+      ["commentRangeEnd", "comments"],
+      ["commentReference", "comments"],
+      ["permStart", "protected regions"],
+      ["permEnd", "protected regions"],
+      ["fldSimple", "document fields"],
+      ["fldChar", "document fields"],
+      ["instrText", "document fields"],
+      ["altChunk", "embedded document content"],
+      ["customXml", "custom XML content"],
+      ["cr", "carriage-return line breaks"],
+      ["noBreakHyphen", "special hyphen characters"],
+    ];
+    const unsupported = unsupportedFeatureNames.find(([localName]) => xml.getElementsByTagNameNS("*", localName).length > 0);
+    const supportedRunProperties = new Set(["rFonts", "sz", "color", "shd", "highlight", "b", "i", "u", "strike"]);
+    const supportedParagraphProperties = new Set(["pStyle", "jc", "spacing", "ind"]);
+    const hasAdvancedFormatting = Array.from(xml.getElementsByTagNameNS("*", "rPr"))
+      .some((properties) => Array.from(properties.children).some((property) => !supportedRunProperties.has(property.localName)))
+      || Array.from(xml.getElementsByTagNameNS("*", "pPr"))
+        .some((properties) => Array.from(properties.children).some((property) => !supportedParagraphProperties.has(property.localName)));
+    const pageBreak = Array.from(xml.getElementsByTagNameNS("*", "br"))
+      .some((lineBreak) => lineBreak.getAttributeNS(WORD_NAMESPACE, "type") === "page");
+    return {
+      archive,
+      paragraphs,
+      paragraphHtml: Array.from(xml.getElementsByTagNameNS("*", "p"), wordParagraphHtml),
+      paragraphXml: await documentXml.async("text"),
+      wordReadOnlyReason: unsupported || pageBreak || hasAdvancedFormatting
+        ? `Editing is disabled to protect this document’s ${unsupported?.[1] ?? (pageBreak ? "manual page breaks" : "advanced formatting")}. Download it to make changes in a compatible editor, then upload the edited version.`
+        : undefined,
+    };
   }
 
   if (extension === "pptx" || extension === "ppt") {
@@ -360,11 +561,16 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   const [pdfColor, setPdfColor] = useState("#172b3a");
   const [pdfUrl, setPdfUrl] = useState("");
   const [selectedCell, setSelectedCell] = useState("A1");
-  const [paragraphDrafts, setParagraphDrafts] = useState<string[]>([]);
   const [slideDrafts, setSlideDrafts] = useState<string[][]>([]);
   const [hasEdits, setHasEdits] = useState(false);
   const [changedCells, setChangedCells] = useState<string[]>([]);
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [findText, setFindText] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [replaceFeedback, setReplaceFeedback] = useState("");
+  const [pasteFeedback, setPasteFeedback] = useState("");
   const wordEditorRef = useRef<HTMLDivElement>(null);
+  const wordSelectionRef = useRef<Range | null>(null);
 
   const extension = extensionOf(file.name);
   const spreadsheet = ["csv", "tsv", "xls", "xlsx"].includes(extension);
@@ -384,16 +590,127 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
     setError(reason instanceof Error ? reason.message : fallback);
   }
 
+  function rememberWordSelection() {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !wordEditorRef.current?.contains(selection.anchorNode)) return;
+    wordSelectionRef.current = selection.getRangeAt(0).cloneRange();
+  }
+
+  function restoreWordSelection() {
+    const editor = wordEditorRef.current;
+    const range = wordSelectionRef.current;
+    if (!editor || !range || !editor.contains(range.commonAncestorContainer)) {
+      editor?.focus();
+      return false;
+    }
+    const selection = window.getSelection();
+    if (!selection) return false;
+    editor.focus();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+
   function applyWordCommand(command: string, value?: string) {
     if (!wordEditorRef.current) return;
-    wordEditorRef.current.focus();
+    restoreWordSelection();
     document.execCommand(command, false, value);
+    rememberWordSelection();
     setHasEdits(true);
+  }
+
+  function applyWordInlineStyle(property: "fontFamily" | "fontSize" | "color" | "backgroundColor", value: string) {
+    if (!wordEditorRef.current || !restoreWordSelection()) return;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const span = document.createElement("span");
+    span.style[property] = value;
+    span.appendChild(range.extractContents());
+    range.insertNode(span);
+    selection.removeAllRanges();
+    const nextRange = document.createRange();
+    nextRange.selectNodeContents(span);
+    selection.addRange(nextRange);
+    wordSelectionRef.current = nextRange.cloneRange();
+    setHasEdits(true);
+  }
+
+  function applyWordBlockFormat(styleName: string) {
+    const tags: Record<string, string> = {
+      normal: "p",
+      title: "p",
+      subtitle: "p",
+      heading1: "h1",
+      heading2: "h2",
+      heading3: "h3",
+    };
+    const tag = tags[styleName];
+    if (!tag) return;
+    applyWordCommand("formatBlock", `<${tag}>`);
+    const selection = window.getSelection();
+    const node = selection?.anchorNode;
+    const block = node instanceof HTMLElement ? node.closest("p,h1,h2,h3") : node?.parentElement?.closest("p,h1,h2,h3");
+    if (!(block instanceof HTMLElement) || !wordEditorRef.current?.contains(block)) return;
+    block.removeAttribute("data-word-style");
+    block.style.fontFamily = "";
+    block.style.fontSize = "";
+    block.style.fontWeight = "";
+    block.style.color = "";
+    if (styleName === "title" || styleName === "subtitle") {
+      block.dataset.wordStyle = styleName === "title" ? "Title" : "Subtitle";
+      block.style.fontFamily = "Arial";
+      block.style.fontSize = styleName === "title" ? "26pt" : "15pt";
+      block.style.fontWeight = styleName === "title" ? "700" : "400";
+      if (styleName === "subtitle") block.style.color = "#5f6b65";
+    }
+    setHasEdits(true);
+  }
+
+  function applyWordParagraphStyle(property: "lineHeight" | "marginBottom", value: string) {
+    if (!restoreWordSelection()) return;
+    const selection = window.getSelection();
+    const node = selection?.anchorNode;
+    const block = node instanceof HTMLElement ? node.closest("p,h1,h2,h3") : node?.parentElement?.closest("p,h1,h2,h3");
+    if (!(block instanceof HTMLElement) || !wordEditorRef.current?.contains(block)) return;
+    block.style[property] = value;
+    setHasEdits(true);
+  }
+
+  function replaceAllWordText() {
+    const editor = wordEditorRef.current;
+    const search = findText;
+    if (!editor || !search) {
+      setReplaceFeedback("Enter text to find.");
+      return;
+    }
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matcher = new RegExp(escaped, "gi");
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let replaced = 0;
+    let node = walker.nextNode();
+    while (node) {
+      const current = node.textContent ?? "";
+      const matches = current.match(matcher);
+      if (matches?.length) {
+        replaced += matches.length;
+        node.textContent = current.replace(matcher, replaceText);
+      }
+      node = walker.nextNode();
+    }
+    setReplaceFeedback(replaced ? `Replaced ${replaced} match${replaced === 1 ? "" : "es"}.` : "No matches found.");
+    if (replaced) setHasEdits(true);
   }
 
   useEffect(() => {
     onDirtyChange(hasEdits);
   }, [hasEdits, onDirtyChange]);
+
+  useEffect(() => {
+    const handleSelectionChange = () => rememberWordSelection();
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  }, []);
 
   useEffect(() => {
     if (!pdf) {
@@ -435,7 +752,6 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
         if (!active) return;
         setPreview(result);
         setActiveSheet(result.workbook?.SheetNames[0] ?? "");
-        setParagraphDrafts(result.paragraphs ?? []);
         setSlideDrafts(result.slides ?? []);
         const loadedSheets = result.workbook?.Sheets ?? {};
         const hasCellContent = Object.values(loadedSheets).some((sheet) =>
@@ -737,24 +1053,29 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
         runNodes.forEach((child) => paragraph.removeChild(child));
 
         const blockTag = block.element.tagName.toLowerCase();
-        const heading = blockTag === "h1" ? "Heading1" : blockTag === "h2" ? "Heading2" : "";
+        const headingStyle = blockTag === "h1"
+          ? "Heading1"
+          : blockTag === "h2"
+            ? "Heading2"
+            : blockTag === "h3"
+              ? "Heading3"
+              : "";
+        const wordStyle = block.element.getAttribute("data-word-style") || headingStyle;
         const blockStyle = block.element instanceof HTMLElement ? block.element.style : null;
         const alignment = ["left", "center", "right", "justify"].includes(blockStyle?.textAlign ?? "")
           ? blockStyle?.textAlign ?? ""
           : "";
-        if (heading || alignment || block.listKind) {
+        if (wordStyle || alignment || block.listKind || blockStyle?.lineHeight || blockStyle?.marginBottom || blockStyle?.marginLeft) {
           if (!paragraphProperties) {
             paragraphProperties = xml.createElementNS(WORD_NAMESPACE, "w:pPr");
             paragraph.insertBefore(paragraphProperties, paragraph.firstChild);
           }
-          if (heading) {
-            let style = Array.from(paragraphProperties.children).find((child) => child.localName === "pStyle");
-            if (!style) {
-              style = xml.createElementNS(WORD_NAMESPACE, "w:pStyle");
-              paragraphProperties.appendChild(style);
-            }
-            style.setAttributeNS(WORD_NAMESPACE, "w:val", heading);
-          }
+          const existingStyle = Array.from(paragraphProperties.children).find((child) => child.localName === "pStyle");
+          if (wordStyle) {
+            const style = existingStyle ?? xml.createElementNS(WORD_NAMESPACE, "w:pStyle");
+            style.setAttributeNS(WORD_NAMESPACE, "w:val", wordStyle);
+            if (!existingStyle) paragraphProperties.appendChild(style);
+          } else existingStyle?.remove();
           if (alignment) {
             const existing = Array.from(paragraphProperties.children).find((child) => child.localName === "jc");
             existing?.remove();
@@ -776,6 +1097,40 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
               paragraphProperties.appendChild(numbering);
             }
           }
+          if (blockStyle?.lineHeight || blockStyle?.marginBottom) {
+            const existing = Array.from(paragraphProperties.children).find((child) => child.localName === "spacing");
+            existing?.remove();
+            const spacing = xml.createElementNS(WORD_NAMESPACE, "w:spacing");
+            if (blockStyle.lineHeight) {
+              const lineHeight = Number.parseFloat(blockStyle.lineHeight);
+              if (Number.isFinite(lineHeight) && lineHeight > 0) {
+                spacing.setAttributeNS(WORD_NAMESPACE, "w:line", String(Math.round(lineHeight * 240)));
+                spacing.setAttributeNS(WORD_NAMESPACE, "w:lineRule", "auto");
+              }
+            }
+            if (blockStyle.marginBottom) {
+              const marginBottom = Number.parseFloat(blockStyle.marginBottom);
+              const unit = blockStyle.marginBottom.match(/[a-z%]+$/i)?.[0].toLowerCase();
+              if (Number.isFinite(marginBottom) && marginBottom >= 0 && unit === "pt") {
+                spacing.setAttributeNS(WORD_NAMESPACE, "w:after", String(Math.round(marginBottom * 20)));
+              } else if (Number.isFinite(marginBottom) && marginBottom >= 0 && unit === "px") {
+                spacing.setAttributeNS(WORD_NAMESPACE, "w:after", String(Math.round(marginBottom * 15)));
+              }
+            }
+            if (spacing.attributes.length) paragraphProperties.appendChild(spacing);
+          }
+          if (blockStyle?.marginLeft) {
+            const marginLeft = Number.parseFloat(blockStyle.marginLeft);
+            const unit = blockStyle.marginLeft.match(/[a-z%]+$/i)?.[0].toLowerCase();
+            const twips = unit === "pt" ? marginLeft * 20 : unit === "px" ? marginLeft * 15 : Number.NaN;
+            if (Number.isFinite(twips) && twips >= 0) {
+              const existing = Array.from(paragraphProperties.children).find((child) => child.localName === "ind");
+              existing?.remove();
+              const indentation = xml.createElementNS(WORD_NAMESPACE, "w:ind");
+              indentation.setAttributeNS(WORD_NAMESPACE, "w:left", String(Math.round(twips)));
+              paragraphProperties.appendChild(indentation);
+            }
+          }
         }
 
         appendWordRuns(xml, paragraph, block.element);
@@ -793,8 +1148,8 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
         .map((paragraph) => Array.from(paragraph.getElementsByTagNameNS(WORD_NAMESPACE, "t")).map((text) => text.textContent ?? "").join(""));
       const summary = `Edited Word document text and formatting (${updatedParagraphs.length} paragraph${updatedParagraphs.length === 1 ? "" : "s"})`;
       await upload(updatedBlob, summary);
-      setPreview({ ...preview, paragraphXml: source, paragraphs: updatedParagraphs });
-      setParagraphDrafts(updatedParagraphs);
+      const updatedParagraphHtml = Array.from(xml.getElementsByTagNameNS(WORD_NAMESPACE, "p"), wordParagraphHtml);
+      setPreview({ ...preview, paragraphXml: source, paragraphs: updatedParagraphs, paragraphHtml: updatedParagraphHtml });
       setEditing(false);
       setHasEdits(false);
     } catch (reason) {
@@ -958,35 +1313,75 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   if (preview?.paragraphs) {
     return (
       <div className="office-preview office-document-preview">
-        {canEdit && <div className="office-preview-toolbar word-editor-toolbar" role="toolbar" aria-label="Word editing tools">
+        {canEdit && !preview.wordReadOnlyReason && <div className="office-preview-toolbar word-editor-toolbar" role="toolbar" aria-label="Word editing tools">
           {editing ? <>
             <div className="word-editor-tool-group word-editor-history" aria-label="History">
               <button type="button" className="word-editor-tool" aria-label="Undo" title="Undo" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("undo")}><Undo2 size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Redo" title="Redo" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("redo")}><Redo2 size={16} /></button>
             </div>
             <span className="word-editor-tool-divider" aria-hidden="true" />
-            <div className="word-editor-tool-group" aria-label="Paragraph style and emphasis">
-              <button type="button" className="word-editor-tool" aria-label="Heading 1" title="Heading 1" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<h1>")}><Heading1 size={17} /></button>
-              <button type="button" className="word-editor-tool" aria-label="Heading 2" title="Heading 2" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<h2>")}><Heading2 size={17} /></button>
-              <button type="button" className="word-editor-tool" aria-label="Paragraph" title="Normal text" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<p>")}>¶</button>
+            <div className="word-editor-tool-group word-editor-select-group" aria-label="Text style">
+              <select aria-label="Paragraph style" defaultValue="normal" onChange={(event) => applyWordBlockFormat(event.target.value)} onFocus={rememberWordSelection}>
+                <option value="normal">Normal</option>
+                <option value="title">Title</option>
+                <option value="subtitle">Subtitle</option>
+                <option value="heading1">Heading 1</option>
+                <option value="heading2">Heading 2</option>
+                <option value="heading3">Heading 3</option>
+              </select>
+              <select aria-label="Font family" defaultValue="Arial" onChange={(event) => applyWordInlineStyle("fontFamily", event.target.value)} onFocus={rememberWordSelection}>
+                {["Arial", "Aptos", "Calibri", "Georgia", "Times New Roman", "Verdana"].map((font) => <option key={font} value={font}>{font}</option>)}
+              </select>
+              <select aria-label="Font size" defaultValue="11" onChange={(event) => applyWordInlineStyle("fontSize", `${event.target.value}pt`)} onFocus={rememberWordSelection}>
+                {[8, 9, 10, 11, 12, 14, 16, 18, 24, 36].map((size) => <option key={size} value={size}>{size} pt</option>)}
+              </select>
+            </div>
+            <div className="word-editor-tool-group" aria-label="Character formatting">
               <button type="button" className="word-editor-tool" aria-label="Bold" title="Bold" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("bold")}><Bold size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Italic" title="Italic" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("italic")}><Italic size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Underline" title="Underline" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("underline")}><Underline size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Strikethrough" title="Strikethrough" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("strikeThrough")}><Strikethrough size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Clear formatting" title="Clear formatting" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("removeFormat")}><Eraser size={16} /></button>
+              <label className="word-editor-color" title="Text color">
+                <span>Text</span><input aria-label="Text color" type="color" defaultValue="#000000" onFocus={rememberWordSelection} onChange={(event) => applyWordInlineStyle("color", event.target.value)} />
+              </label>
+              <label className="word-editor-color" title="Text highlight">
+                <Highlighter size={14} /><input aria-label="Text highlight color" type="color" defaultValue="#fff29a" onFocus={rememberWordSelection} onChange={(event) => applyWordInlineStyle("backgroundColor", event.target.value)} />
+              </label>
             </div>
             <span className="word-editor-tool-divider" aria-hidden="true" />
             <div className="word-editor-tool-group" aria-label="Paragraph alignment and lists">
               <button type="button" className="word-editor-tool" aria-label="Align left" title="Align left" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyLeft")}><AlignLeft size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Align center" title="Align center" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyCenter")}><AlignCenter size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Align right" title="Align right" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyRight")}><AlignRight size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Justify" title="Justify" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyFull")}><AlignJustify size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Bulleted list" title="Bulleted list" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("insertUnorderedList")}><List size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Numbered list" title="Numbered list" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("insertOrderedList")}><ListOrdered size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Decrease indent" title="Decrease indent" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("outdent")}><IndentDecrease size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Increase indent" title="Increase indent" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("indent")}><IndentIncrease size={16} /></button>
             </div>
+            <div className="word-editor-tool-group word-editor-select-group" aria-label="Paragraph spacing">
+              <select aria-label="Line spacing" defaultValue="1.15" onChange={(event) => applyWordParagraphStyle("lineHeight", event.target.value)} onFocus={rememberWordSelection}>
+                <option value="1">Single</option><option value="1.15">1.15</option><option value="1.5">1.5</option><option value="2">Double</option>
+              </select>
+              <select aria-label="Paragraph spacing" defaultValue="0pt" onChange={(event) => applyWordParagraphStyle("marginBottom", event.target.value)} onFocus={rememberWordSelection}>
+                <option value="0pt">No paragraph gap</option><option value="6pt">6 pt after</option><option value="12pt">12 pt after</option>
+              </select>
+            </div>
+            <button type="button" className={`word-editor-tool${findReplaceOpen ? " is-active" : ""}`} aria-label="Find and replace" title="Find and replace" onMouseDown={(event) => event.preventDefault()} onClick={() => { setFindReplaceOpen((open) => !open); setReplaceFeedback(""); }}><Search size={16} /></button>
             <span className="word-editor-status" role="status">{hasEdits ? "Unsaved changes" : "All changes saved"}</span>
             <button className="button button-green word-editor-save" onClick={() => void saveTextDocument()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save"}</button>
-            <button className="button button-outline word-editor-cancel" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(false); setHasEdits(false); }} disabled={busy}><X size={15} /><span>Cancel</span></button>
-          </> : <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(true); setHasEdits(false); }}><Pencil size={15} />Edit document</button>}
+            <button className="button button-outline word-editor-cancel" onClick={() => { setEditing(false); setHasEdits(false); setPasteFeedback(""); }} disabled={busy}><X size={15} /><span>Cancel</span></button>
+          </> : <button className="button button-outline" onClick={() => { setPasteFeedback(""); setEditing(true); setHasEdits(false); }}><Pencil size={15} />Edit document</button>}
         </div>}
+        {preview.wordReadOnlyReason && <p className="office-preview-hint word-editor-readonly" role="status">{preview.wordReadOnlyReason}</p>}
         {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
+        {editing && findReplaceOpen && <div className="word-find-replace" role="group" aria-label="Find and replace text">
+          <label><span>Find</span><input value={findText} onChange={(event) => setFindText(event.target.value)} placeholder="Text to find" /></label>
+          <label><span>Replace with</span><input value={replaceText} onChange={(event) => setReplaceText(event.target.value)} placeholder="Replacement text" /></label>
+          <button type="button" className="button button-outline" onClick={replaceAllWordText}>Replace all</button>
+          {replaceFeedback && <span role="status">{replaceFeedback}</span>}
+        </div>}
         {editing
           ? <div className="word-editor-scroll">
             <article className="word-editor-page">
@@ -998,17 +1393,39 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
                 role="textbox"
                 aria-label={`Write content in ${file.name}`}
                 aria-multiline="true"
-                onInput={() => setHasEdits(true)}
-              >
-                {paragraphDrafts.length
-                  ? paragraphDrafts.map((paragraph, index) => <p key={index}>{paragraph || <br />}</p>)
-                  : <p><br /></p>}
-              </div>
+                onInput={() => { rememberWordSelection(); setHasEdits(true); }}
+                onKeyUp={rememberWordSelection}
+                onMouseUp={rememberWordSelection}
+                onPaste={(event) => {
+                  event.preventDefault();
+                  const clipboardHtml = event.clipboardData.getData("text/html");
+                  const clipboardText = event.clipboardData.getData("text/plain");
+                  if (clipboardHtml) {
+                    const sanitized = sanitizeWordClipboardHtml(clipboardHtml);
+                    if (sanitized.unsupported) {
+                      setPasteFeedback("Paste cancelled: this editor does not yet support images, tables, or hyperlinks. Use plain text or paste supported text formatting.");
+                      return;
+                    }
+                    document.execCommand("insertHTML", false, sanitized.html);
+                  } else {
+                    document.execCommand("insertText", false, clipboardText);
+                  }
+                  setPasteFeedback("");
+                  setHasEdits(true);
+                  rememberWordSelection();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setPasteFeedback("Drag and drop is disabled in this editor. Copy and paste supported text instead.");
+                }}
+                dangerouslySetInnerHTML={{ __html: preview.paragraphHtml?.join("") ?? "" }}
+              />
             </article>
           </div>
           : <DocxPagePreview blob={blob} />}
+        {editing && pasteFeedback && <p className="office-preview-hint word-editor-readonly" role="status">{pasteFeedback}</p>}
         {editing
-          ? <p className="office-preview-hint">Use the toolbar for headings, text emphasis, alignment, lists, and undo or redo. Your document saves as a Word file.</p>
+          ? <p className="office-preview-hint">Use the toolbar for text and paragraph formatting, find and replace, and undo or redo. Changes are saved to the original Word file.</p>
           : <p className="office-preview-hint">Word pages are rendered with their original layout. Choose Edit document to make changes.</p>}
       </div>
     );

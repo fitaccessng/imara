@@ -157,3 +157,14 @@ when they use the supported OOXML package format; legacy binary WPS files must b
 converted to DOCX or PDF first. Complex layout, images, and mixed text formatting
 are not fully represented in these previews. These features run in the browser and
 do not require a document server. Saves use the API's permission and quota checks.
+
+The current Word editing path updates the DOCX OOXML package with JSZip and renders
+original page layout with `docx-preview`. New Word files use A4 portrait pages,
+one-inch margins, Arial 11 pt, and 1.15 line spacing. Basic text styling, paragraph
+styles, alignment, lists, indentation, spacing, and find/replace are available.
+Files containing structures the editor cannot safely round-trip (such as tables,
+images, hyperlinks, lists imported with numbering metadata, manual page breaks, or
+unsupported run/paragraph properties) open read-only so saving cannot silently
+discard that content. Spreadsheet editing uses `@e965/xlsx`; PDF annotation uses
+`pdf-lib`. Word changes currently require an explicit Save; automatic saving and
+version restoration are not implemented.
