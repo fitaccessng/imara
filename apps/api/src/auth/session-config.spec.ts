@@ -22,6 +22,14 @@ describe('session cookie configuration', () => {
     } as NodeJS.ProcessEnv).cookieSameSite).toBe('none');
   });
 
+  it('honors an explicit same-site cookie policy in production', () => {
+    expect(getSessionConfig({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'lax',
+    } as NodeJS.ProcessEnv).cookieSameSite).toBe('lax');
+  });
+
   it('rejects invalid SameSite values instead of silently downgrading to lax', () => {
     expect(() => getSessionConfig({
       COOKIE_SAME_SITE: 'None',
