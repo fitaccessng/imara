@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { CalendarClock, Download, FileText, LoaderCircle, Printer, Save, Upload, X, CloudDownload, Check, ScanText } from "lucide-react";
+import { CalendarClock, Download, FileText, LoaderCircle, Printer, Save, Upload, X, CloudDownload, Check, ScanText, Maximize2, Minimize2 } from "lucide-react";
 import { apiBlob, apiRequest } from "../lib/api";
 import { OfficePreviewEditor } from "./OfficePreviewEditor";
 import { saveOfflineFile, type OfflineScope } from "../offline/offlineFiles";
@@ -51,6 +51,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
   const [savedText, setSavedText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
   const [initialContentDraft, setInitialContentDraft] = useState(Boolean(file.initialContentDraft));
   const [error, setError] = useState("");
   const [replacement, setReplacement] = useState<File | null>(null);
@@ -123,6 +124,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
 
   useEffect(() => {
     setInitialContentDraft(Boolean(file.initialContentDraft));
+    setFullScreen(false);
   }, [file.id, file.initialContentDraft]);
 
   async function save() {
@@ -279,10 +281,20 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
     <div className="file-viewer-backdrop" onMouseDown={(event) => {
       if (event.target === event.currentTarget) requestClose();
     }}>
-      <section className="file-viewer-dialog" role="dialog" aria-modal="true" aria-labelledby="file-viewer-title">
+      <section className={`file-viewer-dialog${fullScreen ? " is-fullscreen" : ""}`} role="dialog" aria-modal="true" aria-labelledby="file-viewer-title">
         <header className="file-viewer-header">
           <div className="file-viewer-file"><span><FileText size={17} /></span><div><h2 id="file-viewer-title">{file.name}</h2><p>{initialContentDraft ? "New document · save to create its first version" : file.name.toLowerCase().endsWith(".docx") ? "Word editor" : editableText ? "Text editor" : "File preview"}</p></div></div>
           <div className="file-viewer-actions">
+            <button
+              className="icon-button file-viewer-fullscreen"
+              type="button"
+              aria-label={fullScreen ? "Exit full screen" : "Enter full screen"}
+              aria-pressed={fullScreen}
+              title={fullScreen ? "Exit full screen" : "Enter full screen"}
+              onClick={() => setFullScreen((value) => !value)}
+            >
+              {fullScreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+            </button>
             {editableText && <button className="button button-green" disabled={!dirty || saving || loading} onClick={() => void save()}><Save size={15} />{saving ? "Saving…" : "Save changes"}</button>}
             {saving && !replacement && <button className="button button-outline" onClick={() => uploadController.current?.abort()}>Cancel upload</button>}
             {canReplace && <>

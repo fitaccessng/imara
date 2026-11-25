@@ -958,30 +958,32 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   if (preview?.paragraphs) {
     return (
       <div className="office-preview office-document-preview">
-        {canEdit && <div className="office-preview-toolbar word-editor-toolbar" aria-label="Word editing tools">
+        {canEdit && <div className="office-preview-toolbar word-editor-toolbar" role="toolbar" aria-label="Word editing tools">
           {editing ? <>
-            <div className="word-editor-tool-group" aria-label="Text formatting">
+            <div className="word-editor-tool-group word-editor-history" aria-label="History">
               <button type="button" className="word-editor-tool" aria-label="Undo" title="Undo" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("undo")}><Undo2 size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Redo" title="Redo" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("redo")}><Redo2 size={16} /></button>
-              <span className="word-editor-tool-divider" />
+            </div>
+            <span className="word-editor-tool-divider" aria-hidden="true" />
+            <div className="word-editor-tool-group" aria-label="Paragraph style and emphasis">
               <button type="button" className="word-editor-tool" aria-label="Heading 1" title="Heading 1" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<h1>")}><Heading1 size={17} /></button>
               <button type="button" className="word-editor-tool" aria-label="Heading 2" title="Heading 2" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<h2>")}><Heading2 size={17} /></button>
               <button type="button" className="word-editor-tool" aria-label="Paragraph" title="Normal text" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<p>")}>¶</button>
-              <span className="word-editor-tool-divider" />
               <button type="button" className="word-editor-tool" aria-label="Bold" title="Bold" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("bold")}><Bold size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Italic" title="Italic" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("italic")}><Italic size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Underline" title="Underline" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("underline")}><Underline size={16} /></button>
-              <span className="word-editor-tool-divider" />
+            </div>
+            <span className="word-editor-tool-divider" aria-hidden="true" />
+            <div className="word-editor-tool-group" aria-label="Paragraph alignment and lists">
               <button type="button" className="word-editor-tool" aria-label="Align left" title="Align left" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyLeft")}><AlignLeft size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Align center" title="Align center" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyCenter")}><AlignCenter size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Align right" title="Align right" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyRight")}><AlignRight size={16} /></button>
-              <span className="word-editor-tool-divider" />
               <button type="button" className="word-editor-tool" aria-label="Bulleted list" title="Bulleted list" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("insertUnorderedList")}><List size={16} /></button>
               <button type="button" className="word-editor-tool" aria-label="Numbered list" title="Numbered list" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("insertOrderedList")}><ListOrdered size={16} /></button>
             </div>
-            <span className="word-editor-status">{hasEdits ? "Unsaved changes" : "Ready to write"}</span>
-            <button className="button button-green" onClick={() => void saveTextDocument()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save"}</button>
-            <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(false); setHasEdits(false); }} disabled={busy}><X size={15} />Cancel</button>
+            <span className="word-editor-status" role="status">{hasEdits ? "Unsaved changes" : "All changes saved"}</span>
+            <button className="button button-green word-editor-save" onClick={() => void saveTextDocument()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save"}</button>
+            <button className="button button-outline word-editor-cancel" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(false); setHasEdits(false); }} disabled={busy}><X size={15} /><span>Cancel</span></button>
           </> : <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(true); setHasEdits(false); }}><Pencil size={15} />Edit document</button>}
         </div>}
         {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}

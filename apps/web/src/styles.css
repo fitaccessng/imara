@@ -2266,15 +2266,17 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .folder-staff-status { margin: 0; color: #718096; font-size: 11px; line-height: 1.55; }
 .folder-staff-retry { width: fit-content; }
 .file-viewer-backdrop { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; background: rgba(16,43,70,.46); padding: 18px; }
-.file-viewer-dialog { position: relative; display: flex; width: min(1050px, 100%); height: min(780px, 92vh); min-height: 320px; flex-direction: column; overflow: hidden; border: 1px solid #e5eaf0; border-radius: 14px; background: #fff; box-shadow: 0 24px 80px rgba(16,43,70,.24); }
+.file-viewer-dialog { position: relative; display: flex; width: min(1420px, 96vw); height: min(900px, 94dvh); min-height: 320px; flex-direction: column; overflow: hidden; border: 1px solid #e5eaf0; border-radius: 16px; background: #fff; box-shadow: 0 24px 80px rgba(16,43,70,.24); transition: width .18s ease, height .18s ease, border-radius .18s ease; }
+.file-viewer-dialog.is-fullscreen { width: 100vw; height: 100dvh; max-width: none; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 .file-viewer-header { display: flex; min-height: 68px; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid #e5eaf0; padding: 12px 18px; }
 .file-viewer-file { display: flex; min-width: 0; align-items: center; gap: 11px; }
 .file-viewer-file > span { display: grid; width: 36px; height: 36px; flex: none; place-items: center; border-radius: 9px; background: #eef7f0; color: #168d34; }
 .file-viewer-file > div { min-width: 0; }
 .file-viewer-file h2 { overflow: hidden; margin: 0; color: #102b46; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .file-viewer-file p { margin: 4px 0 0; color: #718096; font-size: 11px; }
-.file-viewer-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+.file-viewer-actions { display: flex; min-width: 0; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .file-viewer-actions .button { min-height: 36px; padding: 0 11px; font-size: 12px; }
+.file-viewer-fullscreen { flex: none; }
 .file-viewer-error { margin: 12px 16px 0; }
 .file-viewer-content { display: grid; min-height: 0; flex: 1; place-items: center; background: #f7f9fc; }
 .file-expiry-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-bottom: 1px solid #e5eaf0; padding: 12px 18px; }
@@ -2308,8 +2310,8 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .file-replace-dialog h3 { margin: 0 0 9px; color: #102b46; font-size: 17px; }
 .file-replace-dialog p { margin: 0 0 14px; color: #718096; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
 .file-replace-dialog p strong { color: #172b3a; }
-.office-preview { display: flex; width: 100%; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; background: #f7f9fc; }
-.office-preview-toolbar { display: flex; min-height: 54px; flex-wrap: wrap; align-items: center; gap: 8px; border-bottom: 1px solid #e5eaf0; background: #fff; padding: 8px 12px; }
+.office-preview { display: flex; width: 100%; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; background: #f2f4f1; }
+.office-preview-toolbar { display: flex; min-height: 54px; flex-wrap: wrap; align-items: center; gap: 8px; border-bottom: 1px solid #e5eaf0; background: #fff; padding: 8px 16px; }
 .office-preview-toolbar .button { min-height: 34px; padding: 0 10px; font-size: 12px; }
 .office-preview-toolbar > label { color: #526579; font-size: 12px; }
 .office-preview-toolbar > select, .office-preview-toolbar > input { min-height: 34px; border: 1px solid #e5eaf0; border-radius: 6px; background: #fff; padding: 0 9px; color: #172b3a; font: 12px "Inter", sans-serif; }
@@ -2352,19 +2354,21 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .pdf-editor-field input[type="color"] { width: 100%; height: 35px; border: 1px solid #dfe6ee; border-radius: 6px; background: #fff; padding: 3px; cursor: pointer; }
 .pdf-editor-controls .office-preview-hint { border: 0; padding: 0; }
 .pdf-editor-controls + .file-pdf-preview { min-height: 180px; }
-.office-document-preview { display: flex; width: 100%; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; background: #fff; padding: 0 clamp(18px, 7vw, 72px) 24px; color: #172b3a; }
-.office-document-preview > .office-preview-toolbar { position: sticky; top: 0; z-index: 2; margin: 0 calc(clamp(18px, 7vw, 72px) * -1) 20px; }
+.office-document-preview { display: flex; width: 100%; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; background: #f2f4f1; padding: 0; color: #172b3a; }
+.office-document-preview > .office-preview-toolbar { position: sticky; top: 0; z-index: 2; margin: 0; }
 .office-document-preview > p:not(.office-preview-hint) { margin: 0 0 12px; font-family: var(--font-sans); font-size: 15px; line-height: 1.65; white-space: pre-wrap; }
-.office-document-preview .office-preview-hint { margin: 20px calc(clamp(18px, 7vw, 72px) * -1) -24px; }
-.word-editor-toolbar { position: sticky; top: 0; z-index: 3; margin-bottom: 0 !important; }
-.word-editor-tool-group { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 3px; }
-.word-editor-tool { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #34495c; cursor: pointer; }
-.word-editor-tool:hover, .word-editor-tool:focus-visible { border-color: #cfe5d4; outline: 0; background: #eef7f0; color: #168d34; }
-.word-editor-tool-divider { width: 1px; height: 22px; flex: none; margin: 0 3px; background: #e5eaf0; }
-.word-editor-status { color: #718096; font-size: 11px; white-space: nowrap; }
-.word-editor-scroll { min-height: 0; flex: 1; overflow: auto; background: #e9edef; padding: 28px clamp(12px, 4vw, 44px); }
-.word-editor-page { width: min(820px, 100%); min-height: 920px; margin: 0 auto; border: 1px solid #e3e7e8; background: #fff; padding: clamp(32px, 7vw, 84px); box-shadow: 0 4px 18px rgba(25,42,36,.12); }
-.word-editor-canvas { min-height: 740px; outline: 0; color: #172b3a; font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.75; overflow-wrap: anywhere; }
+.office-document-preview .office-preview-hint { margin: 0; padding: 10px 18px; }
+.word-editor-toolbar { position: sticky; top: 0; z-index: 3; min-height: 60px; margin: 0 !important; gap: 10px; padding: 10px 18px; box-shadow: 0 2px 8px rgba(25,42,36,.035); }
+.word-editor-tool-group { display: flex; min-width: 0; flex: none; flex-wrap: wrap; align-items: center; gap: 2px; }
+.word-editor-tool { display: grid; width: 36px; height: 36px; flex: none; place-items: center; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #34495c; cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease; }
+.word-editor-tool:hover, .word-editor-tool:focus-visible { border-color: #d7e8da; outline: 0; background: #f0f7f1; color: #116a3d; }
+.word-editor-tool:active { background: #e5f1e7; }
+.word-editor-tool-divider { width: 1px; height: 25px; flex: none; margin: 0 2px; background: #e4e9e4; }
+.word-editor-status { margin-left: auto; color: #69786e; font-size: 11px; white-space: nowrap; }
+.word-editor-save, .word-editor-cancel { min-height: 38px !important; border-radius: 8px !important; }
+.word-editor-scroll { display: flex; min-height: 0; flex: 1; justify-content: center; overflow: auto; background: #f1f3f0; padding: clamp(20px, 4vh, 44px) 24px 60px; }
+.word-editor-page { box-sizing: border-box; width: min(816px, 100%); min-height: 1056px; flex: none; margin: 0 auto; border: 1px solid #e3e7e3; background: #fff; padding: clamp(48px, 8vw, 96px); box-shadow: 0 8px 28px rgba(34,48,38,.10); }
+.word-editor-canvas { min-height: 860px; outline: 0; color: #242d27; font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.72; overflow-wrap: anywhere; }
 .word-editor-canvas p { min-height: 1.75em; margin: 0 0 .45em; }
 .word-editor-canvas h1 { margin: 0 0 .5em; color: #173c28; font-family: Georgia, "Times New Roman", serif; font-size: 2em; line-height: 1.2; }
 .word-editor-canvas h2 { margin: .85em 0 .4em; color: #173c28; font-family: Georgia, "Times New Roman", serif; font-size: 1.45em; line-height: 1.3; }
@@ -2382,6 +2386,12 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
 .office-slide-card > p { margin: 0; color: #172b3a; font-size: 18px; line-height: 1.45; }
 .office-slide-card > input { width: 100%; border: 1px solid #d5e0e9; border-radius: 5px; padding: 8px; color: #172b3a; font-family: inherit; font-size: 16px; line-height: 1.4; }
 .office-slide-preview > .office-preview-hint { position: sticky; left: 0; align-self: flex-end; border: 1px solid #e5eaf0; border-radius: 6px; }
+@media (min-width: 900px) {
+  .office-spreadsheet > .office-preview-toolbar { min-height: 62px; padding-inline: 20px; }
+  .office-sheet-grid th, .office-sheet-grid td { min-width: 140px; height: 38px; padding-inline: 12px; }
+  .office-sheet-grid tbody tr:nth-child(even) td { background: #fcfdfc; }
+  .office-sheet-grid td:focus-within { background: #f5faf5; }
+}
 @media (max-width: 620px) {
   .file-action-popover {
     position: fixed;
@@ -2423,10 +2433,11 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
   }
   .share-link-list { max-height: 38dvh; overflow-y: auto; }
   .file-viewer-backdrop { padding: 0; }
-  .file-viewer-dialog { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .file-viewer-dialog, .file-viewer-dialog.is-fullscreen { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
   .file-viewer-header { align-items: flex-start; flex-wrap: wrap; padding: 12px; }
-  .file-viewer-actions { width: 100%; }
-  .file-viewer-actions .button { flex: 1; }
+  .file-viewer-actions { width: 100%; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+  .file-viewer-actions .button { flex: none; white-space: nowrap; }
+  .file-viewer-actions .icon-button { flex: none; }
   .file-text-editor { padding: 16px; }
   .file-expiry-editor { padding: 10px 12px; }
   .file-expiry-editor > label { min-width: 100%; }
@@ -2437,10 +2448,16 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
   .pdf-editor-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pdf-editor-toolbar { align-items: center; }
   .pdf-editor-toolbar .pdf-toolbar-spacer { display: none; }
-  .word-editor-toolbar { gap: 6px; }
-  .word-editor-tool-group { order: 2; width: 100%; flex-basis: 100%; }
-  .word-editor-status { flex: 1; }
-  .word-editor-page { min-height: 100%; padding: 28px 22px; }
+  .word-editor-toolbar { gap: 6px; padding: 8px 10px; }
+  .word-editor-tool-group { order: 2; width: auto; flex-basis: auto; }
+  .word-editor-tool { width: 32px; height: 32px; }
+  .word-editor-toolbar > .word-editor-tool-divider { display: none; }
+  .word-editor-history { order: 1; }
+  .word-editor-status { order: 3; flex: 1; min-width: 100px; }
+  .word-editor-save { order: 4; }
+  .word-editor-cancel { order: 5; }
+  .word-editor-scroll { padding: 14px 10px 28px; }
+  .word-editor-page { width: 100%; min-height: 100%; padding: 34px 26px; }
   .word-editor-canvas { min-height: 65vh; }
   .office-slide-card { min-height: 260px; padding: 24px; }
 }
