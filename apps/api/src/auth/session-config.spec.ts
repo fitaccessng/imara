@@ -1,7 +1,7 @@
 import { getSessionConfig } from './session-config';
 
 describe('session cookie configuration', () => {
-  it('uses the cross-site-safe production defaults and configured session TTL', () => {
+  it('uses same-site-safe production defaults and the configured session TTL', () => {
     expect(getSessionConfig({
       NODE_ENV: 'production',
       COOKIE_SECURE: 'true',
@@ -9,9 +9,17 @@ describe('session cookie configuration', () => {
     } as NodeJS.ProcessEnv)).toEqual({
       cookieName: 'imara_session',
       cookieSecure: true,
-      cookieSameSite: 'none',
+      cookieSameSite: 'lax',
       ttlDays: 14,
     });
+  });
+
+  it('allows explicitly configured cross-site cookies only with Secure enabled', () => {
+    expect(getSessionConfig({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: 'none',
+    } as NodeJS.ProcessEnv).cookieSameSite).toBe('none');
   });
 
   it('rejects invalid SameSite values instead of silently downgrading to lax', () => {

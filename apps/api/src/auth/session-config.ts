@@ -8,8 +8,10 @@ export interface SessionConfig {
 }
 
 export function getSessionConfig(env: NodeJS.ProcessEnv = process.env): SessionConfig {
-  const cookieSameSite = env.COOKIE_SAME_SITE
-    ?? (env.NODE_ENV === 'production' ? 'none' : 'lax');
+  // The web app and API are deployed on sibling HTTPS subdomains. They are
+  // cross-origin, but same-site, so Lax is sufficient and avoids making the
+  // session cookie a third-party cookie when a deployment is misrouted.
+  const cookieSameSite = env.COOKIE_SAME_SITE ?? 'lax';
   if (!['lax', 'strict', 'none'].includes(cookieSameSite)) {
     throw new Error('COOKIE_SAME_SITE must be lax, strict, or none');
   }

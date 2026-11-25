@@ -72,7 +72,7 @@ describe('AuthController session cookie', () => {
     expect(cookie).toHaveBeenCalledWith('custom_session', 'opaque-session-token', {
       httpOnly: true,
       secure: true,
-      sameSite: 'none',
+      sameSite: 'lax',
       path: '/',
       expires: expiresAt,
     });
