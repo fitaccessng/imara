@@ -281,8 +281,19 @@ async function loadOfficePreview(file: Pick<ViewableFile, "name" | "mimeType">, 
   }
 
   const { default: JSZip } = await import("jszip");
-  const archive = await JSZip.loadAsync(blob);
-  if (extension === "docx" || extension === "doc") {
+  let archive: JSZip;
+  try {
+    archive = await JSZip.loadAsync(blob);
+  } catch (reason) {
+    if (extension === "wps") {
+      throw new Error("This WPS file uses a legacy format that browsers can’t preview. Convert it to DOCX or PDF and upload the converted file.");
+    }
+    throw reason;
+  }
+  if (extension === "wps" && !archive.file("word/document.xml")) {
+    throw new Error("This WPS file uses a format this browser can’t preview. Convert it to DOCX or PDF and upload the converted file.");
+  }
+  if (extension === "docx" || extension === "doc" || extension === "wps") {
     const documentXml = archive.file("word/document.xml");
     if (!documentXml) throw new Error("The document content could not be found.");
     const xml = new DOMParser().parseFromString(await documentXml.async("text"), "application/xml");

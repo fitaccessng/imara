@@ -230,18 +230,28 @@ is not inferred from the event date. Admin responses do not expose document
 names or contents, passwords, session tokens, or request bodies.
 
 `CORS_ORIGINS` is a comma-separated exact-origin allowlist and defaults to the Vite
-origin `http://localhost:5173`. Browser requests must use credentials
+origin `http://localhost:5173`. For Expo web development, include the exact local
+origin in use, such as `http://localhost:8082`; the example also lists Expo's
+common local ports. Browser requests must use credentials
 (`fetch(..., { credentials: 'include' })`). The API also rejects disallowed `Origin`
-headers on requests. In production set `COOKIE_SECURE=true`, use HTTPS, use a
-production frontend origin, and keep SMTP/database secrets outside source control.
+headers on requests.
+
+The deployed API has its own `CORS_ORIGINS` environment setting; changing a local
+`.env` or this example does not update the live service. Append the exact Expo
+origin to that setting and restart/redeploy the API to enable browser requests.
+Do not replace the deployed website origins when adding a development origin.
+For production set `COOKIE_SECURE=true`, use HTTPS, use a production frontend
+origin, and keep SMTP/database secrets outside source control.
 For production, prefer hosting the API on a custom hostname under the frontend's
 site (for example `api.useimara.space` for `www.useimara.space`). Configure the
 frontend to call that HTTPS hostname, allow the exact frontend origins in
 `CORS_ORIGINS`, and set `COOKIE_SECURE=true` with `COOKIE_SAME_SITE=lax`. This keeps
 the HttpOnly session cookie first-party while still allowing credentialed API calls.
-The `none` setting is available for intentionally cross-site deployments, but those
-sessions depend on browser third-party-cookie policies and may not persist in browsers
-that block third-party cookies.
+An Expo page on `localhost` is cross-site from `useimara.space`; enabling CORS alone
+may therefore allow the request but not persist the login cookie. Cross-site cookies
+require `COOKIE_SAME_SITE=none` and `COOKIE_SECURE=true`, and still depend on browser
+third-party-cookie policies. For reliable web authentication testing, use a
+same-site development deployment or the native app.
 
 ## Calendar reminders and browser push
 

@@ -54,7 +54,7 @@ function editableTextFile(file: OfflineFile) {
 }
 
 function officeFile(file: OfflineFile) {
-  return ["csv", "tsv", "docx", "pdf", "pptx", "xls", "xlsx"].includes(fileExtension(file.name));
+  return ["csv", "tsv", "docx", "pdf", "pptx", "xls", "xlsx", "wps"].includes(fileExtension(file.name));
 }
 
 function getFileStatus(file: OfflineFile | undefined) {

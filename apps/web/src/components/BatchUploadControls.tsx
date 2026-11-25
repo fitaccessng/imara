@@ -59,7 +59,6 @@ export function BatchUploadControls({
   const [batchSize, setBatchSize] = useState(0);
   const [failures, setFailures] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [draggingFiles, setDraggingFiles] = useState(false);
 
   useEffect(() => () => abortController.current?.abort(), []);
 
@@ -227,34 +226,6 @@ export function BatchUploadControls({
       event.currentTarget.value = "";
     }} />
     {!canCreateFolders && <p className="batch-upload-permission-note">Folder import needs “Create subfolders” access. Ask a workspace admin to grant it.</p>}
-    <div
-      className={`batch-upload-drop-target${draggingFiles ? " is-dragging" : ""}${isDisabled ? " is-disabled" : ""}`}
-      onDragEnter={(event) => {
-        event.preventDefault();
-        if (!isDisabled) setDraggingFiles(true);
-      }}
-      onDragOver={(event) => event.preventDefault()}
-      onDragLeave={(event) => {
-        if (event.currentTarget === event.target) setDraggingFiles(false);
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        setDraggingFiles(false);
-        if (!isDisabled) {
-          const droppedFiles = Array.from(event.dataTransfer.files);
-          if (!droppedFiles.length) {
-            setFailures(["A directory could not be read from this browser drop. Use “Import folder” to preserve the folder structure."]);
-            setProgress("No files were uploaded.");
-            setDialogOpen(true);
-            return;
-          }
-          void processFiles(event.dataTransfer.files);
-        }
-      }}
-      aria-live="polite"
-    >
-      {draggingFiles ? "Drop to import" : "or drop files here"}
-    </div>
     {progress && !dialogOpen && <p className="batch-upload-inline-status" role={failures.length ? "alert" : "status"}>{progress}</p>}
     {dialogOpen && <div className="upload-progress-backdrop">
       <section className="upload-progress-dialog" role="dialog" aria-modal="true" aria-labelledby="upload-progress-title" aria-describedby="upload-progress-description">

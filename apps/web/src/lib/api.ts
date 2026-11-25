@@ -8,12 +8,25 @@ function apiUrl(path: string) {
   return `${API_URL}${path}`;
 }
 
-function reportExpiredSession(path: string, status: number) {
+let sessionValidation: Promise<void> | null = null;
+let successfulSessionUpdates = 0;
+
+function reportExpiredSession(status: number) {
   if (status !== 401) return;
-  const publicAuthEndpoint = /^\/auth\/(?:login|register|verify-email(?:-code)?|resend-verification|forgot-password|reset-password(?:-code)?)$/.test(path);
-  if (!publicAuthEndpoint && typeof window !== "undefined") {
-    window.dispatchEvent(new Event("imara:session-expired"));
-  }
+  if (typeof window === "undefined") return;
+  if (sessionValidation) return;
+
+  const sessionVersion = successfulSessionUpdates;
+  sessionValidation = fetchApi("/auth/me")
+    .then((response) => {
+      if (response.status === 401 && sessionVersion === successfulSessionUpdates) {
+        window.dispatchEvent(new Event("imara:session-expired"));
+      }
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      sessionValidation = null;
+    });
 }
 
 function responseErrorMessage(payload: unknown, status: number, fallback: string): string {
@@ -95,18 +108,21 @@ export async function apiRequest<T>(
     }
   }
   if (!response.ok) {
-    reportExpiredSession(path, response.status);
+    reportExpiredSession(response.status);
     const message = responseErrorMessage(payload, response.status, "Something went wrong. Please try again.");
     throw new ApiError(message, response.status);
   }
 
+  if (/^\/auth\/(?:login|verify-email(?:-code)?)$/.test(path)) {
+    successfulSessionUpdates += 1;
+  }
   return payload as T;
 }
 
 export async function apiBlob(path: string, headers?: HeadersInit): Promise<Blob> {
   const response = await fetchApi(path, { headers });
   if (!response.ok) {
-    reportExpiredSession(path, response.status);
+    reportExpiredSession(response.status);
     let payload: unknown;
     const body = await response.text();
     if (body) {
@@ -129,7 +145,7 @@ export async function downloadFile(
 ): Promise<void> {
   const response = await fetchApi(path, { headers });
   if (!response.ok) {
-    reportExpiredSession(path, response.status);
+    reportExpiredSession(response.status);
     let payload: unknown;
     try {
       payload = await response.json() as unknown;

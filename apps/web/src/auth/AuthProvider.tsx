@@ -10,9 +10,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiRequest, type User } from "../lib/api";
-import { createIdleTimeout, SESSION_IDLE_TIMEOUT_MS } from "./idleTimeout";
 
-const IDLE_ACTIVITY_STORAGE_PREFIX = "imara:last-activity:";
 const KNOWN_SESSION_STORAGE_KEY = "imara:session-established";
 const SESSION_EXPIRED_EVENT = "imara:session-expired";
 
@@ -119,75 +117,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener("storage", handleSessionStorage);
     return () => window.removeEventListener("storage", handleSessionStorage);
   }, [expireSession]);
-
-  useEffect(() => {
-    const activeUserId = user?.id;
-    if (loading || !activeUserId) return;
-
-    const storageKey = `${IDLE_ACTIVITY_STORAGE_PREFIX}${activeUserId}`;
-    let idleTimeout: ReturnType<typeof createIdleTimeout>;
-    idleTimeout = createIdleTimeout(() => {
-      try {
-        const sharedActivity = Number(window.localStorage.getItem(storageKey));
-        if (Number.isFinite(sharedActivity) && sharedActivity > Date.now() - SESSION_IDLE_TIMEOUT_MS) {
-          return sharedActivity;
-        }
-      } catch {
-        // Fall through and expire when cross-tab storage is unavailable.
-      }
-      expireSession();
-      return undefined;
-    }, SESSION_IDLE_TIMEOUT_MS);
-    let lastStoredAt = 0;
-    let lastPointerMoveAt = 0;
-
-    const recordActivity = (activityAt = Date.now()) => {
-      if (idleTimeout.check()) return;
-      idleTimeout.reset(activityAt);
-      if (activityAt - lastStoredAt < 1_000) return;
-      lastStoredAt = activityAt;
-      try {
-        window.localStorage.setItem(storageKey, String(activityAt));
-      } catch {
-        // The local idle timeout remains active when storage is unavailable.
-      }
-    };
-
-    const handleActivity = () => recordActivity();
-    const handlePointerMove = () => {
-      const activityAt = Date.now();
-      if (activityAt - lastPointerMoveAt < 30_000) return;
-      lastPointerMoveAt = activityAt;
-      recordActivity(activityAt);
-    };
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== storageKey || !event.newValue) return;
-      const activityAt = Number(event.newValue);
-      if (Number.isFinite(activityAt) && activityAt > Date.now() - SESSION_IDLE_TIMEOUT_MS && activityAt > lastStoredAt) {
-        lastStoredAt = activityAt;
-        idleTimeout.reset(activityAt);
-      }
-    };
-
-    const activityEvents: Array<keyof WindowEventMap> = [
-      "pointerdown",
-      "keydown",
-      "touchstart",
-      "wheel",
-      "scroll",
-    ];
-    activityEvents.forEach((eventName) => window.addEventListener(eventName, handleActivity, { passive: true }));
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    window.addEventListener("storage", handleStorage);
-    recordActivity();
-
-    return () => {
-      idleTimeout.cancel();
-      activityEvents.forEach((eventName) => window.removeEventListener(eventName, handleActivity));
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("storage", handleStorage);
-    };
-  }, [expireSession, loading, user?.id]);
 
   useEffect(() => {
     queryClient.removeQueries({ queryKey: ["event-tokens"] });

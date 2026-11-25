@@ -435,7 +435,7 @@ export function FolderZipTools({
       )}
       {variant === "folder" && canDownload && (
         <button className="button button-outline button-small" type="button" disabled={busy} onClick={() => void downloadFolderZip()}>
-          <Download size={14} />{busy ? "Working…" : "Download ZIP"}
+          <Download size={14} />{busy ? "Working…" : "Create ZIP"}
         </button>
       )}
       {variant === "folder" && canExtract && (

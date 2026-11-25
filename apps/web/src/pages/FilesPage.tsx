@@ -281,35 +281,37 @@ export function FilesPage() {
                 onCreate={uploadFile.mutateAsync}
                 onCreated={setViewingFile}
               />
-              <BatchUploadControls
-                disabled={busy || !uploadPolicyReady}
-                canCreateFolders
-                rootFolderId={folderId}
-                maxFileSizeBytes={uploadLimitBytes}
-                getFolders={async (parentFolderId, signal) => (await apiRequest<FolderContents>(`/files${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`, { signal })).folders}
-                createFolder={(name, parentFolderId, signal) => apiRequest<UserFolder>("/folders", {
-                  method: "POST",
-                  body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
-                  signal,
-                })}
-                uploadFile={(file, parentFolderId, signal) => {
-                  const form = new FormData();
-                  form.append("file", file);
-                  if (parentFolderId) form.append("folderId", parentFolderId);
-                  return apiRequest<StoredFile>("/files", { method: "POST", body: form, signal });
-                }}
-                onComplete={refreshLibrary}
-                onBusyChange={setBatchUploadBusy}
-              />
-              <FolderZipTools
-                folderId={folderId}
-                folderName={currentFolderName}
-                canDownload
-                canExtract={uploadPolicyReady}
-                canCreateFolders
-                maxUploadBytes={uploadLimitBytes}
-                onComplete={refreshLibrary}
-              />
+              <div className="files-page-import-zip-grid">
+                <BatchUploadControls
+                  disabled={busy || !uploadPolicyReady}
+                  canCreateFolders
+                  rootFolderId={folderId}
+                  maxFileSizeBytes={uploadLimitBytes}
+                  getFolders={async (parentFolderId, signal) => (await apiRequest<FolderContents>(`/files${parentFolderId ? `?folderId=${encodeURIComponent(parentFolderId)}` : ""}`, { signal })).folders}
+                  createFolder={(name, parentFolderId, signal) => apiRequest<UserFolder>("/folders", {
+                    method: "POST",
+                    body: JSON.stringify({ name, ...(parentFolderId ? { parentFolderId } : {}) }),
+                    signal,
+                  })}
+                  uploadFile={(file, parentFolderId, signal) => {
+                    const form = new FormData();
+                    form.append("file", file);
+                    if (parentFolderId) form.append("folderId", parentFolderId);
+                    return apiRequest<StoredFile>("/files", { method: "POST", body: form, signal });
+                  }}
+                  onComplete={refreshLibrary}
+                  onBusyChange={setBatchUploadBusy}
+                />
+                <FolderZipTools
+                  folderId={folderId}
+                  folderName={currentFolderName}
+                  canDownload
+                  canExtract={uploadPolicyReady}
+                  canCreateFolders
+                  maxUploadBytes={uploadLimitBytes}
+                  onComplete={refreshLibrary}
+                />
+              </div>
             </div>
           </details>
         </div>

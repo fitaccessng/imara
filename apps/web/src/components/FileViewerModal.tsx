@@ -41,7 +41,7 @@ function isEditableText(file: ViewableFile) {
 
 function isOfficeDocument(file: ViewableFile) {
   const extension = file.name.split(".").pop()?.toLowerCase();
-  return ["csv", "doc", "docx", "pdf", "ppt", "pptx", "xls", "xlsx"].includes(extension ?? "");
+  return ["csv", "doc", "docx", "pdf", "ppt", "pptx", "xls", "xlsx", "wps"].includes(extension ?? "");
 }
 
 export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${file.id}/ocr-text`, onClose, onSaved, canEdit, canDownload, onDownload, maxUploadBytes, manageExpiry = false, offlineScope, offlineFolderId = null }: FileViewerModalProps) {
@@ -165,7 +165,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
     try {
       const extension = file.name.split(".").pop()?.toLowerCase();
       if (canEditContent && ["xlsx", "xls", "csv", "tsv"].includes(extension ?? "")) await import("@e965/xlsx");
-      if (canEditContent && ["docx", "pptx"].includes(extension ?? "")) await import("jszip");
+      if (canEditContent && ["docx", "pptx", "wps"].includes(extension ?? "")) await import("jszip");
       if (canEditContent && extension === "pdf") await import("pdf-lib");
       await saveOfflineFile({
         id: file.id,

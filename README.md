@@ -152,7 +152,8 @@ directory listing indicates the built files are not in the active document root.
 
 PDF, DOCX, and PPTX files have browser previews. CSV/XLSX can be edited in a
 spreadsheet grid; PDFs support page notes; DOCX/PPTX support lightweight text
-editing while retaining the surrounding document package. Complex layout,
-images, and mixed text formatting are not fully represented in these previews.
-These features run in the browser and do not require a document server. Saves
-use the API's permission and quota checks.
+editing while retaining the surrounding document package. WPS files are previewed
+when they use the supported OOXML package format; legacy binary WPS files must be
+converted to DOCX or PDF first. Complex layout, images, and mixed text formatting
+are not fully represented in these previews. These features run in the browser and
+do not require a document server. Saves use the API's permission and quota checks.
