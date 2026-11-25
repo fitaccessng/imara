@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { LoaderCircle, Pencil, Save, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Heading1, Heading2, Italic, List, ListOrdered, LoaderCircle, Pencil, Redo2, Save, Underline, Undo2, X } from "lucide-react";
 import type * as XLSX from "@e965/xlsx";
 import type JSZip from "jszip";
 import { apiRequest } from "../lib/api";
@@ -29,6 +29,196 @@ interface OfficePreviewData {
 
 const PREVIEW_ROWS = 120;
 const PREVIEW_COLUMNS = 26;
+const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+interface DocumentBlock {
+  element: Element;
+  listKind?: "bullet" | "number";
+}
+
+function documentBlocks(html: string): DocumentBlock[] {
+  const parsed = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+  const root = parsed.body.firstElementChild;
+  if (!root) return [];
+  const blocks: DocumentBlock[] = [];
+  for (const child of Array.from(root.children)) {
+    if (child.tagName === "UL" || child.tagName === "OL") {
+      Array.from(child.children).filter((item) => item.tagName === "LI").forEach((item) => {
+        blocks.push({ element: item, listKind: child.tagName === "UL" ? "bullet" : "number" });
+      });
+    } else {
+      blocks.push({ element: child });
+    }
+  }
+  return blocks;
+}
+
+function appendWordRuns(xml: XMLDocument, paragraph: Element, element: Element, marks: Set<string> = new Set()) {
+  const nextMarks = new Set(marks);
+  const tag = element.tagName.toLowerCase();
+  const style = element instanceof HTMLElement ? element.style : null;
+  if (["b", "strong"].includes(tag)) nextMarks.add("bold");
+  if (["i", "em"].includes(tag)) nextMarks.add("italic");
+  if (tag === "u") nextMarks.add("underline");
+  if (["s", "strike", "del"].includes(tag)) nextMarks.add("strike");
+  if (tag === "h1") {
+    nextMarks.add("bold");
+    nextMarks.add("font:Georgia");
+    nextMarks.add("size:60");
+    nextMarks.add("color:#173c28");
+  } else if (tag === "h2") {
+    nextMarks.add("bold");
+    nextMarks.add("font:Georgia");
+    nextMarks.add("size:44");
+    nextMarks.add("color:#173c28");
+  }
+  if (style?.fontFamily) nextMarks.add(`font:${style.fontFamily.split(",")[0].replace(/["']/g, "").trim()}`);
+  if (style?.color) nextMarks.add(`color:${style.color}`);
+
+  for (const child of Array.from(element.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      if (!child.textContent) continue;
+      const run = xml.createElementNS(WORD_NAMESPACE, "w:r");
+      if (nextMarks.size) {
+        const properties = xml.createElementNS(WORD_NAMESPACE, "w:rPr");
+        for (const mark of nextMarks) {
+          if (mark === "bold") properties.appendChild(xml.createElementNS(WORD_NAMESPACE, "w:b"));
+          else if (mark === "italic") properties.appendChild(xml.createElementNS(WORD_NAMESPACE, "w:i"));
+          else if (mark === "underline") {
+            const underline = xml.createElementNS(WORD_NAMESPACE, "w:u");
+            underline.setAttributeNS(WORD_NAMESPACE, "w:val", "single");
+            properties.appendChild(underline);
+          } else if (mark === "strike") properties.appendChild(xml.createElementNS(WORD_NAMESPACE, "w:strike"));
+          else if (mark.startsWith("font:")) {
+            const fonts = xml.createElementNS(WORD_NAMESPACE, "w:rFonts");
+            fonts.setAttributeNS(WORD_NAMESPACE, "w:ascii", mark.slice(5));
+            fonts.setAttributeNS(WORD_NAMESPACE, "w:hAnsi", mark.slice(5));
+            properties.appendChild(fonts);
+          } else if (mark.startsWith("color:")) {
+            const color = mark.slice(6).match(/^#?([0-9a-f]{6})$/i)?.[1];
+            if (color) {
+              const colorElement = xml.createElementNS(WORD_NAMESPACE, "w:color");
+              colorElement.setAttributeNS(WORD_NAMESPACE, "w:val", color);
+              properties.appendChild(colorElement);
+            }
+          } else if (mark.startsWith("size:")) {
+            const size = mark.slice(5);
+            if (/^\d+$/.test(size)) {
+              const sizeElement = xml.createElementNS(WORD_NAMESPACE, "w:sz");
+              sizeElement.setAttributeNS(WORD_NAMESPACE, "w:val", size);
+              properties.appendChild(sizeElement);
+            }
+          }
+        }
+        if (properties.childNodes.length) run.appendChild(properties);
+      }
+      const text = xml.createElementNS(WORD_NAMESPACE, "w:t");
+      text.textContent = child.textContent;
+      if (/^\s|\s$/.test(child.textContent)) text.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+      run.appendChild(text);
+      paragraph.appendChild(run);
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const childElement = child as Element;
+      if (childElement.tagName.toLowerCase() === "br") {
+        const run = xml.createElementNS(WORD_NAMESPACE, "w:r");
+        run.appendChild(xml.createElementNS(WORD_NAMESPACE, "w:br"));
+        paragraph.appendChild(run);
+      } else {
+        appendWordRuns(xml, paragraph, childElement, nextMarks);
+      }
+    }
+  }
+}
+
+async function addNumberingDefinitions(archive: JSZip, blocks: DocumentBlock[]) {
+  const kinds = [...new Set(blocks.map((block) => block.listKind).filter((kind): kind is "bullet" | "number" => Boolean(kind)))];
+  if (!kinds.length) return new Map<"bullet" | "number", number>();
+
+  const numberingFile = archive.file("word/numbering.xml");
+  const numberingXml = numberingFile
+    ? new DOMParser().parseFromString(await numberingFile.async("text"), "application/xml")
+    : new DOMParser().parseFromString(`<w:numbering xmlns:w="${WORD_NAMESPACE}"/>`, "application/xml");
+  if (numberingXml.querySelector("parsererror")) throw new Error("The document list formatting could not be updated.");
+  const numberingRoot = numberingXml.documentElement;
+  const abstractFormats = new Map(Array.from(numberingXml.getElementsByTagNameNS(WORD_NAMESPACE, "abstractNum"))
+    .map((item) => [
+      Number(item.getAttributeNS(WORD_NAMESPACE, "abstractNumId") ?? 0),
+      item.getElementsByTagNameNS(WORD_NAMESPACE, "numFmt")[0]?.getAttributeNS(WORD_NAMESPACE, "val") ?? "",
+    ]));
+  const numberElements = Array.from(numberingXml.getElementsByTagNameNS(WORD_NAMESPACE, "num"));
+  const abstractIds = Array.from(abstractFormats.keys());
+  const numberIds = numberElements.map((item) => Number(item.getAttributeNS(WORD_NAMESPACE, "numId") ?? 0));
+  let nextAbstractId = Math.max(0, ...abstractIds) + 1;
+  let nextNumberId = Math.max(0, ...numberIds) + 1;
+  const result = new Map<"bullet" | "number", number>();
+  for (const kind of kinds) {
+    const formatName = kind === "bullet" ? "bullet" : "decimal";
+    const matchingNumber = numberElements.find((number) => {
+      const abstractId = Number(number.getElementsByTagNameNS(WORD_NAMESPACE, "abstractNumId")[0]?.getAttributeNS(WORD_NAMESPACE, "val") ?? -1);
+      return abstractFormats.get(abstractId) === formatName;
+    });
+    if (matchingNumber) {
+      result.set(kind, Number(matchingNumber.getAttributeNS(WORD_NAMESPACE, "numId")));
+      continue;
+    }
+    const abstractId = nextAbstractId++;
+    const numberId = nextNumberId++;
+    const abstract = numberingXml.createElementNS(WORD_NAMESPACE, "w:abstractNum");
+    abstract.setAttributeNS(WORD_NAMESPACE, "w:abstractNumId", String(abstractId));
+    const level = numberingXml.createElementNS(WORD_NAMESPACE, "w:lvl");
+    level.setAttributeNS(WORD_NAMESPACE, "w:ilvl", "0");
+    const start = numberingXml.createElementNS(WORD_NAMESPACE, "w:start");
+    start.setAttributeNS(WORD_NAMESPACE, "w:val", "1");
+    const format = numberingXml.createElementNS(WORD_NAMESPACE, "w:numFmt");
+    format.setAttributeNS(WORD_NAMESPACE, "w:val", formatName);
+    const text = numberingXml.createElementNS(WORD_NAMESPACE, "w:lvlText");
+    text.setAttributeNS(WORD_NAMESPACE, "w:val", kind === "bullet" ? "•" : "%1.");
+    level.append(start, format, text);
+    abstract.appendChild(level);
+    numberingRoot.appendChild(abstract);
+    const number = numberingXml.createElementNS(WORD_NAMESPACE, "w:num");
+    number.setAttributeNS(WORD_NAMESPACE, "w:numId", String(numberId));
+    const abstractReference = numberingXml.createElementNS(WORD_NAMESPACE, "w:abstractNumId");
+    abstractReference.setAttributeNS(WORD_NAMESPACE, "w:val", String(abstractId));
+    number.appendChild(abstractReference);
+    numberingRoot.appendChild(number);
+    result.set(kind, numberId);
+  }
+  archive.file("word/numbering.xml", new XMLSerializer().serializeToString(numberingXml));
+
+  const relationshipsFile = archive.file("word/_rels/document.xml.rels");
+  const relationshipsXml = relationshipsFile
+    ? new DOMParser().parseFromString(await relationshipsFile.async("text"), "application/xml")
+    : new DOMParser().parseFromString(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`, "application/xml");
+  const relationshipsRoot = relationshipsXml.documentElement;
+  const hasNumbering = Array.from(relationshipsXml.getElementsByTagNameNS("*", "Relationship"))
+    .some((relationship) => relationship.getAttribute("Type")?.endsWith("/numbering"));
+  if (!hasNumbering) {
+    const existingIds = Array.from(relationshipsXml.getElementsByTagNameNS("*", "Relationship"))
+      .map((relationship) => Number(relationship.getAttribute("Id")?.replace(/^rId/, "") ?? 0));
+    const relationship = relationshipsXml.createElementNS(relationshipsRoot.namespaceURI, "Relationship");
+    relationship.setAttribute("Id", `rId${Math.max(0, ...existingIds) + 1}`);
+    relationship.setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering");
+    relationship.setAttribute("Target", "numbering.xml");
+    relationshipsRoot.appendChild(relationship);
+    archive.file("word/_rels/document.xml.rels", new XMLSerializer().serializeToString(relationshipsXml));
+  }
+
+  const contentTypesFile = archive.file("[Content_Types].xml");
+  if (contentTypesFile) {
+    const contentTypesXml = new DOMParser().parseFromString(await contentTypesFile.async("text"), "application/xml");
+    const hasNumbering = Array.from(contentTypesXml.getElementsByTagNameNS("*", "Override"))
+      .some((entry) => entry.getAttribute("PartName") === "/word/numbering.xml");
+    if (!hasNumbering) {
+      const override = contentTypesXml.createElementNS(contentTypesXml.documentElement.namespaceURI, "Override");
+      override.setAttribute("PartName", "/word/numbering.xml");
+      override.setAttribute("ContentType", "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml");
+      contentTypesXml.documentElement.appendChild(override);
+      archive.file("[Content_Types].xml", new XMLSerializer().serializeToString(contentTypesXml));
+    }
+  }
+  return result;
+}
 
 interface GridRange {
   start: { row: number; column: number };
@@ -137,6 +327,7 @@ async function loadOfficePreview(file: Pick<ViewableFile, "name" | "mimeType">, 
 
 function displayCell(cell: SpreadsheetCell | undefined, raw = false): string {
   if (!cell) return "";
+  if (cell.f && raw) return `=${cell.f}`;
   if (!raw && cell.w !== undefined) return cell.w;
   if (cell.v instanceof Date) return cell.v.toLocaleString();
   return cell.v === undefined || cell.v === null ? "" : String(cell.v);
@@ -150,11 +341,19 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   const [error, setError] = useState("");
   const [annotation, setAnnotation] = useState("");
   const [annotationPage, setAnnotationPage] = useState(1);
+  const [pdfPageCount, setPdfPageCount] = useState(1);
+  const [pdfPagesToAdd, setPdfPagesToAdd] = useState(0);
+  const [pdfX, setPdfX] = useState("8");
+  const [pdfY, setPdfY] = useState("10");
+  const [pdfFontSize, setPdfFontSize] = useState("14");
+  const [pdfColor, setPdfColor] = useState("#172b3a");
   const [pdfUrl, setPdfUrl] = useState("");
+  const [selectedCell, setSelectedCell] = useState("A1");
   const [paragraphDrafts, setParagraphDrafts] = useState<string[]>([]);
   const [slideDrafts, setSlideDrafts] = useState<string[][]>([]);
   const [hasEdits, setHasEdits] = useState(false);
   const [changedCells, setChangedCells] = useState<string[]>([]);
+  const wordEditorRef = useRef<HTMLDivElement>(null);
 
   const extension = extensionOf(file.name);
   const spreadsheet = ["csv", "tsv", "xls", "xlsx"].includes(extension);
@@ -165,9 +364,20 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   const lastColumn = Math.min(range.end.column, PREVIEW_COLUMNS - 1);
   const columns = Array.from({ length: Math.max(lastColumn - range.start.column + 1, 1) }, (_, index) => range.start.column + index);
   const rows = Array.from({ length: Math.max(lastRow - range.start.row + 1, 1) }, (_, index) => range.start.row + index);
+  const canAddSpreadsheetRow = range.end.row < range.start.row + PREVIEW_ROWS - 1;
+  const canAddSpreadsheetColumn = range.end.column < PREVIEW_COLUMNS - 1;
+  const selectedAddress = /^[A-Z]+\d+$/i.test(selectedCell) ? selectedCell.toUpperCase() : "A1";
+  const selectedCellValue = activeWorksheet ? displayCell(activeWorksheet[selectedAddress], true) : "";
 
   function recordSaveError(reason: unknown, fallback: string) {
     setError(reason instanceof Error ? reason.message : fallback);
+  }
+
+  function applyWordCommand(command: string, value?: string) {
+    if (!wordEditorRef.current) return;
+    wordEditorRef.current.focus();
+    document.execCommand(command, false, value);
+    setHasEdits(true);
   }
 
   useEffect(() => {
@@ -185,6 +395,25 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   }, [blob, pdf]);
 
   useEffect(() => {
+    if (!pdf) return;
+    let active = true;
+    void import("pdf-lib").then(async ({ PDFDocument }) => {
+      const document = await PDFDocument.load(await blob.arrayBuffer());
+      if (!active) return;
+      const pageCount = document.getPageCount();
+      setPdfPageCount(pageCount);
+      setAnnotationPage((current) => Math.min(current, pageCount));
+      setPdfPagesToAdd(0);
+      if (canEdit && document.getSubject() === "IMARA editable document") {
+        setEditing(true);
+      }
+    }).catch((reason: unknown) => {
+      if (active) recordSaveError(reason, "Unable to prepare this PDF for editing.");
+    });
+    return () => { active = false; };
+  }, [blob, canEdit, pdf]);
+
+  useEffect(() => {
     let active = true;
     setPreview(null);
     setError("");
@@ -197,12 +426,29 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
         setActiveSheet(result.workbook?.SheetNames[0] ?? "");
         setParagraphDrafts(result.paragraphs ?? []);
         setSlideDrafts(result.slides ?? []);
+        const loadedSheets = result.workbook?.Sheets ?? {};
+        const hasCellContent = Object.values(loadedSheets).some((sheet) =>
+          Object.keys(sheet).some((key) => !key.startsWith("!") && Boolean(sheet[key] && (sheet[key].v !== undefined || sheet[key].f))),
+        );
+        if (canEdit && result.workbook && !hasCellContent) {
+          setEditing(true);
+          setSelectedCell("A1");
+        }
+        if (result.paragraphs?.length && result.paragraphs.every((paragraph) => !paragraph.trim())) {
+          setEditing(true);
+        }
       })
       .catch((reason: unknown) => {
         if (active) setError(reason instanceof Error ? reason.message : "This file could not be previewed.");
       });
     return () => { active = false; };
-  }, [file, blob, pdf]);
+  }, [file, blob, canEdit, pdf]);
+
+  useEffect(() => {
+    if (editing && preview?.paragraphs && wordEditorRef.current) {
+      wordEditorRef.current.focus();
+    }
+  }, [editing, preview?.paragraphs]);
 
   function updateCell(row: number, column: number, value: string) {
     if (!preview?.workbook || !activeWorksheet) return;
@@ -210,6 +456,11 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
     const current = activeWorksheet[address];
     if (value === "") {
       delete activeWorksheet[address];
+    } else if (value.startsWith("=") && value.length > 1 && extension !== "csv" && extension !== "tsv") {
+      const formulaCell = { ...(current ?? {}), t: "n", f: value.slice(1) };
+      delete formulaCell.v;
+      delete formulaCell.w;
+      activeWorksheet[address] = formulaCell;
     } else {
       const next = { ...(current ?? {}) };
       delete next.f;
@@ -227,6 +478,40 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
     setHasEdits(true);
   }
 
+  function addSpreadsheetRow() {
+    if (!preview?.workbook || !activeWorksheet) return;
+    const newEnd = { row: range.end.row + 1, column: range.end.column };
+    activeWorksheet["!ref"] = `${cellReference(range.start.row, range.start.column)}:${cellReference(newEnd.row, newEnd.column)}`;
+    setPreview({ ...preview, workbook: { ...preview.workbook, Sheets: { ...preview.workbook.Sheets } } });
+    setChangedCells((current) => current.includes(`${activeSheet}!+row`) ? current : [...current, `${activeSheet}!+row`]);
+    setHasEdits(true);
+  }
+
+  function addSpreadsheetColumn() {
+    if (!preview?.workbook || !activeWorksheet) return;
+    const newEnd = { row: range.end.row, column: range.end.column + 1 };
+    activeWorksheet["!ref"] = `${cellReference(range.start.row, range.start.column)}:${cellReference(newEnd.row, newEnd.column)}`;
+    setPreview({ ...preview, workbook: { ...preview.workbook, Sheets: { ...preview.workbook.Sheets } } });
+    setChangedCells((current) => current.includes(`${activeSheet}!+column`) ? current : [...current, `${activeSheet}!+column`]);
+    setHasEdits(true);
+  }
+
+  function addSpreadsheetSheet() {
+    if (!preview?.workbook) return;
+    let index = preview.workbook.SheetNames.length + 1;
+    let name = `Sheet${index}`;
+    while (preview.workbook.SheetNames.includes(name)) {
+      index += 1;
+      name = `Sheet${index}`;
+    }
+    const workbook = { ...preview.workbook, SheetNames: [...preview.workbook.SheetNames, name], Sheets: { ...preview.workbook.Sheets, [name]: { "!ref": "A1" } } };
+    setPreview({ ...preview, workbook });
+    setActiveSheet(name);
+    setSelectedCell("A1");
+    setChangedCells((current) => [...current, `${name}!+sheet`]);
+    setHasEdits(true);
+  }
+
   async function startSpreadsheetEdit() {
     if (!spreadsheet) return;
     setBusy(true);
@@ -238,7 +523,8 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
       setActiveSheet(workbook.SheetNames[0] ?? "");
       setEditing(true);
       setChangedCells([]);
-      setHasEdits(true);
+      setSelectedCell("A1");
+      setHasEdits(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to prepare this spreadsheet for editing.");
     } finally {
@@ -253,6 +539,7 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
       const workbook = XLSX.read(await blob.arrayBuffer(), { type: "array", cellDates: true });
       setPreview((current) => ({ ...current, workbook }));
       setActiveSheet(workbook.SheetNames[0] ?? "");
+      setSelectedCell("A1");
       setEditing(false);
       setChangedCells([]);
       setHasEdits(false);
@@ -295,8 +582,8 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   }
 
   async function savePdfAnnotation() {
-    if (!annotation.trim()) {
-      setError("Enter a note before saving the annotation.");
+    if (!annotation.trim() && !pdfPagesToAdd) {
+      setError("Enter page text or add a page before saving.");
       return;
     }
     setBusy(true);
@@ -307,40 +594,72 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
       }
       const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
       const document = await PDFDocument.load(await blob.arrayBuffer());
-      if (!Number.isInteger(annotationPage) || annotationPage < 1 || annotationPage > document.getPageCount()) {
-        throw new Error(`Choose a page number from 1 to ${document.getPageCount()}.`);
+      const sourcePages = document.getPages();
+      const sourcePageCount = sourcePages.length;
+      const pageCount = sourcePageCount + pdfPagesToAdd;
+      if (!Number.isInteger(annotationPage) || annotationPage < 1 || annotationPage > pageCount) {
+        throw new Error(`Choose a page number from 1 to ${pageCount}.`);
+      }
+      const pageSize = sourcePages[0]?.getSize() ?? { width: 612, height: 792 };
+      for (let index = 0; index < pdfPagesToAdd; index += 1) {
+        document.addPage([pageSize.width, pageSize.height]);
       }
       const page = document.getPage(annotationPage - 1);
       const font = await document.embedFont(StandardFonts.Helvetica);
-      const maxWidth = Math.max(page.getWidth() - 96, 80);
+      const xPercent = Number(pdfX);
+      const yPercent = Number(pdfY);
+      const fontSize = Number(pdfFontSize);
+      if (!Number.isFinite(xPercent) || xPercent < 0 || xPercent > 100 || !Number.isFinite(yPercent) || yPercent < 0 || yPercent > 100) {
+        throw new Error("Page position must be between 0 and 100 percent.");
+      }
+      if (!Number.isInteger(fontSize) || fontSize < 8 || fontSize > 72) {
+        throw new Error("Font size must be a whole number between 8 and 72.");
+      }
+      const colorMatch = pdfColor.match(/^#([0-9a-f]{6})$/i);
+      if (!colorMatch) throw new Error("Choose a valid text color.");
+      const maxWidth = Math.max(page.getWidth() * (1 - xPercent / 100) - 12, 24);
       const note = annotation.trim();
       const lines: string[] = [];
-      let line = "";
-      for (const word of note.split(/\s+/)) {
-        const next = line ? `${line} ${word}` : word;
-        if (font.widthOfTextAtSize(next, 11) > maxWidth && line) {
-          lines.push(line);
-          line = word;
-        } else line = next;
+      for (const paragraph of note.split(/\n/)) {
+        let line = "";
+        for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+          const next = line ? `${line} ${word}` : word;
+          if (font.widthOfTextAtSize(next, fontSize) > maxWidth && line) {
+            lines.push(line);
+            line = word;
+          } else line = next;
+        }
+        lines.push(line);
       }
-      if (line) lines.push(line);
-      const margin = 48;
-      const lineHeight = 15;
-      if (lines.length * lineHeight > page.getHeight() - margin * 2) {
-        throw new Error("The annotation is too long to fit on this page.");
+      const lineHeight = fontSize * 1.35;
+      const x = page.getWidth() * xPercent / 100;
+      const y = page.getHeight() * (1 - yPercent / 100) - fontSize;
+      if (annotation.trim() && (lines.length * lineHeight > y || x >= page.getWidth())) {
+        throw new Error("The text does not fit in the selected page position. Move it up or left, reduce the font size, or shorten it.");
       }
-      lines.forEach((text, index) => page.drawText(text, {
-        x: margin,
-        y: page.getHeight() - margin - 14 - index * lineHeight,
-        size: 11,
-        font,
-        color: rgb(0.06, 0.17, 0.27),
-        maxWidth,
-      }));
+      if (annotation.trim()) {
+        lines.forEach((text, index) => {
+          if (text) page.drawText(text, {
+            x,
+            y: y - index * lineHeight,
+            size: fontSize,
+            font,
+            color: rgb(
+              Number.parseInt(colorMatch[1].slice(0, 2), 16) / 255,
+              Number.parseInt(colorMatch[1].slice(2, 4), 16) / 255,
+              Number.parseInt(colorMatch[1].slice(4, 6), 16) / 255,
+            ),
+          });
+        });
+      }
       const updatedBlob = new Blob([await document.save()], { type: "application/pdf" });
-      await upload(updatedBlob, `Added a note to PDF page ${annotationPage}`);
+      const summary = pdfPagesToAdd
+        ? `Added ${pdfPagesToAdd} PDF page${pdfPagesToAdd === 1 ? "" : "s"}${annotation.trim() ? ` and text to page ${annotationPage}` : ""}`
+        : `Added text to PDF page ${annotationPage}`;
+      await upload(updatedBlob, summary);
       setAnnotation("");
-      setEditing(false);
+      setPdfPageCount(pageCount);
+      setPdfPagesToAdd(0);
       setHasEdits(false);
     } catch (reason) {
       recordSaveError(reason, "Unable to save the PDF annotation.");
@@ -369,13 +688,9 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   }
 
   async function saveTextDocument() {
-    if (!preview?.archive || !preview.paragraphXml || !preview.paragraphs) return;
-    const changedParagraphs = preview.paragraphs
-      .map((_, index) => index)
-      .filter((index) => (preview.paragraphs?.[index] ?? "") !== (paragraphDrafts[index] ?? ""));
-    if (!changedParagraphs.length) {
+    if (!preview?.archive || !preview.paragraphXml || !preview.paragraphs || !wordEditorRef.current) return;
+    if (!hasEdits) {
       setEditing(false);
-      setHasEdits(false);
       return;
     }
     setBusy(true);
@@ -383,32 +698,88 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
     try {
       const xml = new DOMParser().parseFromString(preview.paragraphXml, "application/xml");
       if (xml.querySelector("parsererror")) throw new Error("The document text could not be updated.");
-      const paragraphs = Array.from(xml.getElementsByTagNameNS("*", "p"));
-      paragraphs.forEach((paragraph, index) => {
-        const textNodes = Array.from(paragraph.getElementsByTagNameNS("*", "t"));
-        if (!textNodes.length) {
-          if (paragraphDrafts[index]) {
-            const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-            const run = xml.createElementNS(namespace, "w:r");
-            const text = xml.createElementNS(namespace, "w:t");
-            text.textContent = paragraphDrafts[index];
-            run.appendChild(text);
-            paragraph.appendChild(run);
-          }
-          return;
+      const blocks = documentBlocks(wordEditorRef.current.innerHTML);
+      if (!blocks.length) {
+        const empty = document.createElement("p");
+        empty.appendChild(document.createElement("br"));
+        blocks.push({ element: empty });
+      }
+      const listIds = await addNumberingDefinitions(preview.archive, blocks);
+      const paragraphs = Array.from(xml.getElementsByTagNameNS(WORD_NAMESPACE, "p"));
+      const body = xml.getElementsByTagNameNS(WORD_NAMESPACE, "body")[0];
+      if (!body) throw new Error("The document body could not be found.");
+
+      blocks.forEach((block, index) => {
+        let paragraph = paragraphs[index];
+        if (!paragraph) {
+          paragraph = xml.createElementNS(WORD_NAMESPACE, "w:p");
+          const section = Array.from(body.children).find((child) => child.localName === "sectPr");
+          body.insertBefore(paragraph, section ?? null);
+          paragraphs.push(paragraph);
         }
-        textNodes[0].textContent = paragraphDrafts[index] ?? "";
-        textNodes[0].setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
-        for (const text of textNodes.slice(1)) text.textContent = "";
+        let paragraphProperties = Array.from(paragraph.children).find((child) => child.localName === "pPr");
+        const runNodes = Array.from(paragraph.childNodes).filter((child) => child !== paragraphProperties);
+        runNodes.forEach((child) => paragraph.removeChild(child));
+
+        const blockTag = block.element.tagName.toLowerCase();
+        const heading = blockTag === "h1" ? "Heading1" : blockTag === "h2" ? "Heading2" : "";
+        const blockStyle = block.element instanceof HTMLElement ? block.element.style : null;
+        const alignment = ["left", "center", "right", "justify"].includes(blockStyle?.textAlign ?? "")
+          ? blockStyle?.textAlign ?? ""
+          : "";
+        if (heading || alignment || block.listKind) {
+          if (!paragraphProperties) {
+            paragraphProperties = xml.createElementNS(WORD_NAMESPACE, "w:pPr");
+            paragraph.insertBefore(paragraphProperties, paragraph.firstChild);
+          }
+          if (heading) {
+            let style = Array.from(paragraphProperties.children).find((child) => child.localName === "pStyle");
+            if (!style) {
+              style = xml.createElementNS(WORD_NAMESPACE, "w:pStyle");
+              paragraphProperties.appendChild(style);
+            }
+            style.setAttributeNS(WORD_NAMESPACE, "w:val", heading);
+          }
+          if (alignment) {
+            const existing = Array.from(paragraphProperties.children).find((child) => child.localName === "jc");
+            existing?.remove();
+            const justification = xml.createElementNS(WORD_NAMESPACE, "w:jc");
+            justification.setAttributeNS(WORD_NAMESPACE, "w:val", alignment === "justify" ? "both" : alignment);
+            paragraphProperties.appendChild(justification);
+          }
+          if (block.listKind) {
+            const existing = Array.from(paragraphProperties.children).find((child) => child.localName === "numPr");
+            existing?.remove();
+            const numberId = listIds.get(block.listKind);
+            if (numberId) {
+              const numbering = xml.createElementNS(WORD_NAMESPACE, "w:numPr");
+              const level = xml.createElementNS(WORD_NAMESPACE, "w:ilvl");
+              level.setAttributeNS(WORD_NAMESPACE, "w:val", "0");
+              const number = xml.createElementNS(WORD_NAMESPACE, "w:numId");
+              number.setAttributeNS(WORD_NAMESPACE, "w:val", String(numberId));
+              numbering.append(level, number);
+              paragraphProperties.appendChild(numbering);
+            }
+          }
+        }
+
+        appendWordRuns(xml, paragraph, block.element);
+        if (!paragraph.childNodes.length || (paragraph.childNodes.length === 1 && paragraph.firstChild === paragraphProperties)) {
+          const run = xml.createElementNS(WORD_NAMESPACE, "w:r");
+          run.appendChild(xml.createElementNS(WORD_NAMESPACE, "w:t"));
+          paragraph.appendChild(run);
+        }
       });
+      paragraphs.slice(blocks.length).forEach((paragraph) => paragraph.remove());
       const source = new XMLSerializer().serializeToString(xml);
       preview.archive.file("word/document.xml", source);
       const updatedBlob = await preview.archive.generateAsync({ type: "blob", mimeType: file.mimeType });
-      const references = changedParagraphs.slice(0, 10).map((index) => `paragraph ${index + 1}`);
-      const extraChanges = changedParagraphs.length - references.length;
-      const summary = `Edited ${changedParagraphs.length} document paragraph${changedParagraphs.length === 1 ? "" : "s"}${references.length ? `: ${references.join(", ")}${extraChanges > 0 ? `, and ${extraChanges} more` : ""}` : ""}`;
+      const updatedParagraphs = Array.from(xml.getElementsByTagNameNS(WORD_NAMESPACE, "p"))
+        .map((paragraph) => Array.from(paragraph.getElementsByTagNameNS(WORD_NAMESPACE, "t")).map((text) => text.textContent ?? "").join(""));
+      const summary = `Edited Word document text and formatting (${updatedParagraphs.length} paragraph${updatedParagraphs.length === 1 ? "" : "s"})`;
       await upload(updatedBlob, summary);
-      setPreview({ ...preview, paragraphXml: source, paragraphs: [...paragraphDrafts] });
+      setPreview({ ...preview, paragraphXml: source, paragraphs: updatedParagraphs });
+      setParagraphDrafts(updatedParagraphs);
       setEditing(false);
       setHasEdits(false);
     } catch (reason) {
@@ -463,21 +834,41 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   }
 
   if (pdf) {
+    const totalPdfPages = pdfPageCount + pdfPagesToAdd;
     return (
-      <div className="office-preview">
-        <div className="office-preview-toolbar">
-          {canEdit && !editing && <button className="button button-outline" onClick={() => setEditing(true)}><Pencil size={15} />Edit PDF</button>}
+      <div className={`office-preview office-pdf-preview${editing ? " is-editing" : ""}`}>
+        <div className="office-preview-toolbar pdf-editor-toolbar">
+          {!editing && canEdit && <button className="button button-outline" onClick={() => setEditing(true)}><Pencil size={15} />Add text</button>}
           {editing && <>
             <label htmlFor="pdf-annotation-page">Page</label>
-            <input id="pdf-annotation-page" type="number" min={1} value={annotationPage} onChange={(event) => setAnnotationPage(Number(event.target.value))} aria-label="PDF page number" />
-            <input value={annotation} maxLength={1000} onChange={(event) => { setAnnotation(event.target.value); setHasEdits(Boolean(event.target.value.trim())); }} placeholder="Add a note to this page" aria-label="PDF note text" />
-            <button className="button button-green" onClick={() => void savePdfAnnotation()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save note"}</button>
-            <button className="button button-outline" onClick={() => { setEditing(false); setError(""); setAnnotation(""); setHasEdits(false); }} disabled={busy}><X size={15} />Cancel</button>
+            <input id="pdf-annotation-page" type="number" min={1} max={totalPdfPages} value={annotationPage} onChange={(event) => setAnnotationPage(Number(event.target.value))} aria-label="PDF page number" />
+            <span className="pdf-page-total">of {totalPdfPages}</span>
+            <button className="button button-outline" onClick={() => {
+              const nextPageCount = pdfPagesToAdd + 1;
+              setPdfPagesToAdd(nextPageCount);
+              setAnnotationPage(pdfPageCount + nextPageCount);
+              setHasEdits(true);
+            }} disabled={busy}><span aria-hidden="true">+</span> Add page</button>
+            <span className="pdf-toolbar-spacer" />
+            <button className="button button-green" onClick={() => void savePdfAnnotation()} disabled={busy || !hasEdits}><Save size={15} />{busy ? "Saving…" : "Save PDF"}</button>
+            <button className="button button-outline" onClick={() => { setEditing(false); setError(""); setAnnotation(""); setPdfPagesToAdd(0); setHasEdits(false); }} disabled={busy}><X size={15} />Cancel</button>
           </>}
         </div>
         {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
-        {editing && <p className="office-preview-hint">Notes are added at the top of the selected page and saved as a new version of this PDF.</p>}
-        {pdfUrl && <iframe className="file-pdf-preview" src={pdfUrl} title={file.name} />}
+        {editing && <div className="pdf-editor-controls">
+          <label className="pdf-editor-field pdf-text-field" htmlFor="pdf-page-text">
+            <span>Page text</span>
+            <textarea id="pdf-page-text" value={annotation} maxLength={5000} onChange={(event) => { setAnnotation(event.target.value); setHasEdits(Boolean(event.target.value.trim()) || pdfPagesToAdd > 0); }} placeholder="Write the content to place on this page…" />
+          </label>
+          <div className="pdf-editor-options">
+            <label className="pdf-editor-field"><span>Horizontal position (%)</span><input aria-label="Horizontal position percentage" type="number" min={0} max={100} value={pdfX} onChange={(event) => setPdfX(event.target.value)} /></label>
+            <label className="pdf-editor-field"><span>Vertical position (%)</span><input aria-label="Vertical position percentage" type="number" min={0} max={100} value={pdfY} onChange={(event) => setPdfY(event.target.value)} /></label>
+            <label className="pdf-editor-field"><span>Font size</span><select aria-label="Text font size" value={pdfFontSize} onChange={(event) => setPdfFontSize(event.target.value)}>{[10, 12, 14, 16, 18, 24, 32, 48, 64].map((size) => <option key={size} value={size}>{size} pt</option>)}</select></label>
+            <label className="pdf-editor-field pdf-color-field"><span>Text color</span><input aria-label="Text color" type="color" value={pdfColor} onChange={(event) => setPdfColor(event.target.value)} /></label>
+          </div>
+          <p className="office-preview-hint">Text is placed at the selected position on the chosen page. Add pages before saving. PDF text currently supports basic English characters and punctuation.</p>
+        </div>}
+        {pdfUrl && <iframe className="file-pdf-preview" src={`${pdfUrl}#page=${annotationPage}`} title={file.name} />}
       </div>
     );
   }
@@ -495,11 +886,29 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
               onClick={() => setActiveSheet(sheet)}
             >{sheet}</button>)}
           </div>
+          {editing && extension !== "csv" && extension !== "tsv" && <>
+            <button className="button button-outline" onClick={addSpreadsheetSheet} disabled={busy}>+ Sheet</button>
+            <button className="button button-outline" onClick={addSpreadsheetRow} disabled={busy || !canAddSpreadsheetRow}>+ Row</button>
+            <button className="button button-outline" onClick={addSpreadsheetColumn} disabled={busy || !canAddSpreadsheetColumn}>+ Column</button>
+          </>}
           {canEdit && (editing
-            ? <><button className="button button-green" onClick={() => void saveSpreadsheet()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save changes"}</button><button className="button button-outline" onClick={() => void cancelSpreadsheetEdit()} disabled={busy}>Cancel</button></>
+            ? <><button className="button button-green" onClick={() => void saveSpreadsheet()} disabled={busy || !changedCells.length}><Save size={15} />{busy ? "Saving…" : "Save changes"}</button><button className="button button-outline" onClick={() => void cancelSpreadsheetEdit()} disabled={busy}>Cancel</button></>
             : <button className="button button-outline" onClick={() => void startSpreadsheetEdit()} disabled={busy}><Pencil size={15} />Edit sheet</button>)}
         </div>
         {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
+        {editing && <div className="office-sheet-formula">
+          <span className="office-sheet-address">{selectedAddress}</span>
+          <span className="office-sheet-fx">fx</span>
+          <input
+          aria-label={`Formula or value for cell ${selectedAddress}`}
+          onChange={(event) => {
+            const { row, column } = decodeCellReference(selectedAddress);
+            updateCell(row, column, event.target.value);
+          }}
+          placeholder="Type a value or formula, for example =SUM(A1:A5)"
+          value={selectedCellValue}
+          />
+        </div>}
         <div className="office-sheet-scroll">
           <table className="office-sheet-grid">
             <thead><tr>            <th aria-label="Row number" />{columns.map((column) => <th key={column}>{columnName(column)}</th>)}</tr></thead>
@@ -509,15 +918,24 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
                 const address = cellReference(row, column);
                 const value = displayCell(activeWorksheet[address], editing);
                 return <td key={address}>{editing
-                  ? <input aria-label={`Cell ${address}`} value={value} onChange={(event) => updateCell(row, column, event.target.value)} />
+                  ? <input
+                    aria-label={`Cell ${address}`}
+                    className={selectedAddress === address ? "selected" : ""}
+                    value={value}
+                    onFocus={() => setSelectedCell(address)}
+                    onChange={(event) => updateCell(row, column, event.target.value)}
+                  />
                   : value}</td>;
               })}
             </tr>)}</tbody>
           </table>
         </div>
-        {range.end.row - range.start.row + 1 > PREVIEW_ROWS || range.end.column - range.start.column + 1 > PREVIEW_COLUMNS
-          ? <p className="office-preview-hint">Showing the first {PREVIEW_ROWS} rows and {PREVIEW_COLUMNS} columns.</p>
-          : null}
+        <p className="office-preview-hint">{range.end.row - range.start.row + 1 > PREVIEW_ROWS || range.end.column - range.start.column + 1 > PREVIEW_COLUMNS
+          ? `Showing up to ${PREVIEW_ROWS} rows and ${PREVIEW_COLUMNS} columns. `
+          : ""}
+          {editing && (!canAddSpreadsheetRow || !canAddSpreadsheetColumn)
+          ? "The editable grid is capped at 120 rows and 26 columns. "
+          : ""}{editing ? "Select a cell and type, or enter a value or formula in the formula bar. Formulas are stored in the workbook and calculated when opened in a spreadsheet app." : "Choose Edit sheet to update cells."}</p>
       </div>
     );
   }
@@ -525,16 +943,56 @@ export function OfficePreviewEditor({ file, blob, saveUrl, canEdit, maxUploadByt
   if (preview?.paragraphs) {
     return (
       <div className="office-preview office-document-preview">
-        <div className="office-preview-toolbar">
-          {canEdit && (editing
-            ? <><button className="button button-green" onClick={() => void saveTextDocument()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save text"}</button><button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(false); setHasEdits(false); }} disabled={busy}><X size={15} />Cancel</button></>
-            : <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(true); setHasEdits(true); }}><Pencil size={15} />Edit text</button>)}
-        </div>
+        {canEdit && <div className="office-preview-toolbar word-editor-toolbar" aria-label="Word editing tools">
+          {editing ? <>
+            <div className="word-editor-tool-group" aria-label="Text formatting">
+              <button type="button" className="word-editor-tool" aria-label="Undo" title="Undo" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("undo")}><Undo2 size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Redo" title="Redo" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("redo")}><Redo2 size={16} /></button>
+              <span className="word-editor-tool-divider" />
+              <button type="button" className="word-editor-tool" aria-label="Heading 1" title="Heading 1" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<h1>")}><Heading1 size={17} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Heading 2" title="Heading 2" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<h2>")}><Heading2 size={17} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Paragraph" title="Normal text" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("formatBlock", "<p>")}>¶</button>
+              <span className="word-editor-tool-divider" />
+              <button type="button" className="word-editor-tool" aria-label="Bold" title="Bold" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("bold")}><Bold size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Italic" title="Italic" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("italic")}><Italic size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Underline" title="Underline" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("underline")}><Underline size={16} /></button>
+              <span className="word-editor-tool-divider" />
+              <button type="button" className="word-editor-tool" aria-label="Align left" title="Align left" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyLeft")}><AlignLeft size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Align center" title="Align center" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyCenter")}><AlignCenter size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Align right" title="Align right" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("justifyRight")}><AlignRight size={16} /></button>
+              <span className="word-editor-tool-divider" />
+              <button type="button" className="word-editor-tool" aria-label="Bulleted list" title="Bulleted list" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("insertUnorderedList")}><List size={16} /></button>
+              <button type="button" className="word-editor-tool" aria-label="Numbered list" title="Numbered list" onMouseDown={(event) => event.preventDefault()} onClick={() => applyWordCommand("insertOrderedList")}><ListOrdered size={16} /></button>
+            </div>
+            <span className="word-editor-status">{hasEdits ? "Unsaved changes" : "Ready to write"}</span>
+            <button className="button button-green" onClick={() => void saveTextDocument()} disabled={busy}><Save size={15} />{busy ? "Saving…" : "Save"}</button>
+            <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(false); setHasEdits(false); }} disabled={busy}><X size={15} />Cancel</button>
+          </> : <button className="button button-outline" onClick={() => { setParagraphDrafts([...preview.paragraphs!]); setEditing(true); setHasEdits(false); }}><Pencil size={15} />Edit document</button>}
+        </div>}
         {error && <p className="form-alert office-preview-error" role="alert"><PlanLimitMessage message={error} /></p>}
         {editing
-          ? preview.paragraphs.map((paragraph, index) => <textarea key={index} aria-label={`Edit paragraph ${index + 1}`} value={paragraphDrafts[index] ?? paragraph} onChange={(event) => setParagraphDrafts((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} />)
+          ? <div className="word-editor-scroll">
+            <article className="word-editor-page">
+              <div
+                ref={wordEditorRef}
+                className="word-editor-canvas"
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-label={`Write content in ${file.name}`}
+                aria-multiline="true"
+                onInput={() => setHasEdits(true)}
+              >
+                {paragraphDrafts.length
+                  ? paragraphDrafts.map((paragraph, index) => <p key={index}>{paragraph || <br />}</p>)
+                  : <p><br /></p>}
+              </div>
+            </article>
+          </div>
           : <DocxPagePreview blob={blob} />}
-        <p className="office-preview-hint">Word pages are rendered with their original layout. Editing text may flatten mixed formatting within an edited paragraph.</p>
+        {editing
+          ? <p className="office-preview-hint">Use the toolbar for headings, text emphasis, alignment, lists, and undo or redo. Your document saves as a Word file.</p>
+          : <p className="office-preview-hint">Word pages are rendered with their original layout. Choose Edit document to make changes.</p>}
       </div>
     );
   }

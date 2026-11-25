@@ -24,6 +24,8 @@ async function createDocument(format: DocumentFormat, name: string) {
     const { PDFDocument } = await import("pdf-lib");
     const document = await PDFDocument.create();
     document.addPage([612, 792]);
+    document.setTitle(name);
+    document.setSubject("IMARA editable document");
     return new File([await document.save()], name, { type: MIME_TYPES.pdf });
   }
 
@@ -100,7 +102,7 @@ export function CreateDocumentButton<T extends ViewableFile>({
           <div><span className="eyebrow">YOUR DOCUMENT</span><h2 id="create-document-title">Create a document</h2></div>
           <button className="icon-button" type="button" aria-label="Close dialog" disabled={saving} onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
-        <p>Start a new file in the current folder. You can edit and save it after it’s created.</p>
+        <p>{format === "docx" ? "Your Word document opens ready to write, with formatting tools and DOCX saving." : format === "pdf" ? "Your PDF opens ready for page text, positioning, and adding pages." : "Your spreadsheet opens ready for cell entry, formulas, and worksheet editing."}</p>
         <form onSubmit={(event) => void submit(event)}>
           <label className="field" htmlFor="new-document-name">File name</label>
           <input id="new-document-name" className="folder-dialog-input" autoFocus maxLength={110} required value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Project plan" />

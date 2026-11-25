@@ -273,7 +273,7 @@ export function FileViewerModal({ file, readUrl, saveUrl, indexUrl = `/files/${f
     }}>
       <section className="file-viewer-dialog" role="dialog" aria-modal="true" aria-labelledby="file-viewer-title">
         <header className="file-viewer-header">
-          <div className="file-viewer-file"><span><FileText size={17} /></span><div><h2 id="file-viewer-title">{file.name}</h2><p>{editableText ? "Text editor" : "File preview"}</p></div></div>
+          <div className="file-viewer-file"><span><FileText size={17} /></span><div><h2 id="file-viewer-title">{file.name}</h2><p>{file.name.toLowerCase().endsWith(".docx") ? "Word editor" : editableText ? "Text editor" : "File preview"}</p></div></div>
           <div className="file-viewer-actions">
             {editableText && <button className="button button-green" disabled={!dirty || saving || loading} onClick={() => void save()}><Save size={15} />{saving ? "Saving…" : "Save changes"}</button>}
             {saving && !replacement && <button className="button button-outline" onClick={() => uploadController.current?.abort()}>Cancel upload</button>}
