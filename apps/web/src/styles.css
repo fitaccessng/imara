@@ -194,6 +194,9 @@ button { color: inherit; }
 .sidebar-note a { display: inline-flex; align-items: center; gap: 4px; color: #26724c; font-size: 9px; font-weight: 600; }
 .account-row { display: flex; width: 100%; align-items: center; gap: 8px; margin-top: 13px; border: 0; border-top: 1px solid #e9eae5; background: transparent; padding: 14px 2px 6px; text-align: left; cursor: pointer; }
 .avatar { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border: 1px solid #d7e3d3; border-radius: 50%; background: #e9f0e5; color: #35684b; font-size: 10px; font-weight: 700; }
+.profile-avatar-link, .mobile-profile-avatar { text-decoration: none; }
+.profile-avatar-link:hover, .mobile-profile-avatar:hover { border-color: #9acda4; background: #eaf7ed; color: #167f31; }
+.profile-avatar-link:focus-visible, .mobile-profile-avatar:focus-visible { outline: 2px solid #20ad43; outline-offset: 2px; }
 .account-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
 .account-copy strong { overflow: hidden; color: #33464b; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .account-copy span { overflow: hidden; color: #949d9a; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
@@ -325,6 +328,7 @@ button { color: inherit; }
 .privacy-card p { margin: 4px 0 0; color: #7f9182; font-size: 9px; line-height: 1.6; }
 .mobile-topbar, .sidebar-backdrop { display: none; }
 .mobile-topbar-actions { display: flex; align-items: center; gap: 7px; }
+.mobile-profile-avatar { width: 32px; height: 32px; font-size: 9px; }
 .mobile-signout-button { color: #526579; }
 .mobile-signout-button:hover { color: #9b4e43; }
 
@@ -3619,4 +3623,119 @@ body { background: #f7f9fc; color: #172b3a; font-size: 14px; }
   .dashboard-overview [data-tour="library"] .mb-5 { margin-bottom: 12px; }
   .dashboard-business-tool { gap: 8px; padding: 9px; }
   .dashboard-business-tool > span:first-child { width: 32px; height: 32px; }
+
+  .topbar {
+    display: flex;
+    height: 52px;
+    padding: 0 12px;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    min-width: 0;
+    gap: 0;
+  }
+
+  .topbar-actions > .notification-wrap,
+  .topbar-actions > .topbar-divider,
+  .topbar-actions > .avatar-small,
+  .topbar-actions > .topbar-signout-error,
+  .topbar-actions > .topbar-signout-button {
+    display: none;
+  }
+
+  .topbar-search {
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    flex: 1;
+  }
+
+  .folder-move-backdrop {
+    align-items: center;
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+  }
+
+  .folder-move-dialog {
+    box-sizing: border-box;
+    width: min(520px, 100%);
+    height: auto;
+    min-height: 0;
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid #e5eaf0;
+    border-radius: 14px;
+    padding: clamp(16px, 5vw, 22px);
+  }
+
+  .folder-move-dialog > *,
+  .create-document-dialog > * {
+    min-width: 0;
+  }
+
+  .folder-move-dialog .folder-move-heading h2 {
+    overflow-wrap: anywhere;
+    font-size: clamp(17px, 5vw, 20px);
+  }
+
+  .folder-move-dialog form,
+  .create-document-dialog form {
+    min-width: 0;
+  }
+
+  .folder-move-dialog input,
+  .folder-move-dialog select,
+  .folder-move-dialog textarea {
+    box-sizing: border-box;
+    max-width: 100%;
+  }
+
+  .folder-move-dialog .folder-move-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .folder-move-dialog .folder-move-actions .button {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+  }
+
+  .file-viewer-backdrop:has(.create-document-dialog) {
+    overflow-y: auto;
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+  }
+
+  .file-viewer-backdrop:has(.create-document-dialog) .create-document-dialog {
+    box-sizing: border-box;
+    width: min(460px, 100%);
+    height: auto;
+    min-height: 0;
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid #e5eaf0;
+    border-radius: 14px;
+    padding: clamp(16px, 5vw, 22px);
+  }
+
+  .file-viewer-backdrop:has(.create-document-dialog) .folder-move-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .file-viewer-backdrop:has(.create-document-dialog) .folder-move-actions .button {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+  }
 }

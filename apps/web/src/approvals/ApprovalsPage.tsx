@@ -1,5 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   CheckCircle2,
@@ -433,7 +434,7 @@ export function ApprovalsPage() {
         </form>
       )}
 
-      <section className="approval-desk">
+      <section className={`approval-desk${selectedId ? " has-selection" : ""}`}>
         <div className="approval-request-list">
           <div className="approval-view-tabs" role="tablist" aria-label="Approval request views">
             {(Object.keys(viewLabels) as RequestView[]).map((tab) => <button key={tab} role="tab" aria-selected={view === tab} className={view === tab ? "is-active" : ""} onClick={() => { setView(tab); setSelectedId(""); setError(""); }}>
@@ -460,6 +461,13 @@ export function ApprovalsPage() {
         </div>
 
         <aside className="approval-detail-panel">
+          {selectedId && <button
+            type="button"
+            className="approval-back-to-requests"
+            onClick={() => setSelectedId("")}
+          >
+            <ArrowLeft size={15} /> All requests
+          </button>}
           {requestQuery.isLoading ? <div className="page-loading"><span className="loader" />Opening request…</div>
             : requestQuery.isError ? <div className="approval-detail-empty"><CircleAlert size={19} /><strong>Request details aren’t available.</strong><button className="text-button" onClick={() => void requestQuery.refetch()}>Try again</button></div>
               : selectedRequest ? <>

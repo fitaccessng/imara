@@ -5,6 +5,7 @@ import {
   Activity,
   ArrowRight,
   BellRing,
+  Building2,
   Camera,
   CalendarDays,
   ClipboardCheck,
@@ -96,6 +97,7 @@ function SectionHeading({
 }
 
 const businessTools = [
+  { title: "Business workspace", path: "/workspace", icon: Building2 },
   { title: "Shared notes", path: "/workspace/notes", icon: NotebookPen },
   { title: "Shared tasks", path: "/workspace/tasks", icon: ListTodo },
   { title: "Meetings", path: "/workspace/meetings", icon: Video },
@@ -135,6 +137,14 @@ function DashboardBusinessTools({ workspace }: { workspace: Workspace }) {
 /* Quick access tools */
 
 const quickTools = [
+  {
+    title: "Files",
+    description: "Browse and manage your files",
+    icon: Folder,
+    iconBg: "bg-[#EEF3FF]",
+    iconColor: "text-[#5278D9]",
+    to: "/files",
+  },
   {
     title: "IMARA Notes",
     description: "Capture your thoughts",

@@ -9,4 +9,10 @@ describe("note dictation transcript handling", () => {
   it("leaves the note unchanged for an empty transcript", () => {
     expect(appendDictationText("Existing note", "  ")).toBe("Existing note");
   });
+
+  it("removes repeated words at streamed segment boundaries", () => {
+    expect(appendDictationText("We should meet tomorrow", "meet tomorrow morning.")).toBe(
+      "We should meet tomorrow morning."
+    );
+  });
 });

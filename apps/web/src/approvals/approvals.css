@@ -197,3 +197,369 @@
 @media (prefers-reduced-motion: reduce) {
   .approval-builder, .approval-request-form { animation: none; }
 }
+
+.approvals-page {
+  min-width: 0;
+  display: grid;
+  gap: 20px;
+}
+
+.approval-overview-strip {
+  margin-top: 0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(37,66,54,.035);
+}
+
+.approval-overview-strip > div {
+  min-width: 0;
+  padding: 14px 20px;
+}
+
+.approval-toolbar {
+  min-height: 72px;
+  border: 0;
+  margin: 0;
+  padding: 0 2px;
+}
+
+.approval-toolbar h2 {
+  font-size: clamp(20px, 2.4vw, 26px);
+}
+
+.approval-toolbar-actions .button,
+.approval-builder-footer .button {
+  min-height: 42px;
+  border-radius: 8px;
+}
+
+.approval-builder,
+.approval-request-form {
+  min-width: 0;
+  border-radius: 14px;
+  padding: clamp(16px, 2.5vw, 26px);
+  box-shadow: 0 12px 32px rgba(37,66,54,.055);
+}
+
+.approval-stage-card,
+.approval-member-option {
+  min-width: 0;
+  border-radius: 9px;
+}
+
+.approval-desk {
+  min-width: 0;
+  overflow: hidden;
+  grid-template-columns: minmax(290px, .82fr) minmax(0, 1.4fr);
+  border-radius: 14px;
+}
+
+.approval-request-list {
+  min-width: 0;
+}
+
+.approval-view-tabs {
+  gap: clamp(12px, 2vw, 20px);
+  padding-inline: 18px;
+  scrollbar-width: thin;
+}
+
+.approval-view-tabs button {
+  min-height: 48px;
+  font-size: 11px;
+}
+
+.approval-cards {
+  gap: 5px;
+  padding: 10px;
+}
+
+.approval-request-card {
+  min-width: 0;
+  border-color: #edf0e9;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px;
+}
+
+.approval-request-card > strong {
+  overflow-wrap: anywhere;
+}
+
+.approval-detail-panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: clamp(18px, 2.5vw, 30px);
+}
+
+.approval-detail-heading h2 {
+  overflow-wrap: anywhere;
+  font-size: clamp(20px, 2.4vw, 26px);
+}
+
+.approval-detail-heading > p {
+  line-height: 1.55;
+}
+
+.approval-action-box {
+  min-width: 0;
+  border-radius: 10px;
+  padding: 15px;
+}
+
+.approval-decision-actions .button {
+  min-height: 40px;
+  border-radius: 7px;
+}
+
+.approval-back-to-requests {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .approval-desk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .approval-request-list {
+    border-right: 0;
+  }
+
+  .approval-desk:not(.has-selection) .approval-detail-panel {
+    display: none;
+  }
+
+  .approval-desk.has-selection .approval-request-list {
+    display: none;
+  }
+
+  .approval-desk.has-selection .approval-detail-panel {
+    display: block;
+  }
+
+  .approval-back-to-requests {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #dfe7dc;
+    border-radius: 8px;
+    background: #fff;
+    margin: 0 0 18px;
+    padding: 0 12px;
+    color: #42644e;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  .approval-back-to-requests:hover {
+    border-color: #a9c5a6;
+    background: #f5f8f0;
+  }
+}
+
+@media (max-width: 680px) {
+  .approvals-page {
+    gap: 16px;
+  }
+
+  .approval-overview-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-radius: 10px;
+  }
+
+  .approval-overview-strip > div {
+    min-height: 78px;
+    align-content: start;
+    gap: 6px;
+    padding: 11px 8px;
+  }
+
+  .approval-overview-strip > div > span {
+    min-height: 20px;
+    font-size: 7px;
+    line-height: 1.35;
+    letter-spacing: .06em;
+  }
+
+  .approval-overview-strip strong {
+    font-size: 21px;
+  }
+
+  .approval-overview-strip small {
+    font-size: 8px;
+    line-height: 1.35;
+  }
+
+  .approval-toolbar {
+    min-height: 0;
+    align-items: stretch;
+    gap: 13px;
+    border-bottom: 1px solid #dfe6dc;
+    padding: 2px 0 15px;
+  }
+
+  .approval-toolbar h2 {
+    font-size: 21px;
+  }
+
+  .approval-toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 8px;
+  }
+
+  .approval-toolbar-actions .button {
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+
+  .approval-alert {
+    align-items: flex-start;
+    overflow-wrap: anywhere;
+  }
+
+  .approval-builder,
+  .approval-request-form {
+    border-radius: 12px;
+    padding: 15px;
+  }
+
+  .approval-builder-heading h2 {
+    font-size: 19px;
+  }
+
+  .approval-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 13px;
+  }
+
+  .approval-form-wide {
+    grid-column: auto;
+  }
+
+  .approval-stage-card {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .approval-stage-number {
+    width: 25px;
+    height: 25px;
+    font-size: 11px;
+  }
+
+  .approval-stage-topline {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .approval-stage-topline > strong {
+    min-width: 100%;
+  }
+
+  .approval-mode-select {
+    margin-left: 0;
+  }
+
+  .approval-mode-select select {
+    max-width: 100%;
+  }
+
+  .approval-remove-stage {
+    min-height: 36px;
+    padding: 0 8px;
+  }
+
+  .approval-member-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .approval-builder-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .approval-builder-footer > .button {
+    align-self: stretch;
+  }
+
+  .approval-desk {
+    min-height: 0;
+    border-radius: 11px;
+  }
+
+  .approval-view-tabs {
+    min-height: 48px;
+    gap: 16px;
+    padding-inline: 12px;
+  }
+
+  .approval-view-tabs button {
+    min-height: 46px;
+    font-size: 10px;
+  }
+
+  .approval-cards {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px;
+  }
+
+  .approval-request-card {
+    gap: 9px;
+    padding: 13px;
+  }
+
+  .approval-detail-panel {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .approval-detail-heading > div:first-child {
+    align-items: flex-start;
+  }
+
+  .approval-detail-heading h2 {
+    margin-top: 14px;
+    font-size: 22px;
+  }
+
+  .approval-route-copy > div:first-child {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .approval-reviewer {
+    flex-wrap: wrap;
+  }
+
+  .approval-reviewer > span:nth-child(2) {
+    flex: 1;
+  }
+
+  .approval-decision-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .approval-decision-actions .button,
+  .approval-action-box > .button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .approval-footnote {
+    align-items: flex-start;
+    line-height: 1.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approval-request-card {
+    transition: none;
+  }
+}

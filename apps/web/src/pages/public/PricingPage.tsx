@@ -15,6 +15,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "../../lib/api";
 import { PageShell } from "../PageShell";
+import "./pricing.css";
 
 type PlanPrice = {
   plan: "FREE" | "PRO" | "BUSINESS";
@@ -173,7 +174,7 @@ function PlanCard({
 }) {
   return (
     <article
-      className={`relative flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_55px_rgba(16,43,70,0.09)] ${
+      className={`pricing-plan-card relative flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_55px_rgba(16,43,70,0.09)] ${
         plan.featured
           ? "border-[#20AD43] shadow-[0_15px_45px_rgba(32,173,67,0.10)]"
           : "border-[#E5EAF0] shadow-sm"
@@ -186,8 +187,8 @@ function PlanCard({
         </div>
       )}
 
-      <div className="flex flex-1 flex-col p-5 sm:p-6 lg:p-7">
-        <div>
+      <div className="pricing-plan-inner flex flex-1 flex-col p-5 sm:p-6 lg:p-7">
+        <div className="pricing-plan-intro">
           <span className="text-[10px] font-bold uppercase tracking-[1.5px] text-[#168D34]">
             {plan.subtitle}
           </span>
@@ -199,7 +200,7 @@ function PlanCard({
           </p>
         </div>
 
-        <div className="mt-6 border-b border-[#EDF0F3] pb-6">
+        <div className="pricing-plan-price mt-6 border-b border-[#EDF0F3] pb-6">
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="text-3xl font-extrabold tracking-[-1.5px] text-[#102B46] sm:text-4xl">
               {plan.amount}
@@ -210,7 +211,7 @@ function PlanCard({
           </div>
         </div>
 
-        <div className="mt-5">
+        <div className="pricing-plan-capacity mt-5">
           <p className="mb-3 text-[10px] font-extrabold uppercase tracking-[1.3px] text-[#8A99A8]">
             Plan capacity
           </p>
@@ -242,7 +243,7 @@ function PlanCard({
           </div>
         </div>
 
-        <div className="mt-6 flex-1">
+        <div className="pricing-plan-features mt-6 flex-1">
           <p className="mb-4 text-[10px] font-extrabold uppercase tracking-[1.3px] text-[#8A99A8]">
             What's included
           </p>
@@ -272,7 +273,7 @@ function PlanCard({
           </div>
         </div>
 
-        <div className="mt-8">
+        <div className="pricing-plan-action mt-8">
           {plan.available ? (
             <Link
               to={plan.href}
@@ -326,34 +327,29 @@ export function PricingPage() {
       title="Choose the space you need to grow."
       description="Start with free document storage and event galleries. Upgrade when your team, storage, or productivity needs increase."
     >
-      <div className="space-y-16 pb-8 sm:space-y-20">
+      <div className="pricing-experience pb-8">
         {/* Pricing introduction */}
-        <section className="relative overflow-hidden rounded-3xl bg-[#102B46] px-5 py-10 sm:px-9 sm:py-14 lg:px-12">
-          <div className="absolute -right-20 -top-28 h-[300px] w-[300px] rounded-full bg-[#20AD43]/15 blur-3xl" />
-
-          <div className="relative grid items-center gap-8 md:grid-cols-[1fr_auto]">
-            <div className="max-w-[650px]">
-              <span className="text-[10px] font-bold uppercase tracking-[1.8px] text-[#8FE2A2]">
-                SIMPLE, CLEAR PRICING
-              </span>
-              <h2 className="mt-4 text-3xl font-extrabold leading-tight tracking-[-1.3px] text-white sm:text-4xl">
-                Everything you need to organise work and event memories.
-              </h2>
-              <p className="mt-4 max-w-[560px] text-sm leading-7 text-white/65">
-                Compare storage, staff capacity, active events, and document
-                tools before choosing your plan.
-              </p>
-            </div>
-
-            <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-[#8FE2A2]">
-              <Cloud size={38} strokeWidth={1.4} />
-            </div>
+        <section className="pricing-hero">
+          <div className="pricing-hero-orbit" aria-hidden="true">
+          <Cloud size={34} strokeWidth={1.3} />
+          </div>
+          <div className="pricing-hero-copy">
+            <span className="pricing-kicker">SIMPLE, CLEAR PRICING</span>
+            <p>
+              One place for files, teams and event memories.
+              <br />
+              <strong>Start free. Add room when you need it.</strong>
+            </p>
+          </div>
+          <div className="pricing-hero-aside">
+            <span><Check size={14} /> No automatic renewals</span>
+            <span><Check size={14} /> Choose a plan when you&apos;re ready</span>
           </div>
         </section>
 
         {/* Pricing cards */}
-        <section>
-          <div className="mb-8 text-center">
+        <section className="pricing-cards-section">
+          <div className="pricing-section-heading">
             <span className="text-[10px] font-extrabold uppercase tracking-[1.8px] text-[#168D34]">
               FIND YOUR PLAN
             </span>
@@ -367,13 +363,22 @@ export function PricingPage() {
           </div>
 
           {catalogueQuery.isLoading ? (
-            <p className="text-center text-sm text-[#718096]" role="status">Loading current plan prices…</p>
+            <div className="pricing-loading" role="status">
+              <span className="pricing-loading-dot" />
+              Loading current plan prices…
+            </div>
           ) : catalogueQuery.isError ? (
-            <p className="text-center text-sm text-red-600" role="alert">
-              Current plan prices couldn’t load. Please try again shortly.
-            </p>
+            <div className="pricing-load-error" role="alert">
+              <p>Current plan prices couldn’t load.</p>
+              <button
+                type="button"
+                onClick={() => void catalogueQuery.refetch()}
+              >
+                Try again
+              </button>
+            </div>
           ) : (
-            <div className="grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3 xl:gap-6">
+            <div className="pricing-plan-grid grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3 xl:gap-6">
               {displayedPlans.map((plan) => (
                 <PlanCard key={plan.name} plan={plan} />
               ))}
@@ -395,69 +400,76 @@ export function PricingPage() {
             </p>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white shadow-sm">
-            {/* Table header */}
-            <div className="grid grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(65px,0.7fr))] border-b border-[#E5EAF0] bg-[#F7F9FC] sm:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(100px,0.7fr))]">
-              <div className="p-3 sm:p-5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8A99A8]">
-                  Features
-                </span>
-              </div>
-              {plans.map((plan) => (
-                <div
-                  key={plan.name}
-                  className={`flex items-center justify-center p-3 text-center sm:p-5 ${
-                    plan.featured ? "bg-[#EAF8EE]" : ""
-                  }`}
-                >
-                  <span
-                    className={`text-xs font-extrabold ${
-                      plan.featured ? "text-[#168D34]" : "text-[#102B46]"
-                    }`}
-                  >
-                    {plan.name}
+          <p className="pricing-swipe-hint">On a small screen, swipe sideways to compare plans.</p>
+          <div
+            className="pricing-comparison-scroll overflow-hidden rounded-2xl border border-[#E5EAF0] bg-white shadow-sm"
+            role="region"
+            aria-label="Plan feature comparison"
+            tabIndex={0}
+          >
+            <div className="pricing-comparison-table">
+              <div className="grid grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(65px,0.7fr))] border-b border-[#E5EAF0] bg-[#F7F9FC] sm:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(100px,0.7fr))]">
+                <div className="p-3 sm:p-5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#8A99A8]">
+                    Features
                   </span>
                 </div>
-              ))}
-            </div>
-
-            {comparisonFeatures.map((group) => {
-              const Icon = group.icon;
-
-              return (
-                <div key={group.category}>
-                  <div className="flex items-center gap-2 border-b border-[#EDF0F3] bg-[#FAFBFC] px-3 py-3 sm:px-5">
-                    <Icon size={14} className="text-[#20AD43]" />
-                    <span className="text-[9px] font-extrabold tracking-[1.3px] text-[#526678]">
-                      {group.category}
+                {plans.map((plan) => (
+                  <div
+                    key={plan.name}
+                    className={`flex items-center justify-center p-3 text-center sm:p-5 ${
+                      plan.featured ? "bg-[#EAF8EE]" : ""
+                    }`}
+                  >
+                    <span
+                      className={`text-xs font-extrabold ${
+                        plan.featured ? "text-[#168D34]" : "text-[#102B46]"
+                      }`}
+                    >
+                      {plan.name}
                     </span>
                   </div>
+                ))}
+              </div>
 
-                  {group.rows.map((row) => (
-                    <div
-                      key={row.name}
-                      className="grid grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(65px,0.7fr))] border-b border-[#F0F2F5] last:border-b-0 sm:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(100px,0.7fr))]"
-                    >
-                      <div className="flex items-center p-3 sm:p-4 sm:pl-5">
-                        <span className="text-[10px] font-medium leading-4 text-[#526678] sm:text-xs">
-                          {row.name}
-                        </span>
-                      </div>
-                      {row.values.map((value, index) => (
-                        <div
-                          key={`${row.name}-${index}`}
-                          className={`flex items-center justify-center p-2 sm:p-3 ${
-                            index === 1 ? "bg-[#F5FBF6]" : ""
-                          }`}
-                        >
-                          <IncludedValue value={value} />
-                        </div>
-                      ))}
+              {comparisonFeatures.map((group) => {
+                const Icon = group.icon;
+
+                return (
+                  <div key={group.category}>
+                    <div className="flex items-center gap-2 border-b border-[#EDF0F3] bg-[#FAFBFC] px-3 py-3 sm:px-5">
+                      <Icon size={14} className="text-[#20AD43]" />
+                      <span className="text-[9px] font-extrabold tracking-[1.3px] text-[#526678]">
+                        {group.category}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              );
-            })}
+
+                    {group.rows.map((row) => (
+                      <div
+                        key={row.name}
+                        className="grid grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(65px,0.7fr))] border-b border-[#F0F2F5] last:border-b-0 sm:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(100px,0.7fr))]"
+                      >
+                        <div className="flex items-center p-3 sm:p-4 sm:pl-5">
+                          <span className="text-[10px] font-medium leading-4 text-[#526678] sm:text-xs">
+                            {row.name}
+                          </span>
+                        </div>
+                        {row.values.map((value, index) => (
+                          <div
+                            key={`${row.name}-${index}`}
+                            className={`flex items-center justify-center p-2 sm:p-3 ${
+                              index === 1 ? "bg-[#F5FBF6]" : ""
+                            }`}
+                          >
+                            <IncludedValue value={value} />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <p className="mt-3 text-[10px] leading-5 text-[#8A99A8]">

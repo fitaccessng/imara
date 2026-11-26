@@ -1,10 +1,11 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Mic, Plus, Save, Square, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, CalendarDays, Mic, Plus, Save, Square, Trash2, Upload } from "lucide-react";
 import { apiRequest } from "../lib/api";
 import { PageShell } from "../pages/PageShell";
 import { useWorkspaceScope } from "../workspaces/useWorkspaceScope";
 import { fileLabel, type CalendarLink, type Meeting, type ProductivityFile } from "./types";
+import "./mobileCreateForms.css";
 
 type MeetingDraft = {
   id?: string;
@@ -78,28 +79,37 @@ export function MeetingsPage({ shared = false }: { shared?: boolean }) {
         title: value.title.trim(),
         startedAt: value.startedAt ? new Date(value.startedAt).toISOString() : null,
         endedAt: value.endedAt ? new Date(value.endedAt).toISOString() : null,
-        transcript: value.transcript,
-        summary: value.summary.trim() || null,
-        decisions: value.decisionsText.split("\n").map((line) => line.trim()).filter(Boolean),
-        recordingFileId: value.recordingFileId || null,
+        transcript: value.id ? value.transcript : "",
         calendarEventId: value.calendarEventId || null,
-        ...(!value.id ? {
-          actionItems: value.actionItemsText.split("\n").map((title) => title.trim()).filter(Boolean).map((title) => ({ title })),
-        } : value.actionItemsText !== value.originalActionItemsText ? {
-          actionItems: value.actionItemsText.split("\n").map((title) => title.trim()).filter(Boolean).map((title) => ({ title })),
-        } : {}),
+        ...(value.id
+          ? {
+              summary: value.summary.trim() || null,
+              decisions: value.decisionsText.split("\n").map((line) => line.trim()).filter(Boolean),
+              recordingFileId: value.recordingFileId || null,
+              ...(value.actionItemsText !== value.originalActionItemsText
+                ? {
+                    actionItems: value.actionItemsText
+                      .split("\n")
+                      .map((title) => title.trim())
+                      .filter(Boolean)
+                      .map((title) => ({ title })),
+                  }
+                : {}),
+            }
+          : {}),
       };
       return apiRequest<Meeting>(value.id ? `${meetingsPath}/${value.id}` : meetingsPath, {
         method: value.id ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (meeting, value) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["productivity-meetings", scopeId ?? "personal"] }),
         queryClient.invalidateQueries({ queryKey: ["calendar-events", scopeId ?? "personal"] }),
       ]);
-      setDraft(null);
+      if (value.id) setDraft(null);
+      else edit(meeting);
       setError("");
     },
     onError: (cause) => setError(cause instanceof Error ? cause.message : "The meeting could not be saved."),
@@ -234,19 +244,206 @@ export function MeetingsPage({ shared = false }: { shared?: boolean }) {
                         </article>
                       )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"><CalendarDays className="mx-auto text-emerald-700" size={25} /><p className="mt-3 font-semibold text-slate-900">No meetings saved yet</p><p className="mt-1 text-sm text-slate-500">Create a record to keep notes, decisions and actions with the meeting.</p></div>}
                 </div>
-                {draft && <form onSubmit={submit} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-900">{draft.id ? "Edit meeting" : "New meeting"}</h2><button type="button" onClick={() => { if (recording) stopRecording(); setDraft(null); }} className="text-sm text-slate-500">Close</button></div>
-                  <label className="block text-sm font-medium text-slate-700">Meeting title<input required maxLength={200} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 px-3" /></label>
-                  <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium text-slate-700">Starts<input type="datetime-local" value={draft.startedAt} onChange={(event) => setDraft({ ...draft, startedAt: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 px-3" /></label><label className="block text-sm font-medium text-slate-700">Ends<input type="datetime-local" value={draft.endedAt} onChange={(event) => setDraft({ ...draft, endedAt: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 px-3" /></label></div>
-                  <label className="block text-sm font-medium text-slate-700">Link calendar event<select value={draft.calendarEventId} onChange={(event) => setDraft({ ...draft, calendarEventId: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 px-3"><option value="">No calendar link</option>{(eventsQuery.data ?? []).filter((item) => !(shared ? item.workspaceMeetingId : item.personalMeetingId)).map((item) => <option key={item.id} value={item.id}>{item.title} · {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.startsAt))}</option>)}</select></label>
-                  <label className="block text-sm font-medium text-slate-700">Transcript<textarea value={draft.transcript} onChange={(event) => setDraft({ ...draft, transcript: event.target.value })} maxLength={100000} rows={5} placeholder="Enter or paste a transcript. IMARA does not send meeting audio for transcription." className="mt-1.5 w-full rounded-xl border border-slate-200 p-3" /></label>
-                  <label className="block text-sm font-medium text-slate-700">Summary<textarea value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} maxLength={20000} rows={3} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3" /></label>
-                  <label className="block text-sm font-medium text-slate-700">Decisions <span className="font-normal text-slate-500">One per line</span><textarea value={draft.decisionsText} onChange={(event) => setDraft({ ...draft, decisionsText: event.target.value })} rows={3} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3" /></label>
-                  <label className="block text-sm font-medium text-slate-700">Action items <span className="font-normal text-slate-500">One per line</span><textarea disabled={Boolean(draft.id && draft.originalActionItemsText !== draft.actionItemsText)} value={draft.actionItemsText} onChange={(event) => setDraft({ ...draft, actionItemsText: event.target.value })} rows={3} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 disabled:bg-slate-50" /></label>
-                  <div className="rounded-xl border border-slate-100 p-3"><p className="text-sm font-medium text-slate-700">Meeting recording</p><div className="mt-2 flex flex-wrap gap-2"><label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700"><Upload size={14} /> Upload audio<input key={fileInputKey} type="file" accept="audio/*" onChange={(event) => void selectRecording(event)} className="sr-only" /></label>{!recording ? <button type="button" onClick={() => void startRecording()} disabled={recordingBusy} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 disabled:opacity-50"><Mic size={14} /> Record here</button> : <button type="button" onClick={stopRecording} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"><Square size={13} /> Stop recording</button>}</div>{recordingBusy && <p className="mt-2 text-xs text-slate-500">Uploading recording…</p>}{draft.recordingFileId && <p className="mt-2 text-xs text-emerald-700">Recording uploaded and ready to link.</p>}{recordingError && <p role="alert" className="mt-2 text-xs text-red-700">{recordingError}</p>}</div>
-                  {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-                  <button disabled={save.isPending || recordingBusy || recording} className="min-h-11 w-full rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50">{save.isPending ? "Saving…" : "Save meeting"}</button>
-                </form>}
+                {draft && (
+                  <form
+                    onSubmit={submit}
+                    className="meetings-mobile-editor space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <header className="meetings-mobile-editor-header flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[.15em] text-emerald-700">
+                          {draft.id ? "MEETING RECORD" : "GET STARTED"}
+                        </p>
+                        <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                          {draft.id ? "Meeting details" : "Set up a meeting"}
+                        </h2>
+                        <p className="meetings-mobile-editor-subtitle mt-1 text-xs text-slate-500">
+                          {draft.id
+                            ? "Add the notes and outcomes after the meeting."
+                            : "Start with the essentials. You can add notes and recording after it’s saved."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Close meeting editor"
+                        onClick={() => {
+                          if (recording) stopRecording();
+                          setDraft(null);
+                        }}
+                        className="meetings-mobile-close inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
+                      >
+                        <ArrowLeft size={17} />
+                      </button>
+                    </header>
+
+                    <label className="block text-sm font-medium text-slate-700">
+                      Meeting title
+                      <input
+                        required
+                        maxLength={200}
+                        value={draft.title}
+                        onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                        placeholder="e.g. Weekly planning"
+                        className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5"
+                      />
+                    </label>
+
+                    <div className="meetings-mobile-dates grid gap-3 sm:grid-cols-2">
+                      <label className="block text-sm font-medium text-slate-700">
+                        Starts
+                        <input
+                          type="datetime-local"
+                          value={draft.startedAt}
+                          onChange={(event) => setDraft({ ...draft, startedAt: event.target.value })}
+                          className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3"
+                        />
+                      </label>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Ends
+                        <input
+                          type="datetime-local"
+                          value={draft.endedAt}
+                          onChange={(event) => setDraft({ ...draft, endedAt: event.target.value })}
+                          className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3"
+                        />
+                      </label>
+                    </div>
+
+                    <label className="block text-sm font-medium text-slate-700">
+                      Link a calendar event <span className="font-normal text-slate-400">Optional</span>
+                      <select
+                        value={draft.calendarEventId}
+                        onChange={(event) => setDraft({ ...draft, calendarEventId: event.target.value })}
+                        className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3"
+                      >
+                        <option value="">No calendar link</option>
+                        {(eventsQuery.data ?? [])
+                          .filter((item) => !(shared ? item.workspaceMeetingId : item.personalMeetingId))
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.title} · {new Intl.DateTimeFormat(undefined, {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              }).format(new Date(item.startsAt))}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    {draft.id && (
+                      <section className="meetings-mobile-follow-up space-y-4 border-t border-slate-100 pt-5">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-[.15em] text-slate-400">
+                            AFTER THE MEETING
+                          </p>
+                          <h3 className="mt-1 text-base font-semibold text-slate-900">Notes & outcomes</h3>
+                        </div>
+                        <label className="block text-sm font-medium text-slate-700">
+                          Transcript
+                          <textarea
+                            value={draft.transcript}
+                            onChange={(event) => setDraft({ ...draft, transcript: event.target.value })}
+                            maxLength={100000}
+                            rows={5}
+                            placeholder="Enter or paste a transcript. Meeting audio is not transcribed automatically."
+                            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3"
+                          />
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700">
+                          Summary
+                          <textarea
+                            value={draft.summary}
+                            onChange={(event) => setDraft({ ...draft, summary: event.target.value })}
+                            maxLength={20000}
+                            rows={3}
+                            placeholder="What were the main points?"
+                            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3"
+                          />
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700">
+                          Decisions <span className="font-normal text-slate-500">One per line</span>
+                          <textarea
+                            value={draft.decisionsText}
+                            onChange={(event) => setDraft({ ...draft, decisionsText: event.target.value })}
+                            rows={3}
+                            placeholder="Record decisions made"
+                            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3"
+                          />
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700">
+                          Action items <span className="font-normal text-slate-500">One per line</span>
+                          <textarea
+                            disabled={draft.originalActionItemsText !== draft.actionItemsText}
+                            value={draft.actionItemsText}
+                            onChange={(event) => setDraft({ ...draft, actionItemsText: event.target.value })}
+                            rows={3}
+                            placeholder="Add follow-up actions"
+                            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 disabled:bg-slate-100"
+                          />
+                          {draft.originalActionItemsText !== draft.actionItemsText && (
+                            <span className="mt-1 block text-xs text-amber-700">
+                              Save or refresh before editing action items again.
+                            </span>
+                          )}
+                        </label>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                          <p className="text-sm font-semibold text-slate-700">Meeting recording</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Upload an existing audio file or record directly from this device.
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700">
+                              <Upload size={14} />
+                              Upload audio
+                              <input
+                                key={fileInputKey}
+                                type="file"
+                                accept="audio/*"
+                                onChange={(event) => void selectRecording(event)}
+                                className="sr-only"
+                              />
+                            </label>
+                            {!recording ? (
+                              <button
+                                type="button"
+                                onClick={() => void startRecording()}
+                                disabled={recordingBusy}
+                                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                              >
+                                <Mic size={14} />
+                                Record here
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={stopRecording}
+                                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white"
+                              >
+                                <Square size={13} />
+                                Stop recording
+                              </button>
+                            )}
+                          </div>
+                          {recordingBusy && <p className="mt-2 text-xs text-slate-500">Uploading recording…</p>}
+                          {draft.recordingFileId && (
+                            <p className="mt-2 text-xs text-emerald-700">Recording uploaded and ready to link.</p>
+                          )}
+                          {recordingError && <p role="alert" className="mt-2 text-xs text-red-700">{recordingError}</p>}
+                        </div>
+                      </section>
+                    )}
+
+                    {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+                    <footer className="meetings-mobile-editor-footer border-t border-slate-100 pt-4">
+                      <button
+                        disabled={save.isPending || recordingBusy || recording}
+                        className="min-h-12 w-full rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+                      >
+                        {save.isPending ? "Saving…" : draft.id ? "Save meeting updates" : "Create meeting"}
+                      </button>
+                    </footer>
+                  </form>
+                )}
               </section>
             )}
       </main>

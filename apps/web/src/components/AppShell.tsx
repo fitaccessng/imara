@@ -448,6 +448,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link to="/dashboard" className="brand-lockup" aria-label="imara home"><BrandIdentity /></Link>
         <div className="mobile-topbar-actions">
           {renderNotificationControl()}
+          <Link
+            to="/settings/profile"
+            className="avatar mobile-profile-avatar"
+            aria-label="Open profile settings"
+            title="Profile"
+          >
+            {initials || "U"}
+          </Link>
           <button className="icon-button mobile-signout-button" aria-label={signingOut ? "Signing out" : signOutError ? `Sign out failed: ${signOutError}` : "Sign out"} title={signOutError || "Sign out"} onClick={() => void handleSignOut()} disabled={signingOut}>
             <LogOut size={17} />
           </button>
@@ -597,7 +605,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             </form>
             {renderNotificationControl()}
             <span className="topbar-divider" />
-            <span className="avatar avatar-small">{initials || "U"}</span>
+            <Link
+              to="/settings/profile"
+              className="avatar avatar-small profile-avatar-link"
+              aria-label="Open profile settings"
+              title="Profile"
+            >
+              {initials || "U"}
+            </Link>
             {signOutError && <span className="topbar-signout-error" role="alert">{signOutError}</span>}
             <button className="topbar-signout-button" onClick={() => void handleSignOut()} disabled={signingOut}>
               <LogOut size={15} />{signingOut ? "Signing out…" : "Sign out"}

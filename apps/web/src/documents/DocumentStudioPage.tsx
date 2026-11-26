@@ -1,13 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, ArrowUpRight, Check, Copy, Download, Eye, FileCheck2,
-  FileSignature, FileText, Link2, ListPlus, LoaderCircle, Plus, Printer, Send, Trash2,
+  AlertCircle,
+  ArrowLeft,
+  ArrowUpRight,
+  Check,
+  CheckSquare,
+  CircleDot,
+  Copy,
+  FileSignature,
+  FileText,
+  Link2,
+  ListPlus,
+  LoaderCircle,
+  Plus,
+  Send,
+  Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { apiRequest } from "../lib/api";
-import { PageShell } from "../pages/PageShell";
-import "./documents.css";
 
 type DocumentKind = "FORM" | "AGREEMENT" | "INVOICE";
 type QuestionKind = "SHORT_ANSWER" | "PARAGRAPH" | "MULTIPLE_CHOICE" | "CHECKBOXES";
@@ -65,15 +75,50 @@ interface FormResponse {
   consent?: boolean;
 }
 
-interface PublicDocument extends Pick<StudioDocument, "id" | "type" | "title" | "description" | "content"> {}
-
-const kindLabel: Record<DocumentKind, string> = {
-  FORM: "Form",
-  AGREEMENT: "Agreement",
-  INVOICE: "Invoice",
+const KIND_META: Record<
+  DocumentKind,
+  {
+    label: string;
+    subtitle: string;
+    setupTitle: string;
+    badgeClass: string;
+    iconBgClass: string;
+    cardHoverClass: string;
+    actionPillClass: string;
+  }
+> = {
+  FORM: {
+    label: "Form",
+    subtitle: "Collect responses & details",
+    setupTitle: "Build your form",
+    badgeClass: "bg-sky-50 text-sky-700 border-sky-200",
+    iconBgClass: "bg-sky-50 text-sky-600 ring-1 ring-sky-200/80",
+    cardHoverClass: "hover:border-sky-300 hover:shadow-md hover:shadow-sky-950/5",
+    actionPillClass: "bg-sky-50 text-sky-700 group-hover:bg-sky-600 group-hover:text-white",
+  },
+  AGREEMENT: {
+    label: "Agreement",
+    subtitle: "Set terms & collect signatures",
+    setupTitle: "Write your agreement",
+    badgeClass: "bg-violet-50 text-violet-700 border-violet-200",
+    iconBgClass: "bg-violet-50 text-violet-600 ring-1 ring-violet-200/80",
+    cardHoverClass: "hover:border-violet-300 hover:shadow-md hover:shadow-violet-950/5",
+    actionPillClass:
+      "bg-violet-50 text-violet-700 group-hover:bg-violet-600 group-hover:text-white",
+  },
+  INVOICE: {
+    label: "Invoice",
+    subtitle: "Itemise work & request payment",
+    setupTitle: "Prepare your invoice",
+    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    iconBgClass: "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/80",
+    cardHoverClass: "hover:border-emerald-300 hover:shadow-md hover:shadow-emerald-950/5",
+    actionPillClass:
+      "bg-emerald-50 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white",
+  },
 };
 
-const questionLabel: Record<QuestionKind, string> = {
+const QUESTION_LABEL: Record<QuestionKind, string> = {
   SHORT_ANSWER: "Short answer",
   PARAGRAPH: "Paragraph",
   MULTIPLE_CHOICE: "Multiple choice",
@@ -112,44 +157,59 @@ function formatCurrency(value: number, currency = "USD") {
 }
 
 function validateForSharing(document: StudioDocument): string | null {
-  if (!document.title.trim()) return "Add a title before sharing.";
+  if (!document.title.trim()) return "Title required.";
   if (document.type === "FORM") {
     const questions = document.content.questions ?? [];
-    if (questions.some((question) => !question.prompt.trim())) return "Give every question a prompt before sharing.";
-    if (questions.some((question) => {
-      if (question.type !== "MULTIPLE_CHOICE" && question.type !== "CHECKBOXES") return false;
-      const choices = (question.choices ?? []).map((choice) => choice.trim());
-      return choices.length === 0 || choices.some((choice) => !choice) || new Set(choices).size !== choices.length;
-    })) return "Choice questions need at least one unique, non-empty choice.";
+    if (questions.some((q) => !q.prompt.trim())) return "All questions require a prompt.";
+    if (
+      questions.some((q) => {
+        if (q.type !== "MULTIPLE_CHOICE" && q.type !== "CHECKBOXES") return false;
+        const choices = (q.choices ?? []).map((c) => c.trim());
+        return (
+          choices.length === 0 ||
+          choices.some((c) => !c) ||
+          new Set(choices).size !== choices.length
+        );
+      })
+    ) {
+      return "Choice questions require unique, non-empty options.";
+    }
   }
-  if (document.type === "AGREEMENT" && !document.content.body?.trim()) return "Add the agreement terms before sharing.";
+  if (document.type === "AGREEMENT" && !document.content.body?.trim()) {
+    return "Agreement terms required.";
+  }
   if (document.type === "INVOICE") {
-    const content = document.content;
-    if (!content.businessName?.trim() || !content.customerName?.trim() || !content.invoiceNumber?.trim()) {
-      return "Add your business name, customer name, and invoice number.";
+    const c = document.content;
+    if (!c.businessName?.trim() || !c.customerName?.trim() || !c.invoiceNumber?.trim()) {
+      return "Business, customer, and invoice number required.";
     }
-    if (!content.customerEmail?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content.customerEmail.trim())) {
-      return "Add a valid customer email address.";
+    if (!c.customerEmail?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.customerEmail.trim())) {
+      return "Valid customer email required.";
     }
-    if (!content.issueDate || !content.dueDate) return "Add the issue date and due date.";
-    const lineItems = content.lineItems ?? [];
-    if (!lineItems.length || lineItems.some((item) => !item.description.trim() || item.quantity <= 0 || item.unitPrice < 0)) {
-      return "Add a description, positive quantity, and valid rate for every invoice item.";
+    if (!c.issueDate || !c.dueDate) return "Issue and due dates required.";
+    const items = c.lineItems ?? [];
+    if (
+      !items.length ||
+      items.some((i) => !i.description.trim() || i.quantity <= 0 || i.unitPrice < 0)
+    ) {
+      return "Valid line items required.";
     }
   }
   return null;
 }
 
 function hasDocumentEdits(current: StudioDocument, saved: StudioDocument) {
-  return current.title !== saved.title
-    || current.description !== saved.description
-    || JSON.stringify(current.content) !== JSON.stringify(saved.content);
+  return (
+    current.title !== saved.title ||
+    current.description !== saved.description ||
+    JSON.stringify(current.content) !== JSON.stringify(saved.content)
+  );
 }
 
-function DocumentTypeIcon({ type }: { type: DocumentKind }) {
-  if (type === "FORM") return <ListPlus size={19} />;
-  if (type === "AGREEMENT") return <FileSignature size={19} />;
-  return <FileText size={19} />;
+function DocumentTypeIcon({ type, size = 18 }: { type: DocumentKind; size?: number }) {
+  if (type === "FORM") return <ListPlus size={size} />;
+  if (type === "AGREEMENT") return <FileSignature size={size} />;
+  return <FileText size={size} />;
 }
 
 export function DocumentStudioPage() {
@@ -160,72 +220,83 @@ export function DocumentStudioPage() {
   const [shareUrl, setShareUrl] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
   const documentsQuery = useQuery({
     queryKey: ["personal-documents"],
     queryFn: () => apiRequest<StudioDocument[]>("/documents"),
   });
+
   const selectedQuery = useQuery({
     queryKey: ["personal-document", selectedId],
     queryFn: () => apiRequest<StudioDocument>(`/documents/${selectedId}`),
     enabled: Boolean(selectedId),
   });
+
   const responsesQuery = useQuery({
     queryKey: ["personal-document-responses", selectedId],
     queryFn: () => apiRequest<FormResponse[]>(`/documents/${selectedId}/responses`),
-    enabled: Boolean(selectedId && activePanel === "RESPONSES" && (editing?.type === "FORM" || editing?.type === "AGREEMENT")),
+    enabled: Boolean(
+      selectedId &&
+        activePanel === "RESPONSES" &&
+        (editing?.type === "FORM" || editing?.type === "AGREEMENT")
+    ),
   });
+
   useEffect(() => {
     const saved = selectedQuery.data;
     if (!saved) return;
-    setEditing((current) => (
-      current?.id === saved.id && hasDocumentEdits(current, saved)
-        ? current
-        : saved
-    ));
+    setEditing((current) =>
+      current?.id === saved.id && hasDocumentEdits(current, saved) ? current : saved
+    );
   }, [selectedQuery.data]);
 
   const createDocument = useMutation({
-    mutationFn: (type: DocumentKind) => apiRequest<StudioDocument>("/documents", {
-      method: "POST",
-      body: JSON.stringify({
-        type,
-        title: `Untitled ${kindLabel[type].toLowerCase()}`,
-        description: "",
-        content: makeDefaultContent(type),
-        published: false,
+    mutationFn: (type: DocumentKind) =>
+      apiRequest<StudioDocument>("/documents", {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          title: `Untitled ${KIND_META[type].label.toLowerCase()}`,
+          description: "",
+          content: makeDefaultContent(type),
+          published: false,
+        }),
       }),
-    }),
     onSuccess: async (created) => {
       setSelectedId(created.id);
       setEditing(created);
       setActivePanel("EDITOR");
       setShareUrl("");
       setNotice("");
+      setError("");
       await queryClient.invalidateQueries({ queryKey: ["personal-documents"] });
     },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "The document could not be created."),
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "Failed to create."),
   });
+
   const saveDocument = useMutation({
-    mutationFn: (document: StudioDocument) => apiRequest<StudioDocument>(`/documents/${document.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        title: document.title,
-        description: document.description,
-        content: document.content,
-        published: document.published,
+    mutationFn: (document: StudioDocument) =>
+      apiRequest<StudioDocument>(`/documents/${document.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: document.title,
+          description: document.description,
+          content: document.content,
+          published: document.published,
+        }),
       }),
-    }),
     onSuccess: async (saved) => {
       setEditing(saved);
-      setNotice("Changes saved.");
+      setNotice("Saved");
       setError("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["personal-documents"] }),
         queryClient.invalidateQueries({ queryKey: ["personal-document", saved.id] }),
       ]);
     },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "Changes could not be saved."),
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "Failed to save."),
   });
+
   const shareDocument = useMutation({
     mutationFn: async (document: StudioDocument) => {
       let published = document;
@@ -240,28 +311,32 @@ export function DocumentStudioPage() {
           }),
         });
       }
-      const link = await apiRequest<{ token: string }>(`/documents/${document.id}/share`, { method: "POST" });
+      const link = await apiRequest<{ token: string }>(`/documents/${document.id}/share`, {
+        method: "POST",
+      });
       return { published, token: link.token };
     },
     onSuccess: async ({ published, token }) => {
       setEditing({ ...published, shareActive: true });
       setShareUrl(`${window.location.origin}/respond/${encodeURIComponent(token)}`);
-      setNotice("Your public link is ready. Anyone with the link can open it.");
+      setNotice("Link active");
       setError("");
       await queryClient.invalidateQueries({ queryKey: ["personal-documents"] });
     },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "A public link could not be created."),
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "Failed to share."),
   });
+
   const revokeShare = useMutation({
     mutationFn: (id: string) => apiRequest<void>(`/documents/${id}/share`, { method: "DELETE" }),
     onSuccess: async () => {
       if (editing) setEditing({ ...editing, shareActive: false, published: false });
       setShareUrl("");
-      setNotice("The public link has been revoked.");
+      setNotice("Revoked");
       await queryClient.invalidateQueries({ queryKey: ["personal-documents"] });
     },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "The public link could not be revoked."),
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "Failed to revoke."),
   });
+
   const deleteDocument = useMutation({
     mutationFn: (id: string) => apiRequest<void>(`/documents/${id}`, { method: "DELETE" }),
     onSuccess: async () => {
@@ -270,11 +345,11 @@ export function DocumentStudioPage() {
       setShareUrl("");
       await queryClient.invalidateQueries({ queryKey: ["personal-documents"] });
     },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "The document could not be deleted."),
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "Failed to delete."),
   });
 
   function updateEditing(update: (current: StudioDocument) => StudioDocument) {
-    setEditing((current) => current ? update(current) : current);
+    setEditing((current) => (current ? update(current) : current));
     setNotice("");
   }
 
@@ -286,9 +361,9 @@ export function DocumentStudioPage() {
     if (!shareUrl) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
-      setNotice("Link copied to clipboard.");
+      setNotice("Copied");
     } catch {
-      setError("Could not copy automatically. Select and copy the link from the field.");
+      setError("Copy failed");
     }
   }
 
@@ -304,429 +379,963 @@ export function DocumentStudioPage() {
   }
 
   const documents = documentsQuery.data ?? [];
-  const selectedFromList = documents.find((document) => document.id === selectedId);
+  const isDirty = Boolean(
+    editing && selectedQuery.data && hasDocumentEdits(editing, selectedQuery.data)
+  );
 
   return (
-    <PageShell
-      eyebrow="PERSONAL STUDIO"
-      title="Forms & documents"
-      description="Build shareable forms, agreements, and invoices in one calm workspace."
-    >
-      <div className="document-studio">
-        <aside className="document-studio-rail" aria-label="Your documents">
-          <div className="document-studio-rail-heading">
-            <span className="eyebrow">YOUR WORK</span>
-            <span>{documents.length} saved</span>
-          </div>
-          <div className="document-studio-create">
-            {(["FORM", "AGREEMENT", "INVOICE"] as const).map((type) => (
-              <button
-                type="button"
-                key={type}
-                disabled={createDocument.isPending}
-                onClick={() => {
-                  setError("");
-                  setNotice("");
-                  createDocument.mutate(type);
-                }}
-              >
-                <span className={`document-studio-type-icon type-${type.toLowerCase()}`}><DocumentTypeIcon type={type} /></span>
-                <span>New {kindLabel[type].toLowerCase()}</span>
-                <Plus size={15} />
-              </button>
-            ))}
-          </div>
-          {documentsQuery.isLoading ? <p className="document-studio-muted">Loading your studio…</p>
-            : documentsQuery.isError ? <div className="document-studio-error" role="alert">
-              <p>{documentsQuery.error instanceof Error ? documentsQuery.error.message : "Documents couldn’t load."}</p>
-              <button type="button" onClick={() => void documentsQuery.refetch()}>Try again</button>
+    <main className="min-h-screen overflow-x-hidden bg-white text-slate-900">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        {/* Header & Styled Creation Buttons */}
+        <header className="mb-8 space-y-6 border-b border-slate-200 pb-8">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-semibold tracking-widest text-slate-500 uppercase">
+                <span>Imara</span>
+                <span className="text-slate-300">/</span>
+                <span className="text-emerald-700">Workspace</span>
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+                Document studio
+              </h1>
+              <p className="text-sm text-slate-600">
+                Create, organise, and share forms, agreements, and invoices.
+              </p>
             </div>
-              : documents.length ? <div className="document-studio-list">
-                {documents.map((document) => (
+            {createDocument.isPending && (
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                <LoaderCircle className="animate-spin" size={13} />
+                Creating...
+              </span>
+            )}
+          </div>
+
+          <section aria-label="Create a document">
+            <div className="grid w-full grid-cols-1 gap-3.5 sm:grid-cols-3">
+              {(["FORM", "AGREEMENT", "INVOICE"] as const).map((type) => {
+                const meta = KIND_META[type];
+                return (
                   <button
-                    className={`document-studio-list-item ${selectedId === document.id ? "is-current" : ""}`}
+                    key={type}
                     type="button"
-                    key={document.id}
+                    disabled={createDocument.isPending}
                     onClick={() => {
-                      setSelectedId(document.id);
-                      setEditing(null);
-                      setActivePanel("EDITOR");
-                      setShareUrl("");
                       setError("");
                       setNotice("");
+                      createDocument.mutate(type);
                     }}
+                    className={`group flex w-full items-center justify-between gap-3.5 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-2xs transition-all duration-150 active:scale-[0.99] disabled:opacity-50 ${meta.cardHoverClass}`}
                   >
-                    <DocumentTypeIcon type={document.type} />
-                    <span><strong>{document.title}</strong><small>{kindLabel[document.type]} · {document.published ? "Published" : "Draft"}</small></span>
-                    {document.type === "FORM" && <em>{document.responseCount}</em>}
+                    <div className="flex min-w-0 items-center gap-3.5">
+                      <span
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-150 group-hover:scale-105 ${meta.iconBgClass}`}
+                      >
+                        <DocumentTypeIcon type={type} size={20} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-950">
+                          {meta.label}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {meta.subtitle}
+                        </span>
+                      </span>
+                    </div>
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${meta.actionPillClass}`}
+                      aria-hidden="true"
+                    >
+                      <Plus size={16} />
+                    </span>
                   </button>
-                ))}
-              </div> : <p className="document-studio-muted">Your next great document starts with a blank page.</p>}
-        </aside>
+                );
+              })}
+            </div>
+          </section>
+        </header>
 
-        <section className="document-studio-workspace">
-          {!selectedId ? (
-            <div className="document-studio-welcome">
-              {error && <p className="form-alert" role="alert">{error}</p>}
-              <div className="document-studio-welcome-mark"><FileCheck2 size={26} /></div>
-              <span className="eyebrow">A BETTER WAY TO ASK, AGREE, AND BILL</span>
-              <h2>Make the paperwork<br />work for you.</h2>
-              <p>Create a form to collect responses, an agreement to sign, or an invoice to send. Publish a link when you’re ready.</p>
-              <div className="document-studio-welcome-actions">
-                <button className="button button-green" type="button" onClick={() => createDocument.mutate("FORM")}><ListPlus size={16} />Create a form</button>
-                <button className="button button-outline" type="button" onClick={() => createDocument.mutate("AGREEMENT")}><FileSignature size={16} />Create agreement</button>
-                <button className="button button-outline" type="button" onClick={() => createDocument.mutate("INVOICE")}><FileText size={16} />Create invoice</button>
+        {/* Main View: Full Document History OR Active Editor */}
+        {!selectedId ? (
+          <section aria-label="Document history" className="space-y-4">
+            {error && (
+              <div
+                role="alert"
+                className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs text-rose-800"
+              >
+                <AlertCircle size={15} className="shrink-0 text-rose-600" />
+                <span>{error}</span>
               </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-950">History</h2>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-700 tabular-nums">
+                {documents.length}
+              </span>
             </div>
-          ) : selectedQuery.isLoading || !editing ? (
-            <div className="page-loading"><span className="loader" />Opening your document…</div>
-          ) : selectedQuery.isError ? (
-            <div className="document-studio-empty-state" role="alert">
-              <strong>This document couldn’t be opened.</strong>
-              <p>{selectedQuery.error instanceof Error ? selectedQuery.error.message : "Please try again."}</p>
-              <button className="button button-outline" type="button" onClick={() => void selectedQuery.refetch()}>Try again</button>
-            </div>
-          ) : (
-            <div className="document-editor">
-              <div className="document-editor-topbar">
-                <button className="document-back-button" type="button" onClick={() => { setSelectedId(""); setEditing(null); }}>
-                  <ArrowLeft size={15} /> All documents
+
+            {documentsQuery.isLoading ? (
+              <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-16 text-slate-400">
+                <LoaderCircle className="animate-spin" size={20} />
+              </div>
+            ) : documentsQuery.isError ? (
+              <div
+                role="alert"
+                className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-xs text-rose-800 sm:flex-row sm:items-center"
+              >
+                <span>Couldn’t load your documents.</span>
+                <button
+                  type="button"
+                  onClick={() => void documentsQuery.refetch()}
+                  className="w-full rounded-lg bg-rose-600 px-3.5 py-2 font-medium text-white transition hover:bg-rose-700 sm:w-auto sm:py-1.5"
+                >
+                  Retry
                 </button>
-                <div className="document-editor-status">
-                  <span className={`document-status-dot ${editing.published ? "is-published" : ""}`} />
-                  {editing.published ? "Published" : "Draft"}
-                  {selectedFromList && <small>Saved {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(selectedFromList.updatedAt))}</small>}
-                </div>
               </div>
-              <div className="document-editor-heading">
-                <span className={`document-studio-type-icon type-${editing.type.toLowerCase()}`}><DocumentTypeIcon type={editing.type} /></span>
-                <div><span className="eyebrow">{kindLabel[editing.type].toUpperCase()} BUILDER</span><h2>{editing.title}</h2></div>
-                <button className="document-delete-button" type="button" aria-label={`Delete ${editing.title}`} disabled={deleteDocument.isPending} onClick={() => {
-                  if (window.confirm(`Delete “${editing.title}”? This cannot be undone.`)) deleteDocument.mutate(editing.id);
-                }}><Trash2 size={16} /></button>
-              </div>
+            ) : documents.length ? (
+              <div className="divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
+                {documents.map((doc) => {
+                  const meta = KIND_META[doc.type];
+                  return (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(doc.id);
+                        setEditing(null);
+                        setActivePanel("EDITOR");
+                        setShareUrl("");
+                        setError("");
+                        setNotice("");
+                      }}
+                      className="group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition hover:bg-slate-50 sm:px-5"
+                    >
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${meta.iconBgClass}`}
+                      >
+                        <DocumentTypeIcon type={doc.type} size={16} />
+                      </span>
 
-              <div className="document-editor-tabs" role="tablist">
-                <button type="button" role="tab" aria-selected={activePanel === "EDITOR"} onClick={() => setActivePanel("EDITOR")}><FileText size={15} />Editor</button>
-                {(editing.type === "FORM" || editing.type === "AGREEMENT") && <button type="button" role="tab" aria-selected={activePanel === "RESPONSES"} onClick={() => setActivePanel("RESPONSES")}><Check size={15} />{editing.type === "FORM" ? "Responses" : "Signatures"} <span>{editing.responseCount}</span></button>}
-              </div>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-slate-950 group-hover:text-emerald-700">
+                          {doc.title || `Untitled ${meta.label.toLowerCase()}`}
+                        </span>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span
+                            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-none ${meta.badgeClass}`}
+                          >
+                            {meta.label}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                doc.published ? "bg-emerald-500" : "bg-slate-400"
+                              }`}
+                            />
+                            {doc.published ? "Published" : "Draft"}
+                          </span>
+                          <span className="hidden text-slate-300 sm:inline">•</span>
+                          <span className="hidden sm:inline">
+                            Updated {new Date(doc.updatedAt).toLocaleDateString()}
+                          </span>
+                        </span>
+                      </span>
 
-              {error && <p className="form-alert" role="alert">{error}</p>}
-              {notice && <p className="document-studio-notice" role="status">{notice}</p>}
-
-              {activePanel === "RESPONSES" && (editing.type === "FORM" || editing.type === "AGREEMENT") ? (
-                <ResponsePanel query={responsesQuery} questions={editing.content.questions ?? []} type={editing.type} />
-              ) : (
-                <div className="document-editor-body">
-                  <label className="document-editor-field document-title-field">
-                    <span>Document title</span>
-                    <input maxLength={160} value={editing.title} onChange={(event) => updateEditing((current) => ({ ...current, title: event.target.value }))} placeholder="Give it a clear name" />
-                  </label>
-                  <label className="document-editor-field">
-                    <span>{editing.type === "FORM" ? "Description" : "Message or note"} <small>Optional</small></span>
-                    <textarea rows={2} maxLength={2000} value={editing.description ?? ""} onChange={(event) => updateEditing((current) => ({ ...current, description: event.target.value }))} placeholder="Add a little context for the person receiving this" />
-                  </label>
-
-                  {editing.type === "FORM" && <FormQuestionEditor
-                    questions={editing.content.questions ?? []}
-                    onChange={(questions) => updateContent((content) => ({ ...content, questions }))}
-                  />}
-                  {editing.type === "AGREEMENT" && <AgreementEditor
-                    body={editing.content.body ?? ""}
-                    onChange={(body) => updateContent((content) => ({ ...content, body }))}
-                  />}
-                  {editing.type === "INVOICE" && <InvoiceEditor
-                    content={editing.content}
-                    onChange={(content) => updateEditing((current) => ({ ...current, content }))}
-                  />}
-
-                  <div className="document-editor-actions">
-                    <button className="button button-outline" type="button" disabled={saveDocument.isPending || !editing.title.trim()} onClick={() => saveDocument.mutate(editing)}>
-                      {saveDocument.isPending ? <LoaderCircle className="document-spin" size={15} /> : <Check size={15} />}
-                      {saveDocument.isPending ? "Saving…" : "Save changes"}
+                      {(doc.type === "FORM" || doc.type === "AGREEMENT") &&
+                        doc.responseCount > 0 && (
+                          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-700 tabular-nums">
+                            {doc.responseCount}{" "}
+                            <span className="hidden text-slate-500 sm:inline">
+                              {doc.type === "FORM"
+                                ? doc.responseCount === 1
+                                  ? "response"
+                                  : "responses"
+                                : doc.responseCount === 1
+                                  ? "signature"
+                                  : "signatures"}
+                            </span>
+                          </span>
+                        )}
                     </button>
-                    {editing.shareActive && <button className="button button-outline document-revoke-button" type="button" disabled={revokeShare.isPending} onClick={() => revokeShare.mutate(editing.id)}>
-                      {revokeShare.isPending ? "Revoking…" : "Revoke link"}
-                    </button>}
-                    <button className="button button-green" type="button" disabled={shareDocument.isPending} onClick={() => publishAndShare(editing)}>
-                      {shareDocument.isPending ? <LoaderCircle className="document-spin" size={15} /> : <Send size={15} />}
-                      {shareDocument.isPending ? "Preparing link…" : editing.shareActive ? "Create new link" : "Publish & share"}
-                    </button>
-                  </div>
-                  {shareUrl && <div className="document-share-link">
-                    <div className="document-share-link-head"><Link2 size={16} /><strong>Your public link</strong><span>Anyone with the link can open it</span></div>
-                    <div><input readOnly value={shareUrl} onFocus={(event) => event.currentTarget.select()} aria-label="Public document link" /><button className="button button-green" type="button" onClick={() => void copyShareLink()}><Copy size={14} />Copy</button></div>
-                    <a href={shareUrl} target="_blank" rel="noreferrer">Preview public page <ArrowUpRight size={13} /></a>
-                  </div>}
-                </div>
-              )}
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-14 text-center">
+                <FileText size={22} className="mb-2.5 text-slate-400" />
+                <p className="text-sm font-medium text-slate-900">No documents yet</p>
+                <p className="mt-1 max-w-sm text-xs text-slate-500">
+                  Choose Form, Agreement, or Invoice above to create your first document.
+                </p>
+              </div>
+            )}
+          </section>
+        ) : selectedQuery.isLoading || !editing ? (
+          <div className="flex min-h-[360px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-2xs">
+            <LoaderCircle className="animate-spin" size={20} />
+          </div>
+        ) : selectedQuery.isError ? (
+          <div
+            role="alert"
+            className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-2xs"
+          >
+            <p className="text-sm text-slate-700">Unable to open this document.</p>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setSelectedId("")}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 sm:w-auto"
+              >
+                Back to history
+              </button>
+              <button
+                type="button"
+                onClick={() => void selectedQuery.refetch()}
+                className="w-full rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-slate-800 sm:w-auto"
+              >
+                Retry
+              </button>
             </div>
-          )}
-        </section>
+          </div>
+        ) : (
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
+            {/* Editor Top Bar */}
+            <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6">
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId("");
+                    setEditing(null);
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+                >
+                  <ArrowLeft size={14} />
+                  <span>History</span>
+                </button>
+
+                <div
+                  role="tablist"
+                  className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activePanel === "EDITOR"}
+                    onClick={() => setActivePanel("EDITOR")}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                      activePanel === "EDITOR"
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:text-slate-950"
+                    }`}
+                  >
+                    <FileText size={13} />
+                    Editor
+                  </button>
+
+                  {(editing.type === "FORM" || editing.type === "AGREEMENT") && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activePanel === "RESPONSES"}
+                      onClick={() => setActivePanel("RESPONSES")}
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                        activePanel === "RESPONSES"
+                          ? "bg-slate-900 text-white"
+                          : "text-slate-600 hover:text-slate-950"
+                      }`}
+                    >
+                      <Check size={13} />
+                      {editing.type === "FORM" ? "Responses" : "Signatures"}
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[11px] tabular-nums ${
+                          activePanel === "RESPONSES"
+                            ? "bg-slate-800 text-slate-100"
+                            : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {editing.responseCount}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200/70 pt-2.5 sm:justify-end sm:border-t-0 sm:pt-0">
+                <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      editing.published ? "bg-emerald-500" : "bg-amber-500"
+                    }`}
+                  />
+                  {editing.published ? "Published" : "Draft"}
+                  {isDirty && <span className="text-slate-400">• Unsaved</span>}
+                </span>
+
+                <button
+                  type="button"
+                  aria-label={`Delete ${editing.title}`}
+                  disabled={deleteDocument.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Delete “${editing.title}”?`)) {
+                      deleteDocument.mutate(editing.id);
+                    }
+                  }}
+                  className="rounded-lg p-1.5 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Feedback Banners */}
+            {(error || notice) && (
+              <div className="px-4 pt-4 sm:px-6">
+                {error && (
+                  <div
+                    role="alert"
+                    className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800"
+                  >
+                    <AlertCircle size={15} className="shrink-0 text-rose-600" />
+                    <span>{error}</span>
+                  </div>
+                )}
+                {notice && !error && (
+                  <div
+                    role="status"
+                    className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800"
+                  >
+                    <Check size={15} className="shrink-0 text-emerald-600" />
+                    <span>{notice}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Panel Content */}
+            {activePanel === "RESPONSES" &&
+            (editing.type === "FORM" || editing.type === "AGREEMENT") ? (
+              <ResponsePanel
+                query={responsesQuery}
+                questions={editing.content.questions ?? []}
+                type={editing.type}
+              />
+            ) : (
+              <div className="space-y-6 p-4 sm:p-6">
+                {/* Document Intro */}
+                <div className="flex items-start gap-3.5">
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                      KIND_META[editing.type].iconBgClass
+                    }`}
+                  >
+                    <DocumentTypeIcon type={editing.type} size={18} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+                      {KIND_META[editing.type].label} setup
+                    </p>
+                    <h2 className="text-lg font-semibold text-slate-950">
+                      {KIND_META[editing.type].setupTitle}
+                    </h2>
+                    <p className="text-xs text-slate-600">
+                      Give it a clear title and complete the fields below.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Title & Description */}
+                <div className="grid grid-cols-1 gap-4">
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-slate-700">Document title</span>
+                    <input
+                      maxLength={160}
+                      value={editing.title}
+                      onChange={(e) =>
+                        updateEditing((c) => ({ ...c, title: e.target.value }))
+                      }
+                      placeholder="e.g., Client Onboarding Form"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 placeholder-slate-400 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15"
+                    />
+                  </label>
+
+                  <label className="block space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-700">
+                        {editing.type === "FORM"
+                          ? "What should people know?"
+                          : "Additional note"}
+                      </span>
+                      <span className="text-slate-400">Optional</span>
+                    </div>
+                    <textarea
+                      rows={2}
+                      maxLength={2000}
+                      value={editing.description ?? ""}
+                      onChange={(e) =>
+                        updateEditing((c) => ({ ...c, description: e.target.value }))
+                      }
+                      placeholder="Add helpful context or instructions..."
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 placeholder-slate-400 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15"
+                    />
+                  </label>
+                </div>
+
+                {/* Type-Specific Body */}
+                {editing.type === "FORM" && (
+                  <FormQuestionEditor
+                    questions={editing.content.questions ?? []}
+                    onChange={(questions) =>
+                      updateContent((c) => ({ ...c, questions }))
+                    }
+                  />
+                )}
+
+                {editing.type === "AGREEMENT" && (
+                  <AgreementEditor
+                    body={editing.content.body ?? ""}
+                    onChange={(body) => updateContent((c) => ({ ...c, body }))}
+                  />
+                )}
+
+                {editing.type === "INVOICE" && (
+                  <InvoiceEditor
+                    content={editing.content}
+                    onChange={(content) => updateEditing((c) => ({ ...c, content }))}
+                  />
+                )}
+
+                {/* Responsive Action Bar */}
+                <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+                    <button
+                      type="button"
+                      disabled={saveDocument.isPending || !editing.title.trim()}
+                      onClick={() => saveDocument.mutate(editing)}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-medium text-slate-800 transition hover:bg-slate-50 disabled:opacity-50 sm:w-auto sm:py-2"
+                    >
+                      {saveDocument.isPending ? (
+                        <LoaderCircle className="animate-spin" size={14} />
+                      ) : (
+                        <Check size={14} />
+                      )}
+                      Save draft
+                    </button>
+
+                    {editing.shareActive && (
+                      <button
+                        type="button"
+                        disabled={revokeShare.isPending}
+                        onClick={() => revokeShare.mutate(editing.id)}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 sm:w-auto sm:py-2"
+                      >
+                        Revoke link
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={shareDocument.isPending}
+                    onClick={() => publishAndShare(editing)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-emerald-700 disabled:opacity-50 sm:w-auto sm:py-2"
+                  >
+                    {shareDocument.isPending ? (
+                      <LoaderCircle className="animate-spin" size={14} />
+                    ) : (
+                      <Send size={14} />
+                    )}
+                    {editing.shareActive ? "Generate new link" : "Publish & share"}
+                  </button>
+                </div>
+
+                {/* Shareable Link Box */}
+                {shareUrl && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <Link2 size={14} className="shrink-0 text-emerald-600" />
+                        <input
+                          readOnly
+                          value={shareUrl}
+                          onFocus={(e) => e.currentTarget.select()}
+                          aria-label="Share link"
+                          className="w-full min-w-0 bg-transparent text-xs text-slate-800 outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void copyShareLink()}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 sm:flex-initial"
+                        >
+                          <Copy size={13} />
+                          Copy
+                        </button>
+                        <a
+                          href={shareUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="Open link"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+                        >
+                          <ArrowUpRight size={15} />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
       </div>
-    </PageShell>
+    </main>
   );
 }
 
-function FormQuestionEditor({ questions, onChange }: { questions: DocumentQuestion[]; onChange: (questions: DocumentQuestion[]) => void }) {
-  function updateQuestion(id: string, update: (question: DocumentQuestion) => DocumentQuestion) {
-    onChange(questions.map((question) => question.id === id ? update(question) : question));
+function FormQuestionEditor({
+  questions,
+  onChange,
+}: {
+  questions: DocumentQuestion[];
+  onChange: (questions: DocumentQuestion[]) => void;
+}) {
+  function updateQuestion(id: string, update: (q: DocumentQuestion) => DocumentQuestion) {
+    onChange(questions.map((q) => (q.id === id ? update(q) : q)));
   }
 
-  return <section className="form-question-editor" aria-label="Form questions">
-    <div className="form-question-heading"><div><span className="eyebrow">BUILD YOUR FORM</span><h3>Questions</h3></div><span>{questions.length} added</span></div>
-    {!questions.length && <div className="form-question-empty"><ListPlus size={20} /><strong>Start with a question</strong><span>Choose a response type and add as many questions as you need.</span></div>}
-    {questions.map((question, index) => (
-      <article className="form-question-card" key={question.id}>
-        <div className="form-question-card-top"><span className="form-question-number">{String(index + 1).padStart(2, "0")}</span><select aria-label={`Response type for question ${index + 1}`} value={question.type} onChange={(event) => {
-          const type = event.target.value as QuestionKind;
-          updateQuestion(question.id, (item) => {
-            const { choices, ...rest } = item;
-            return type === "MULTIPLE_CHOICE" || type === "CHECKBOXES"
-              ? { ...rest, type, choices: choices ?? ["Option 1", "Option 2"] }
-              : { ...rest, type };
-          });
-        }}>
-          {Object.entries(questionLabel).map(([type, label]) => <option value={type} key={type}>{label}</option>)}
-        </select><button type="button" className="document-icon-button" aria-label={`Remove question ${index + 1}`} onClick={() => onChange(questions.filter((item) => item.id !== question.id))}><Trash2 size={15} /></button></div>
-        <input className="form-question-title" value={question.prompt} onChange={(event) => updateQuestion(question.id, (item) => ({ ...item, prompt: event.target.value }))} placeholder={`Question ${index + 1}`} aria-label={`Question ${index + 1}`} />
-        {(question.type === "MULTIPLE_CHOICE" || question.type === "CHECKBOXES") && <div className="form-question-choices">
-          <label>Answer choices</label>
-          {(question.choices ?? []).map((choice, choiceIndex) => <div className="form-question-choice-row" key={`${question.id}-choice-${choiceIndex}`}>
-            <span className={question.type === "CHECKBOXES" ? "choice-checkbox-icon" : "choice-radio-icon"} aria-hidden="true" />
-            <input maxLength={200} value={choice} onChange={(event) => updateQuestion(question.id, (item) => ({
-              ...item,
-              choices: (item.choices ?? []).map((option, index) => index === choiceIndex ? event.target.value : option),
-            }))} aria-label={`Question ${index + 1}, choice ${choiceIndex + 1}`} placeholder={`Option ${choiceIndex + 1}`} />
-            <button type="button" className="document-icon-button" disabled={(question.choices ?? []).length <= 1} aria-label={`Remove choice ${choiceIndex + 1}`} onClick={() => updateQuestion(question.id, (item) => ({
-              ...item,
-              choices: (item.choices ?? []).filter((_, optionIndex) => optionIndex !== choiceIndex),
-            }))}><Trash2 size={13} /></button>
-          </div>)}
-          <button type="button" className="form-add-choice" disabled={(question.choices ?? []).length >= 20} onClick={() => updateQuestion(question.id, (item) => ({
-            ...item,
-            choices: [...(item.choices ?? []), `Option ${(item.choices ?? []).length + 1}`],
-          }))}><Plus size={13} />Add choice</button>
-        </div>}
-        {question.type === "SHORT_ANSWER" && <div className="form-question-answer-preview">Short answer text</div>}
-        {question.type === "PARAGRAPH" && <div className="form-question-answer-preview is-paragraph">Long answer</div>}
-        <label className="form-question-required"><input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(question.id, (item) => ({ ...item, required: event.target.checked }))} />Required</label>
-      </article>
-    ))}
-    <button className="form-add-question" type="button" onClick={() => onChange([...questions, makeQuestion()])}><Plus size={16} />Add a question</button>
-    <p className="form-response-note">Responses include the respondent’s name and email address.</p>
-  </section>;
+  return (
+    <section aria-label="Questions" className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
+          Questions ({questions.length})
+        </h3>
+      </div>
+
+      {questions.map((question, index) => (
+        <article
+          key={question.id}
+          className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 sm:p-4"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:gap-2.5">
+              <span className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-slate-600">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <select
+                aria-label={`Type ${index + 1}`}
+                value={question.type}
+                onChange={(e) => {
+                  const type = e.target.value as QuestionKind;
+                  updateQuestion(question.id, (item) => {
+                    const { choices, ...rest } = item;
+                    return type === "MULTIPLE_CHOICE" || type === "CHECKBOXES"
+                      ? { ...rest, type, choices: choices ?? ["Option 1", "Option 2"] }
+                      : { ...rest, type };
+                  });
+                }}
+                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-emerald-600 sm:w-auto"
+              >
+                {Object.entries(QUESTION_LABEL).map(([type, label]) => (
+                  <option key={type} value={type}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              aria-label={`Remove ${index + 1}`}
+              onClick={() => onChange(questions.filter((item) => item.id !== question.id))}
+              className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+
+          <input
+            value={question.prompt}
+            onChange={(e) =>
+              updateQuestion(question.id, (item) => ({ ...item, prompt: e.target.value }))
+            }
+            placeholder={`Question ${index + 1}`}
+            aria-label={`Question ${index + 1}`}
+            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-950 placeholder-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15"
+          />
+
+          {(question.type === "MULTIPLE_CHOICE" || question.type === "CHECKBOXES") && (
+            <div className="space-y-2 sm:pl-2">
+              {(question.choices ?? []).map((choice, choiceIndex) => (
+                <div
+                  key={`${question.id}-choice-${choiceIndex}`}
+                  className="flex items-center gap-2"
+                >
+                  {question.type === "CHECKBOXES" ? (
+                    <CheckSquare size={14} className="shrink-0 text-slate-400" />
+                  ) : (
+                    <CircleDot size={14} className="shrink-0 text-slate-400" />
+                  )}
+                  <input
+                    maxLength={200}
+                    value={choice}
+                    onChange={(e) =>
+                      updateQuestion(question.id, (item) => ({
+                        ...item,
+                        choices: (item.choices ?? []).map((opt, idx) =>
+                          idx === choiceIndex ? e.target.value : opt
+                        ),
+                      }))
+                    }
+                    placeholder={`Option ${choiceIndex + 1}`}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-emerald-600"
+                  />
+                  <button
+                    type="button"
+                    disabled={(question.choices ?? []).length <= 1}
+                    onClick={() =>
+                      updateQuestion(question.id, (item) => ({
+                        ...item,
+                        choices: (item.choices ?? []).filter((_, idx) => idx !== choiceIndex),
+                      }))
+                    }
+                    className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/70 hover:text-rose-600 disabled:opacity-30"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                disabled={(question.choices ?? []).length >= 20}
+                onClick={() =>
+                  updateQuestion(question.id, (item) => ({
+                    ...item,
+                    choices: [
+                      ...(item.choices ?? []),
+                      `Option ${(item.choices ?? []).length + 1}`,
+                    ],
+                  }))
+                }
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-40 sm:w-auto sm:justify-start"
+              >
+                <Plus size={13} />
+                Add option
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end border-t border-slate-200/80 pt-2.5">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={question.required}
+                onChange={(e) =>
+                  updateQuestion(question.id, (item) => ({ ...item, required: e.target.checked }))
+                }
+                className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600"
+              />
+              Required field
+            </label>
+          </div>
+        </article>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => onChange([...questions, makeQuestion()])}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white py-2.5 text-xs font-medium text-slate-700 transition hover:border-emerald-500 hover:bg-emerald-50/40 hover:text-emerald-800"
+      >
+        <Plus size={15} />
+        Add question
+      </button>
+    </section>
+  );
 }
 
-function AgreementEditor({ body, onChange }: { body: string; onChange: (body: string) => void }) {
-  return <section className="agreement-editor">
-    <div className="agreement-editor-heading"><FileSignature size={17} /><div><strong>Agreement terms</strong><span>The recipient will review this text and sign electronically.</span></div></div>
-    <textarea rows={15} maxLength={30000} value={body} onChange={(event) => onChange(event.target.value)} placeholder={"Write the agreement here...\n\nInclude the parties, terms, dates, and any relevant conditions."} aria-label="Agreement terms" />
-    <p>Electronic signature includes the signer’s name, email, consent, and signature time.</p>
-  </section>;
+function AgreementEditor({
+  body,
+  onChange,
+}: {
+  body: string;
+  onChange: (body: string) => void;
+}) {
+  return (
+    <section className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <label htmlFor="agreement-terms" className="font-medium text-slate-700">
+          Agreement terms
+        </label>
+        <span className="text-slate-400 tabular-nums">{body.length} / 30,000</span>
+      </div>
+      <textarea
+        id="agreement-terms"
+        rows={14}
+        maxLength={30000}
+        value={body}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Write scope, deliverables, payment terms, or legal clauses..."
+        aria-label="Terms"
+        className="w-full rounded-xl border border-slate-300 bg-white p-3.5 font-mono text-xs leading-relaxed text-slate-900 placeholder-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15 sm:p-4"
+      />
+    </section>
+  );
 }
 
-function InvoiceEditor({ content, onChange }: { content: DocumentContent; onChange: (content: DocumentContent) => void }) {
+function InvoiceEditor({
+  content,
+  onChange,
+}: {
+  content: DocumentContent;
+  onChange: (content: DocumentContent) => void;
+}) {
   const items = content.lineItems ?? [];
   const currency = content.currency || "USD";
-  const total = items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0), 0);
+  const total = items.reduce(
+    (sum, item) =>
+      sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0),
+    0
+  );
 
   function setField<K extends keyof DocumentContent>(key: K, value: DocumentContent[K]) {
     onChange({ ...content, [key]: value });
   }
 
   function updateLine(index: number, key: keyof InvoiceLine, value: string) {
-    onChange({ ...content, lineItems: items.map((item, current) => current === index
-      ? { ...item, [key]: key === "description" ? value : Number(value) || 0 }
-      : item) });
+    onChange({
+      ...content,
+      lineItems: items.map((item, current) =>
+        current === index
+          ? { ...item, [key]: key === "description" ? value : Number(value) || 0 }
+          : item
+      ),
+    });
   }
 
-  return <section className="invoice-editor">
-    <div className="invoice-editor-heading"><span className="eyebrow">INVOICE DETAILS</span><strong>{formatCurrency(total, currency)}</strong></div>
-    <div className="invoice-editor-grid">
-      <label className="document-editor-field"><span>Your business</span><input value={content.businessName ?? ""} onChange={(event) => setField("businessName", event.target.value)} placeholder="Business or sender name" /></label>
-      <label className="document-editor-field"><span>Invoice number</span><input maxLength={80} value={content.invoiceNumber ?? ""} onChange={(event) => setField("invoiceNumber", event.target.value)} /></label>
-      <label className="document-editor-field"><span>Bill to</span><input maxLength={160} value={content.customerName ?? ""} onChange={(event) => setField("customerName", event.target.value)} placeholder="Customer name" /></label>
-      <label className="document-editor-field"><span>Customer email</span><input type="email" maxLength={320} value={content.customerEmail ?? ""} onChange={(event) => setField("customerEmail", event.target.value)} placeholder="name@example.com" /></label>
-      <label className="document-editor-field"><span>Issue date</span><input type="date" value={content.issueDate ?? ""} onChange={(event) => setField("issueDate", event.target.value)} /></label>
-      <label className="document-editor-field"><span>Due date</span><input type="date" value={content.dueDate ?? ""} onChange={(event) => setField("dueDate", event.target.value)} /></label>
-      <label className="document-editor-field"><span>Currency</span><select value={currency} onChange={(event) => setField("currency", event.target.value)}><option value="USD">USD · US Dollar</option><option value="NGN">NGN · Naira</option><option value="GBP">GBP · Pound</option><option value="EUR">EUR · Euro</option><option value="CAD">CAD · Canadian Dollar</option><option value="GHS">GHS · Cedi</option></select></label>
-    </div>
-    <div className="invoice-line-items-heading"><strong>Items</strong><span>Description · quantity · rate</span></div>
-    <div className="invoice-line-items">
-      {items.map((item, index) => <div className="invoice-line-row" key={`line-${index}`}>
-        <input aria-label={`Item ${index + 1} description`} maxLength={300} value={item.description} onChange={(event) => updateLine(index, "description", event.target.value)} placeholder="What are you billing for?" />
-        <input aria-label={`Item ${index + 1} quantity`} type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateLine(index, "quantity", event.target.value)} />
-        <input aria-label={`Item ${index + 1} unit price`} type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateLine(index, "unitPrice", event.target.value)} />
-        <strong>{formatCurrency((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), currency)}</strong>
-        <button type="button" className="document-icon-button" aria-label={`Remove item ${index + 1}`} disabled={items.length <= 1} onClick={() => setField("lineItems", items.filter((_, current) => current !== index))}><Trash2 size={15} /></button>
-      </div>)}
-    </div>
-    <button className="invoice-add-line" type="button" onClick={() => setField("lineItems", [...items, { description: "", quantity: 1, unitPrice: 0 }])}><Plus size={15} />Add line item</button>
-    <label className="document-editor-field"><span>Note <small>Optional</small></span><textarea rows={3} maxLength={2000} value={content.note ?? ""} onChange={(event) => setField("note", event.target.value)} placeholder="Payment instructions or a note for the customer" /></label>
-    <p className="invoice-sharing-note">The public invoice is read-only. Recipients can print or save it as a PDF; payments are not collected here.</p>
-  </section>;
+  return (
+    <section className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <span className="text-xs font-medium text-slate-600">Invoice total</span>
+        <strong className="text-lg font-semibold text-emerald-700 tabular-nums">
+          {formatCurrency(total, currency)}
+        </strong>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Business name</span>
+          <input
+            value={content.businessName ?? ""}
+            onChange={(e) => setField("businessName", e.target.value)}
+            placeholder="Your business"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-emerald-600"
+          />
+        </label>
+
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Invoice number</span>
+          <input
+            value={content.invoiceNumber ?? ""}
+            onChange={(e) => setField("invoiceNumber", e.target.value)}
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-emerald-600"
+          />
+        </label>
+
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Customer name</span>
+          <input
+            value={content.customerName ?? ""}
+            onChange={(e) => setField("customerName", e.target.value)}
+            placeholder="Client or company"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-emerald-600"
+          />
+        </label>
+
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Customer email</span>
+          <input
+            type="email"
+            value={content.customerEmail ?? ""}
+            onChange={(e) => setField("customerEmail", e.target.value)}
+            placeholder="billing@client.com"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-emerald-600"
+          />
+        </label>
+
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Issue date</span>
+          <input
+            type="date"
+            value={content.issueDate ?? ""}
+            onChange={(e) => setField("issueDate", e.target.value)}
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-emerald-600"
+          />
+        </label>
+
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-600">Due date</span>
+            <input
+              type="date"
+              value={content.dueDate ?? ""}
+              onChange={(e) => setField("dueDate", e.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-emerald-600"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-600">Currency</span>
+            <input
+              maxLength={3}
+              value={currency}
+              onChange={(e) => setField("currency", e.target.value.toUpperCase())}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 uppercase outline-none focus:border-emerald-600"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Line Items */}
+      <div className="space-y-2.5">
+        <span className="block text-xs font-semibold tracking-wider text-slate-500 uppercase">
+          Line items
+        </span>
+        {items.map((item, idx) => {
+          const lineTotal =
+            Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unitPrice) || 0);
+          return (
+            <div
+              key={idx}
+              className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-12 sm:items-center"
+            >
+              <input
+                value={item.description}
+                onChange={(e) => updateLine(idx, "description", e.target.value)}
+                placeholder="Item description"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-950 outline-none focus:border-emerald-600 sm:col-span-5"
+              />
+              <input
+                type="number"
+                min={0}
+                value={item.quantity}
+                onChange={(e) => updateLine(idx, "quantity", e.target.value)}
+                aria-label={`Quantity ${idx + 1}`}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none focus:border-emerald-600 sm:col-span-2"
+              />
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={item.unitPrice}
+                onChange={(e) => updateLine(idx, "unitPrice", e.target.value)}
+                aria-label={`Unit price ${idx + 1}`}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none focus:border-emerald-600 sm:col-span-2"
+              />
+              <div className="flex items-center justify-between pt-1 sm:col-span-3 sm:justify-end sm:gap-2 sm:pt-0">
+                <span className="text-xs font-semibold text-slate-800 tabular-nums">
+                  {formatCurrency(lineTotal, currency)}
+                </span>
+                <button
+                  type="button"
+                  disabled={items.length <= 1}
+                  onClick={() =>
+                    onChange({
+                      ...content,
+                      lineItems: items.filter((_, i) => i !== idx),
+                    })
+                  }
+                  className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              ...content,
+              lineItems: [...items, { description: "", quantity: 1, unitPrice: 0 }],
+            })
+          }
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-transparent px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50 sm:w-auto sm:py-1.5"
+        >
+          <Plus size={14} />
+          Add line item
+        </button>
+      </div>
+    </section>
+  );
 }
 
-function ResponsePanel({ query, questions, type }: { query: ReturnType<typeof useQuery<FormResponse[]>>; questions: DocumentQuestion[]; type: "FORM" | "AGREEMENT" }) {
-  const questionById = useMemo(() => new Map(questions.map((question) => [question.id, question.prompt || "Untitled question"])), [questions]);
-  if (query.isLoading) return <div className="document-studio-muted">Loading responses…</div>;
-  if (query.isError) return <div className="document-studio-error" role="alert"><p>{query.error instanceof Error ? query.error.message : "Responses couldn’t load."}</p><button type="button" onClick={() => void query.refetch()}>Try again</button></div>;
-  const responses = query.data ?? [];
-  function downloadCsv() {
-    const columns = type === "FORM"
-      ? ["Respondent name", "Respondent email", "Submitted at", ...questions.map((question) => question.prompt || "Untitled question")]
-      : ["Signer name", "Signer email", "Signed name", "Signed at", "Consent"];
-    const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
-    const rows = responses.map((response) => [
-      response.name,
-      response.email,
-      response.submittedAt,
-      ...(type === "FORM"
-        ? questions.map((question) => {
-          const answer = response.answers?.[question.id];
-          return Array.isArray(answer) ? answer.join(", ") : answer ?? "";
-        })
-        : [response.signedName ?? "", response.signedAt ?? "", response.consent ? "Yes" : "No"]),
-    ]);
-    const contents = [columns, ...rows].map((row) => row.map(quote).join(",")).join("\r\n");
-    const url = URL.createObjectURL(new Blob([contents], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "form-responses.csv";
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-  }
-  return <div className="form-response-panel">
-    <div className="form-response-summary"><span><strong>{responses.length}</strong><small> {type === "FORM" ? "responses" : "signatures"}</small></span><p>{type === "FORM" ? "Each submission is saved with the respondent’s name and email." : "Electronic signatures include name, email, consent, and signed time."}</p>{responses.length > 0 && <button type="button" className="button button-outline button-small" onClick={downloadCsv}><Download size={14} />Export CSV</button>}</div>
-    {!responses.length ? <div className="form-response-empty"><Eye size={21} /><strong>{type === "FORM" ? "No responses yet" : "No signatures yet"}</strong><span>{type === "FORM" ? "Share your form to start collecting answers." : "Share your agreement to request an electronic signature."}</span></div>
-      : responses.map((response, index) => <article className="form-response-card" key={response.id}>
-        <header><span className="form-response-index">#{String(index + 1).padStart(2, "0")}</span><div><strong>{response.name}</strong><small>{response.email} · {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(response.submittedAt))}</small></div></header>
-        {type === "FORM"
-          ? <dl>{Object.entries(response.answers ?? {}).map(([questionId, answer]) => <div key={questionId}><dt>{questionById.get(questionId) ?? "Question"}</dt><dd>{Array.isArray(answer) ? answer.join(", ") : answer || "—"}</dd></div>)}</dl>
-          : <dl><div><dt>Electronic signature</dt><dd>{response.signedName || response.name}</dd></div><div><dt>Consent</dt><dd>{response.consent ? "Given" : "Not recorded"}</dd></div><div><dt>Signed at</dt><dd>{response.signedAt ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(response.signedAt)) : "—"}</dd></div></dl>}
-      </article>)}
-  </div>;
-}
-
-export function PublicDocumentPage() {
-  const { token = "" } = useParams();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
-  const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const documentQuery = useQuery({
-    queryKey: ["public-document", token],
-    queryFn: () => apiRequest<PublicDocument>(`/public-documents/${encodeURIComponent(token)}`),
-    enabled: Boolean(token),
-  });
-  const document = documentQuery.data;
-  const mutation = useMutation({
-    mutationFn: () => {
-      if (!document) throw new Error("This document is unavailable.");
-      const path = `/public-documents/${encodeURIComponent(token)}/${document.type === "FORM" ? "responses" : "sign"}`;
-      const body = document.type === "FORM" ? { name: name.trim(), email: email.trim(), answers } : { name: name.trim(), email: email.trim(), consent };
-      return apiRequest(path, { method: "POST", body: JSON.stringify(body) });
-    },
-    onSuccess: () => { setSubmitted(true); setError(""); },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "Your submission could not be sent."),
-  });
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    if (!document) return;
-    if (document.type === "FORM") {
-      const missing = (document.content.questions ?? []).find((question) => question.required && !(answers[question.id] ?? "").toString().trim());
-      if (missing) {
-          setError(`Please answer “${missing.prompt || "the required question"}”.`);
-        return;
-      }
-    } else if (!consent) {
-      setError("Please confirm your consent to sign electronically.");
-      return;
-    }
-    mutation.mutate();
-  }
-
-  if (documentQuery.isPending) return <main className="public-document-page"><div className="public-document-card"><span className="loader" />Loading shared document…</div></main>;
-  if (documentQuery.isError || !document) return <main className="public-document-page"><div className="public-document-card public-document-unavailable"><span className="eyebrow">SHARED DOCUMENT</span><h1>This link isn’t available.</h1><p>It may have expired, been revoked, or the document is no longer published.</p><a href="/">Go to IMARA <ArrowUpRight size={14} /></a></div></main>;
-  if (submitted) return <main className="public-document-page"><div className="public-document-card public-document-success"><span className="public-document-success-icon"><Check size={24} /></span><span className="eyebrow">ALL SET</span><h1>{document.type === "FORM" ? "Response recorded." : "Document signed."}</h1><p>{document.type === "FORM" ? "Thank you for taking the time to respond." : "Your electronic signature and consent have been recorded."}</p><a href="/">Made with IMARA <ArrowUpRight size={14} /></a></div></main>;
-
-  return <main className="public-document-page">
-    <article className="public-document-card">
-      <div className={`public-document-banner public-${document.type.toLowerCase()}`}><DocumentTypeIcon type={document.type} /><span>{kindLabel[document.type]}</span></div>
-      <header className="public-document-heading"><span className="eyebrow">SHARED WITH YOU</span><h1>{document.title}</h1>{document.description && <p>{document.description}</p>}</header>
-      {document.type === "INVOICE" ? <PublicInvoice content={document.content} title={document.title} /> : (
-        <form className="public-document-form" onSubmit={handleSubmit}>
-          <label className="public-document-field"><span>Your name <em>Required</em></span><input autoComplete="name" required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label>
-          <label className="public-document-field"><span>Email address <em>Required</em></span><input type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-          {document.type === "FORM" ? (document.content.questions ?? []).map((question, index) => <PublicQuestion
-            key={question.id}
-            question={question}
-            index={index}
-            value={answers[question.id] ?? (question.type === "CHECKBOXES" ? [] : "")}
-            onChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
-          />) : <PublicAgreement content={document.content} consent={consent} onConsentChange={setConsent} />}
-          {error && <p className="form-alert" role="alert">{error}</p>}
-          <button className="button button-green public-document-submit" type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? <LoaderCircle className="document-spin" size={16} /> : document.type === "FORM" ? <Send size={15} /> : <FileSignature size={15} />}
-            {mutation.isPending ? "Sending…" : document.type === "FORM" ? "Submit response" : "Sign agreement"}
-          </button>
-        </form>
-      )}
-      <footer className="public-document-footer"><FileCheck2 size={14} /> Securely shared with IMARA</footer>
-    </article>
-  </main>;
-}
-
-function PublicQuestion({ question, index, value, onChange }: {
-  question: DocumentQuestion;
-  index: number;
-  value: string | string[];
-  onChange: (value: string | string[]) => void;
+function ResponsePanel({
+  query,
+  questions,
+  type,
+}: {
+  query: { data?: FormResponse[]; isLoading: boolean; isError: boolean };
+  questions: DocumentQuestion[];
+  type: "FORM" | "AGREEMENT";
 }) {
-  return <fieldset className="public-document-question">
-    <legend>{index + 1}. {question.prompt || "Question"}{question.required && <em>Required</em>}</legend>
-    {question.type === "SHORT_ANSWER" && <input maxLength={4000} required={question.required} value={Array.isArray(value) ? "" : value} onChange={(event) => onChange(event.target.value)} placeholder="Your answer" />}
-    {question.type === "PARAGRAPH" && <textarea maxLength={10000} required={question.required} rows={4} value={Array.isArray(value) ? "" : value} onChange={(event) => onChange(event.target.value)} placeholder="Your answer" />}
-    {question.type === "MULTIPLE_CHOICE" && (question.choices ?? []).map((choice) => <label className="public-document-choice" key={choice}><input type="radio" name={`question-${question.id}`} required={question.required} checked={value === choice} onChange={() => onChange(choice)} />{choice}</label>)}
-    {question.type === "CHECKBOXES" && (question.choices ?? []).map((choice) => {
-      const checkedValues = Array.isArray(value) ? value : [];
-      return <label className="public-document-choice" key={choice}><input type="checkbox" checked={checkedValues.includes(choice)} onChange={(event) => onChange(event.target.checked ? [...checkedValues, choice] : checkedValues.filter((item) => item !== choice))} />{choice}</label>;
-    })}
-  </fieldset>;
-}
+  if (query.isLoading) {
+    return (
+      <div className="flex items-center justify-center py-14 text-slate-400">
+        <LoaderCircle className="animate-spin" size={18} />
+      </div>
+    );
+  }
+  if (query.isError) {
+    return (
+      <div className="p-6 text-center text-xs text-rose-700">
+        Couldn’t load {type === "FORM" ? "responses" : "signatures"}.
+      </div>
+    );
+  }
+  const rows = query.data ?? [];
+  if (!rows.length) {
+    return (
+      <div className="p-10 text-center text-xs text-slate-500">
+        No {type === "FORM" ? "responses" : "signatures"} yet.
+      </div>
+    );
+  }
 
-function PublicAgreement({ content, consent, onConsentChange }: { content: DocumentContent; consent: boolean; onConsentChange: (value: boolean) => void }) {
-  return <section className="public-agreement">
-    <div className="public-agreement-copy">{content.body || "No agreement terms have been added."}</div>
-    <label className="public-agreement-consent"><input type="checkbox" required checked={consent} onChange={(event) => onConsentChange(event.target.checked)} /><span>I agree to the terms above and consent to signing this document electronically.</span></label>
-    <p>Your name, email, consent, and signature time will be recorded.</p>
-  </section>;
-}
-
-function PublicInvoice({ content, title }: { content: DocumentContent; title: string }) {
-  const items = content.lineItems ?? [];
-  const currency = content.currency || "USD";
-  const total = typeof content.total === "number" ? content.total : items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-  return <div className="public-invoice">
-    <div className="public-invoice-top">
-      <div><span>FROM</span><strong>{content.businessName || title}</strong></div>
-      <div><span>INVOICE</span><strong>{content.invoiceNumber || "—"}</strong></div>
+  return (
+    <div className="divide-y divide-slate-200 p-4 sm:p-6">
+      {rows.map((row) => (
+        <div key={row.id} className="space-y-2 py-4 first:pt-0 last:pb-0">
+          <div className="flex flex-col justify-between gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-900">
+                {row.name || row.signedName || "Anonymous"}
+              </p>
+              <p className="truncate text-xs text-slate-500">{row.email}</p>
+            </div>
+            <span className="text-xs text-slate-400">
+              {new Date(row.signedAt || row.submittedAt).toLocaleString()}
+            </span>
+          </div>
+          {type === "FORM" && row.answers && (
+            <dl className="mt-2 space-y-1.5 rounded-xl border border-slate-200/80 bg-slate-50 p-3 text-xs">
+              {questions.map((q) => {
+                const val = row.answers?.[q.id];
+                return (
+                  <div key={q.id} className="min-w-0">
+                    <dt className="text-slate-500">{q.prompt || "Question"}</dt>
+                    <dd className="mt-0.5 font-medium break-words text-slate-900">
+                      {Array.isArray(val) ? val.join(", ") : val || "—"}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          )}
+        </div>
+      ))}
     </div>
-    <div className="public-invoice-recipient"><span>BILL TO</span><strong>{content.customerName || "Customer"}</strong>{content.customerEmail && <small>{content.customerEmail}</small>}</div>
-    <div className="public-invoice-dates"><span>Issued <strong>{content.issueDate || "—"}</strong></span><span>Due <strong>{content.dueDate || "—"}</strong></span></div>
-    <div className="public-invoice-lines">
-      <div className="public-invoice-line public-invoice-line-header"><span>Description</span><span>Qty</span><span>Rate</span><span>Amount</span></div>
-      {items.map((item, index) => <div className="public-invoice-line" key={`invoice-${index}`}><span>{item.description || "—"}</span><span>{item.quantity}</span><span>{formatCurrency(item.unitPrice, currency)}</span><strong>{formatCurrency(item.total ?? item.quantity * item.unitPrice, currency)}</strong></div>)}
-    </div>
-    <div className="public-invoice-total"><span>Total due</span><strong>{formatCurrency(total, currency)}</strong></div>
-    {content.note && <p className="public-invoice-note">{content.note}</p>}
-    <button className="button button-green public-invoice-print" type="button" onClick={() => window.print()}><Printer size={15} />Print or save as PDF</button>
-  </div>;
+  );
 }
-
-export default DocumentStudioPage;
