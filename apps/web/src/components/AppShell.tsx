@@ -21,6 +21,7 @@ import {
   MailPlus,
   MessageCircle,
   Menu,
+  PartyPopper,
   Search,
   Settings,
   ShieldCheck,
@@ -483,6 +484,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink to="/calendar" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <CalendarDays size={17} strokeWidth={1.8} /><span>Calendar</span>
+          </NavLink>
+          <NavLink to="/events" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
+            <PartyPopper size={17} strokeWidth={1.8} /><span>Events</span>
           </NavLink>
           <NavLink to="/notes" className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`} onClick={() => setMenuOpen(false)}>
             <FileText size={17} strokeWidth={1.8} /><span>Notes</span>

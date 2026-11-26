@@ -4,6 +4,11 @@ IMARA is a secure digital home for documents and files. The repository includes 
 app foundation, account security flows, a PostgreSQL-backed Free subscription, and
 Phase 2's private file library, quota-safe uploads, and folder management.
 
+For the source-verified current platform map, feature status, API/module overview,
+data model, mobile readiness, and known documentation drift, see
+[the current system audit](./docs/IMARA_CURRENT_SYSTEM_AUDIT.md). Some status
+statements below and in older documents predate the current implementation.
+
 ## Stack
 
 - `apps/web`: React, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query,
