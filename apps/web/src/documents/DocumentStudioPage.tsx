@@ -7,20 +7,23 @@ import {
   CheckSquare,
   CircleDot,
   Copy,
+  FileCheck2,
   FileSignature,
   FileText,
   Link2,
   ListPlus,
   LoaderCircle,
   Plus,
+  Printer,
   Send,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useParams } from "react-router-dom";
 import { apiRequest } from "../lib/api";
 
 type DocumentKind = "FORM" | "AGREEMENT" | "INVOICE";
-type QuestionKind = "SHORT_ANSWER" | "PARAGRAPH" | "MULTIPLE_CHOICE" | "CHECKBOXES";
+type QuestionKind = "SHORT_ANSWER" | "PARAGRAPH" | "MULTIPLE_CHOICE" | "CHECKBOXES" | "EMAIL" | "NUMBER";
 
 interface DocumentQuestion {
   id: string;
@@ -64,11 +67,13 @@ interface StudioDocument {
   responseCount: number;
 }
 
+type PublicDocument = Pick<StudioDocument, "id" | "type" | "title" | "description" | "content">;
+
 interface FormResponse {
   id: string;
   name: string;
   email: string;
-  answers?: Record<string, string | string[]>;
+  answers?: Record<string, string | string[] | number>;
   submittedAt: string;
   signedAt?: string | null;
   signedName?: string | null;
@@ -123,6 +128,8 @@ const QUESTION_LABEL: Record<QuestionKind, string> = {
   PARAGRAPH: "Paragraph",
   MULTIPLE_CHOICE: "Multiple choice",
   CHECKBOXES: "Checkboxes",
+  EMAIL: "Email",
+  NUMBER: "Number",
 };
 
 function makeDefaultContent(type: DocumentKind): DocumentContent {
@@ -1327,7 +1334,7 @@ function ResponsePanel({
                   <div key={q.id} className="min-w-0">
                     <dt className="text-slate-500">{q.prompt || "Question"}</dt>
                     <dd className="mt-0.5 font-medium break-words text-slate-900">
-                      {Array.isArray(val) ? val.join(", ") : val || "—"}
+                      {Array.isArray(val) ? val.join(", ") : val === undefined || val === "" ? "—" : val}
                     </dd>
                   </div>
                 );
@@ -1339,3 +1346,345 @@ function ResponsePanel({
     </div>
   );
 }
+
+export function PublicDocumentPage() {
+    const { token = "" } = useParams();
+    const [name, setName] = useState("");
+    const [email, setEmail] = useState("");
+    const [consent, setConsent] = useState(false);
+    const [answers, setAnswers] = useState<Record<string, string | string[] | number>>({});
+    const [submitted, setSubmitted] = useState(false);
+    const [validationError, setValidationError] = useState("");
+    const documentQuery = useQuery({
+      queryKey: ["public-document", token],
+      queryFn: () => apiRequest<PublicDocument>(`/public-documents/${encodeURIComponent(token)}`),
+      enabled: Boolean(token),
+    });
+    const document = documentQuery.data;
+    const submission = useMutation({
+      mutationFn: () => {
+        if (!document) throw new Error("This document is unavailable.");
+        const path = `/public-documents/${encodeURIComponent(token)}/${document.type === "FORM" ? "responses" : "sign"}`;
+        const submissionAnswers = Object.fromEntries(
+          Object.entries(answers).filter(([, answer]) =>
+            Array.isArray(answer) ? answer.length > 0 : answer !== "",
+          ),
+        );
+        const body = document.type === "FORM"
+          ? { name: name.trim(), email: email.trim(), answers: submissionAnswers }
+          : { name: name.trim(), email: email.trim(), consent };
+        return apiRequest<{ id: string }>(path, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+      },
+      onSuccess: () => setSubmitted(true),
+    });
+
+    function handleSubmit(event: FormEvent<HTMLFormElement>) {
+      event.preventDefault();
+      if (!document || document.type === "INVOICE") return;
+      setValidationError("");
+      if (document.type === "FORM") {
+        const missing = (document.content.questions ?? []).find((question) => {
+          if (!question.required) return false;
+          const answer = answers[question.id];
+          return Array.isArray(answer)
+            ? answer.length === 0
+            : typeof answer === "number"
+              ? !Number.isFinite(answer) || Math.abs(answer) > 1_000_000_000_000
+              : !answer?.trim();
+        });
+        if (missing) {
+          setValidationError(`Please answer “${missing.prompt || "the required question"}”.`);
+          return;
+        }
+      } else if (!consent) {
+        setValidationError("Please confirm your consent to sign electronically.");
+        return;
+      }
+      submission.mutate();
+    }
+
+    if (documentQuery.isPending) {
+      return (
+        <main className="public-document-page">
+          <div className="public-document-card public-document-unavailable" role="status">
+            <LoaderCircle className="document-spin" size={20} />
+            <p>Loading shared document…</p>
+          </div>
+        </main>
+      );
+    }
+
+    if (documentQuery.isError || !document) {
+      return (
+        <main className="public-document-page">
+          <div className="public-document-card public-document-unavailable">
+            <span className="eyebrow">SHARED DOCUMENT</span>
+            <h1>This link isn&apos;t available.</h1>
+            <p>It may have expired, been revoked, or the document is no longer published.</p>
+            <Link to="/">Go to IMARA <ArrowUpRight size={14} /></Link>
+          </div>
+        </main>
+      );
+    }
+
+    if (submitted) {
+      return (
+        <main className="public-document-page">
+          <div className="public-document-card public-document-success">
+            <span className="public-document-success-icon"><Check size={24} /></span>
+            <span className="eyebrow">ALL SET</span>
+            <h1>{document.type === "FORM" ? "Response recorded." : "Document signed."}</h1>
+            <p>{document.type === "FORM"
+              ? "Thank you for taking the time to respond."
+              : "Your electronic signature and consent have been recorded."}</p>
+            <Link to="/">Made with IMARA <ArrowUpRight size={14} /></Link>
+          </div>
+        </main>
+      );
+    }
+
+    return (
+      <main className="public-document-page">
+        <article className="public-document-card">
+          <div className={`public-document-banner public-${document.type.toLowerCase()}`}>
+            <DocumentTypeIcon type={document.type} />
+            <span>{KIND_META[document.type].label}</span>
+          </div>
+          <header className="public-document-heading">
+            <span className="eyebrow">SHARED WITH YOU</span>
+            <h1>{document.title}</h1>
+            {document.description && <p>{document.description}</p>}
+          </header>
+          {document.type === "INVOICE" ? (
+            <PublicInvoice content={document.content} title={document.title} />
+          ) : (
+            <form className="public-document-form" onSubmit={handleSubmit}>
+              <label className="public-document-field">
+                <span>Your name <em>Required</em></span>
+                <input
+                  autoComplete="name"
+                  required
+                  maxLength={120}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <label className="public-document-field">
+                <span>Email address <em>Required</em></span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  required
+                  maxLength={320}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+              {document.type === "FORM"
+                ? (document.content.questions ?? []).map((question, index) => (
+                  <PublicQuestion
+                    key={question.id}
+                    question={question}
+                    index={index}
+                    value={answers[question.id] ?? (question.type === "CHECKBOXES" ? [] : "")}
+                    onChange={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
+                  />
+                ))
+                : <PublicAgreement
+                  content={document.content}
+                  consent={consent}
+                  onConsentChange={setConsent}
+                />}
+              {(validationError || submission.isError) && (
+                <p className="form-alert" role="alert">
+                  {validationError || (submission.error instanceof Error
+                    ? submission.error.message
+                    : "Your submission could not be sent.")}
+                </p>
+              )}
+              <button
+                className="button button-green public-document-submit"
+                type="submit"
+                disabled={submission.isPending}
+              >
+                {submission.isPending
+                  ? <LoaderCircle className="document-spin" size={16} />
+                  : document.type === "FORM" ? <Send size={15} /> : <FileSignature size={15} />}
+                {submission.isPending
+                  ? "Sending…"
+                  : document.type === "FORM" ? "Submit response" : "Sign agreement"}
+              </button>
+            </form>
+          )}
+          <footer className="public-document-footer">
+            <FileCheck2 size={14} /> Securely shared with IMARA
+          </footer>
+        </article>
+      </main>
+    );
+  }
+
+  function PublicQuestion({
+    question,
+    index,
+    value,
+    onChange,
+  }: {
+    question: DocumentQuestion;
+    index: number;
+    value: string | string[] | number;
+    onChange: (value: string | string[] | number) => void;
+  }) {
+    return (
+      <fieldset className="public-document-question">
+        <legend>{index + 1}. {question.prompt || "Question"}{question.required && <em>Required</em>}</legend>
+        {question.type === "SHORT_ANSWER" && (
+          <input
+            maxLength={2000}
+            required={question.required}
+            value={typeof value === "string" ? value : ""}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Your answer"
+          />
+        )}
+        {question.type === "PARAGRAPH" && (
+          <textarea
+            maxLength={10000}
+            required={question.required}
+            rows={4}
+            value={typeof value === "string" ? value : ""}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Your answer"
+          />
+        )}
+        {question.type === "EMAIL" && (
+          <input
+            type="email"
+            maxLength={320}
+            required={question.required}
+            value={typeof value === "string" ? value : ""}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="name@example.com"
+          />
+        )}
+        {question.type === "NUMBER" && (
+          <input
+            type="number"
+            step="any"
+            min={-1_000_000_000_000}
+            max={1_000_000_000_000}
+            required={question.required}
+            value={typeof value === "number" || typeof value === "string" ? value : ""}
+            onChange={(event) => onChange(
+              event.target.value === "" ? "" : event.currentTarget.valueAsNumber,
+            )}
+            placeholder="Your answer"
+          />
+        )}
+        {question.type === "MULTIPLE_CHOICE" && (question.choices ?? []).map((choice) => (
+          <label className="public-document-choice" key={choice}>
+            <input
+              type="radio"
+              name={`question-${question.id}`}
+              required={question.required}
+              checked={value === choice}
+              onChange={() => onChange(choice)}
+            />
+            {choice}
+          </label>
+        ))}
+        {question.type === "CHECKBOXES" && (question.choices ?? []).map((choice) => {
+          const checkedValues = Array.isArray(value) ? value : [];
+          return (
+            <label className="public-document-choice" key={choice}>
+              <input
+                type="checkbox"
+                checked={checkedValues.includes(choice)}
+                onChange={(event) => onChange(
+                  event.target.checked
+                    ? [...checkedValues, choice]
+                    : checkedValues.filter((item) => item !== choice),
+                )}
+              />
+              {choice}
+            </label>
+          );
+        })}
+      </fieldset>
+    );
+  }
+
+  function PublicAgreement({
+    content,
+    consent,
+    onConsentChange,
+  }: {
+    content: DocumentContent;
+    consent: boolean;
+    onConsentChange: (value: boolean) => void;
+  }) {
+    return (
+      <section className="public-agreement">
+        <div className="public-agreement-copy">{content.body || "No agreement terms have been added."}</div>
+        <label className="public-agreement-consent">
+          <input
+            type="checkbox"
+            required
+            checked={consent}
+            onChange={(event) => onConsentChange(event.target.checked)}
+          />
+          <span>I agree to the terms above and consent to signing this document electronically.</span>
+        </label>
+        <p>Your name, email, consent, and signature time will be recorded.</p>
+      </section>
+    );
+  }
+
+  function PublicInvoice({ content, title }: { content: DocumentContent; title: string }) {
+    const items = content.lineItems ?? [];
+    const currency = content.currency || "USD";
+    const total = typeof content.total === "number"
+      ? content.total
+      : items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+    return (
+      <div className="public-invoice">
+        <div className="public-invoice-top">
+          <div><span>FROM</span><strong>{content.businessName || title}</strong></div>
+          <div><span>INVOICE</span><strong>{content.invoiceNumber || "—"}</strong></div>
+        </div>
+        <div className="public-invoice-recipient">
+          <span>BILL TO</span>
+          <strong>{content.customerName || "Customer"}</strong>
+          {content.customerEmail && <small>{content.customerEmail}</small>}
+        </div>
+        <div className="public-invoice-dates">
+          <span>Issued <strong>{content.issueDate || "—"}</strong></span>
+          <span>Due <strong>{content.dueDate || "—"}</strong></span>
+        </div>
+        <div className="public-invoice-lines">
+          <div className="public-invoice-line public-invoice-line-header">
+            <span>Description</span><span>Qty</span><span>Rate</span><span>Amount</span>
+          </div>
+          {items.map((item, index) => (
+            <div className="public-invoice-line" key={`invoice-${index}`}>
+              <span>{item.description || "—"}</span>
+              <span>{item.quantity}</span>
+              <span>{formatCurrency(item.unitPrice, currency)}</span>
+              <strong>{formatCurrency(item.total ?? item.quantity * item.unitPrice, currency)}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="public-invoice-total">
+          <span>Total due</span><strong>{formatCurrency(total, currency)}</strong>
+        </div>
+        {content.note && <p className="public-invoice-note">{content.note}</p>}
+        <button className="button button-green public-invoice-print" type="button" onClick={() => window.print()}>
+          <Printer size={15} /> Print or save as PDF
+        </button>
+      </div>
+    );
+  }
